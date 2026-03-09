@@ -1,6 +1,0 @@
-{
-  "algorithm": "DQN",
-  "input_dim": 18,
-  "hidden_layers": [128, 64],
-  "activation": "relu"
-}

@@ -1,24 +1,90 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
+import Home from '../views/Home.vue'
+import Login from '../views/Login.vue'
+import Register from '../views/Register.vue'
+import App from '../App.vue'
+import TaskDetail from '../views/TaskDetail.vue'
+import StudentProfile from '../views/StudentProfile.vue'
+import StudentHistory from '../views/StudentHistory.vue'
+import Ranking from '../views/Ranking.vue'
+
+import TeacherHome from '../views/TeacherHome.vue'
+import TeacherPublishTask from '../views/TeacherPublishTask.vue'
+import TeacherTaskManage from '../views/TeacherTaskManage.vue'
+import TeacherClassData from '../views/TeacherClassData.vue'
+import TeacherExportScore from '../views/TeacherExportScore.vue'
 
 const routes = [
   {
     path: '/',
     name: 'home',
-    component: HomeView
+    component: Home
   },
   {
-    path: '/about',
-    name: 'about',
-    // route level code-splitting
-    // this generates a separate chunk (about.[hash].js) for this route
-    // which is lazy-loaded when the route is visited.
-    component: () => import(/* webpackChunkName: "about" */ '../views/AboutView.vue')
+    path: '/login',
+    name: 'login',
+    component: Login
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: Register
+  },
+  {
+    path: '/battle',
+    name: 'battle',
+    component: App
+  },
+  {
+    path: '/task-detail',
+    name: 'taskDetail',
+    component: TaskDetail
+  },
+  {
+    path: '/student/profile',
+    name: 'studentProfile',
+    component: StudentProfile
+  },
+  {
+    path: '/student/history',
+    name: 'studentHistory',
+    component: StudentHistory
+  },
+  {
+    path: '/student/ranking',
+    name: 'studentRanking',
+    component: Ranking
+  },
+
+  {
+    path: '/teacher/home',
+    name: 'teacherHome',
+    component: TeacherHome
+  },
+  {
+    path: '/teacher/publish',
+    name: 'teacherPublish',
+    component: TeacherPublishTask
+  },
+  {
+    path: '/teacher/tasks',
+    name: 'teacherTasks',
+    component: TeacherTaskManage
+  },
+  {
+    path: '/teacher/classes',
+    name: 'teacherClasses',
+    component: TeacherClassData
+  },
+  {
+    path: '/teacher/export',
+    name: 'teacherExport',
+    component: TeacherExportScore
   }
 ]
 
 const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
+  history: createWebHistory(),
   routes
 })
 
