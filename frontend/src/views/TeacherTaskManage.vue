@@ -27,31 +27,32 @@
         </div>
 
         <div class='card'>
-          <div class='card-title'>任务列表</div>
           <table class='common-table'>
             <thead>
               <tr>
                 <th>任务名称</th>
-                <th>班级</th>
+                <th>所属班级</th>
                 <th>开始时间</th>
                 <th>截止时间</th>
                 <th>状态</th>
-                <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for='item in taskList' :key='item.id'>
+              <tr v-for='item in pagedTaskList' :key='item.id'>
                 <td>{{ item.name }}</td>
                 <td>{{ item.className }}</td>
                 <td>{{ item.startTime }}</td>
                 <td>{{ item.deadline }}</td>
                 <td>{{ item.status }}</td>
-                <td>
-                  <button class='table-btn' type='button'>修改</button>
-                </td>
               </tr>
             </tbody>
           </table>
+          <CommonPagination
+            v-model:currentPage='taskPage'
+            v-model:pageSize='taskPageSize'
+            :total='taskList.length'
+            :page-size-options='[5, 10, 20]'
+          />
         </div>
       </main>
     </div>
@@ -61,20 +62,31 @@
 <script>
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
+import CommonPagination from '../components/CommonPagination.vue'
 
 export default {
   name: 'TeacherTaskManageView',
   components: {
     AppTopbar,
-    TeacherSidebar
+    TeacherSidebar,
+    CommonPagination
   },
   data () {
     return {
+      taskPage: 1,
+      taskPageSize: 5,
       taskList: [
         { id: 1, name: '井字棋对战游戏', className: '人工智能 2201', startTime: '2026-07-01 08:00', deadline: '2026-07-10 23:59', status: '进行中' },
         { id: 2, name: '井字棋对战游戏', className: '人工智能 2202', startTime: '2026-07-02 08:00', deadline: '2026-07-15 23:59', status: '进行中' },
         { id: 3, name: '井字棋对战游戏', className: '软件工程 2201', startTime: '2026-06-01 08:00', deadline: '2026-06-18 23:59', status: '已结束' }
       ]
+    }
+  },
+  computed: {
+    pagedTaskList () {
+      const start = (this.taskPage - 1) * this.taskPageSize
+      const end = start + this.taskPageSize
+      return this.taskList.slice(start, end)
     }
   },
   methods: {
@@ -146,13 +158,6 @@ export default {
   padding: 20px;
 }
 
-.card-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 16px;
-  color: #1f2d3d;
-}
-
 .common-table {
   width: 100%;
   border-collapse: collapse;
@@ -170,22 +175,6 @@ export default {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
-}
-
-.table-btn {
-  height: 34px;
-  min-width: 72px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 4px;
-  background: #1f4e8c;
-  color: #ffffff;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.table-btn:hover {
-  background: #173b69;
 }
 
 @media (max-width: 900px) {

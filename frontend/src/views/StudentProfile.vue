@@ -17,6 +17,8 @@
         active-menu='profile'
         :task-menu-open='false'
         @profile-click='goProfile'
+        @class-click='goStudentClass'
+        @tournament-click='goTournament'
         @toggle-task-menu='goHomeOpenTasks'
         @open-task-click='goHomeOpenTasks'
         @ended-task-click='goHomeEndedTasks'
@@ -34,15 +36,15 @@
             <div class='info-list'>
               <div class='info-row'>
                 <span class='label'>姓名</span>
-                <span class='value'>张三</span>
+                <span class='value'>{{ profile.name }}</span>
               </div>
               <div class='info-row'>
                 <span class='label'>学号</span>
-                <span class='value'>2023123456</span>
+                <span class='value'>{{ profile.studentId }}</span>
               </div>
               <div class='info-row'>
                 <span class='label'>班级</span>
-                <span class='value'>人工智能 2201</span>
+                <span class='value'>{{ profile.className }}</span>
               </div>
               <div class='info-row'>
                 <span class='label'>身份</span>
@@ -51,7 +53,7 @@
             </div>
 
             <div class='profile-action'>
-              <button class='edit-btn' type='button'>修改</button>
+              <button class='edit-btn' type='button' @click='openEditDialog'>修改</button>
             </div>
           </div>
 
@@ -89,7 +91,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for='item in recentRecords' :key='item.id'>
+                <tr v-for='item in pagedRecentRecords' :key='item.id'>
                   <td>{{ item.taskName }}</td>
                   <td>{{ item.submitTime }}</td>
                   <td>{{ item.status }}</td>
@@ -97,9 +99,45 @@
                 </tr>
               </tbody>
             </table>
+            <CommonPagination
+              v-model:currentPage='recordPage'
+              v-model:pageSize='recordPageSize'
+              :total='recentRecords.length'
+              :page-size-options='[5, 10, 20]'
+            />
           </div>
         </div>
       </main>
+
+    </div>
+
+    <div v-if='showEditDialog' class='dialog-mask' @click='closeEditDialog'>
+      <div class='dialog-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>修改个人信息</div>
+          <button class='close-btn' @click='closeEditDialog'>关闭</button>
+        </div>
+
+        <div class='dialog-body'>
+          <div class='form-item'>
+            <label>姓名</label>
+            <input v-model='editForm.name' type='text' />
+          </div>
+          <div class='form-item'>
+            <label>学号</label>
+            <input v-model='editForm.studentId' type='text' />
+          </div>
+          <div class='form-item'>
+            <label>班级</label>
+            <input v-model='editForm.className' type='text' />
+          </div>
+        </div>
+
+        <div class='dialog-footer'>
+          <button class='secondary-btn' @click='closeEditDialog'>取消</button>
+          <button class='primary-btn' @click='saveProfile'>保存</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -107,15 +145,30 @@
 <script>
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
+import CommonPagination from '../components/CommonPagination.vue'
 
 export default {
   name: 'StudentProfileView',
   components: {
     AppTopbar,
-    StudentSidebar
+    StudentSidebar,
+    CommonPagination
   },
   data () {
     return {
+      profile: {
+        name: '张三',
+        studentId: '2023123456',
+        className: '人工智能 2201'
+      },
+      editForm: {
+        name: '',
+        studentId: '',
+        className: ''
+      },
+      showEditDialog: false,
+      recordPage: 1,
+      recordPageSize: 10,
       recentRecords: [
         {
           id: 1,
@@ -141,7 +194,25 @@ export default {
       ]
     }
   },
+  computed: {
+    pagedRecentRecords () {
+      const start = (this.recordPage - 1) * this.recordPageSize
+      const end = start + this.recordPageSize
+      return this.recentRecords.slice(start, end)
+    }
+  },
   methods: {
+    openEditDialog () {
+      this.editForm = { ...this.profile }
+      this.showEditDialog = true
+    },
+    closeEditDialog () {
+      this.showEditDialog = false
+    },
+    saveProfile () {
+      this.profile = { ...this.editForm }
+      this.showEditDialog = false
+    },
     goHomeOpenTasks () {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
@@ -154,10 +225,16 @@ export default {
     goProfile () {
       this.$router.push('/student/profile')
     },
+    goStudentClass () {
+      this.$router.push('/student/class')
+    },
+    goTournament () {
+      this.$router.push('/student/tournament')
+    },
     switchRole () {
       sessionStorage.removeItem('mock_logged_out_view')
       localStorage.setItem('mock_login_role', 'teacher')
-      this.$router.push('/')
+      this.$router.push('/teacher/home')
     },
     logout () {
       sessionStorage.setItem('mock_logged_out_view', 'true')
@@ -250,21 +327,19 @@ export default {
 }
 
 .profile-action {
-  margin-top: 18px;
+  margin-top: 16px;
   display: flex;
   justify-content: flex-end;
 }
 
 .edit-btn {
-  height: 36px;
-  min-width: 88px;
-  padding: 0 18px;
+  height: 38px;
+  min-width: 92px;
   border: none;
   border-radius: 4px;
   background: #1f4e8c;
   color: #ffffff;
   font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
 }
 
@@ -274,22 +349,23 @@ export default {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }
 
 .summary-item {
+  background: #f8fafc;
   border: 1px solid #ebeef5;
   border-radius: 6px;
-  padding: 18px 16px;
-  background: #f8fafc;
+  padding: 16px;
+  text-align: center;
 }
 
 .summary-value {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 700;
   color: #1f4e8c;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .summary-label {
@@ -304,17 +380,110 @@ export default {
 
 .record-table th,
 .record-table td {
-  border-bottom: 1px solid #ebeef5;
   padding: 14px 12px;
+  border-bottom: 1px solid #ebeef5;
   text-align: left;
   font-size: 14px;
-  color: #303133;
 }
 
 .record-table th {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
+}
+
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 45, 61, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  padding: 20px;
+}
+
+.dialog-box {
+  width: 480px;
+  max-width: 100%;
+  background: #ffffff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.dialog-header {
+  min-height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialog-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.close-btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #dcdfe6;
+  background: #ffffff;
+  color: #606266;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dialog-body {
+  padding: 20px;
+}
+
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.form-item label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #606266;
+}
+
+.form-item input {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.dialog-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #ebeef5;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.secondary-btn {
+  height: 38px;
+  min-width: 96px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #606266;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.secondary-btn:hover {
+  color: #1f4e8c;
+  border-color: #1f4e8c;
 }
 
 @media (max-width: 900px) {

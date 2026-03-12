@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Login from '../views/Login.vue'
 import Register from '../views/Register.vue'
-import App from '../App.vue'
 import TaskDetail from '../views/TaskDetail.vue'
 import StudentProfile from '../views/StudentProfile.vue'
 import StudentHistory from '../views/StudentHistory.vue'
@@ -13,6 +12,9 @@ import TeacherPublishTask from '../views/TeacherPublishTask.vue'
 import TeacherTaskManage from '../views/TeacherTaskManage.vue'
 import TeacherClassData from '../views/TeacherClassData.vue'
 import TeacherExportScore from '../views/TeacherExportScore.vue'
+
+import StudentClassJoin from '../views/StudentClassJoin.vue'
+import StudentTournament from '../views/StudentTournament.vue'
 
 const routes = [
   {
@@ -32,8 +34,7 @@ const routes = [
   },
   {
     path: '/battle',
-    name: 'battle',
-    component: App
+    redirect: '/task-detail'
   },
   {
     path: '/task-detail',
@@ -54,6 +55,16 @@ const routes = [
     path: '/student/ranking',
     name: 'studentRanking',
     component: Ranking
+  },
+  {
+    path: '/student/class',
+    name: 'studentClass',
+    component: StudentClassJoin
+  },
+  {
+    path: '/student/tournament',
+    name: 'studentTournament',
+    component: StudentTournament
   },
 
   {

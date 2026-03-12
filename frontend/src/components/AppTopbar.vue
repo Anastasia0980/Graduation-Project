@@ -9,8 +9,8 @@
         <span class='top-nav-item' :class='{ active: activeNav === "home" }' @click="$emit('platform-click')">
           首页
         </span>
-        <span class='top-nav-item'>公告通知</span>
-        <span class='top-nav-item'>帮助说明</span>
+        <span class='top-nav-item' @click='showNoticeDialog = true'>公告通知</span>
+        <span class='top-nav-item' @click='showHelpDialog = true'>帮助说明</span>
       </div>
     </div>
 
@@ -27,6 +27,48 @@
         <button class='text-btn' @click="$emit('login')">登录</button>
         <button class='primary-btn top-btn' @click="$emit('register')">注册</button>
       </template>
+    </div>
+
+    <div v-if='showNoticeDialog' class='dialog-mask' @click='showNoticeDialog = false'>
+      <div class='dialog-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>公告通知</div>
+          <button class='close-btn' @click='showNoticeDialog = false'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          <div v-for='item in notices' :key='item.id' class='notice-item'>
+            <div class='notice-item-title'>{{ item.title }}</div>
+            <div class='notice-item-time'>{{ item.time }}</div>
+            <div class='notice-item-content'>{{ item.content }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if='showHelpDialog' class='dialog-mask' @click='showHelpDialog = false'>
+      <div class='dialog-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>帮助说明</div>
+          <button class='close-btn' @click='showHelpDialog = false'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          <div class='help-section'>
+            <div class='help-title'>学生端</div>
+            <ul class='help-list'>
+              <li>通过任务广场进入任务详情页，完成模型提交或查看任务说明。</li>
+              <li>在提交历史中查看测评状态、胜负关系与录像回放。</li>
+              <li>在个人主页中查看基础信息和近期记录。</li>
+            </ul>
+          </div>
+          <div class='help-section'>
+            <div class='help-title'>教师端</div>
+            <ul class='help-list'>
+              <li>通过发布任务页面创建单人模式、对战模式或团队锦标赛模式任务。</li>
+              <li>在任务管理、班级管理和导出成绩页面查看对应数据。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   </header>
 </template>
@@ -53,6 +95,16 @@ export default {
     }
   },
   emits: ['platform-click', 'user-click', 'logout', 'login', 'register', 'switch-role'],
+  data () {
+    return {
+      showNoticeDialog: false,
+      showHelpDialog: false,
+      notices: [
+        { id: 1, title: '课堂测评提醒', time: '2026-03-12 09:00', content: '请按任务要求提交模型与配置文件。' },
+        { id: 2, title: '井字棋任务开放', time: '2026-03-11 15:30', content: '对战模式任务已开放，可在任务详情页选择真人或人机对战。' }
+      ]
+    }
+  },
   computed: {
     switchButtonText () {
       return this.currentRole === 'teacher' ? '切换到学生' : '切换到教师'
@@ -180,6 +232,105 @@ export default {
 
 .top-btn {
   min-width: 72px;
+}
+
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 45, 61, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  padding: 20px;
+}
+
+.dialog-box {
+  width: 680px;
+  max-width: 100%;
+  max-height: calc(100vh - 40px);
+  background: #ffffff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-header {
+  min-height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialog-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.close-btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #dcdfe6;
+  background: #ffffff;
+  color: #606266;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dialog-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.notice-item {
+  padding: 14px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #f8fafc;
+  margin-bottom: 12px;
+}
+
+.notice-item:last-child {
+  margin-bottom: 0;
+}
+
+.notice-item-title,
+.help-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2d3d;
+  margin-bottom: 8px;
+}
+
+.notice-item-time {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.notice-item-content,
+.help-list li {
+  font-size: 14px;
+  color: #303133;
+  line-height: 1.8;
+}
+
+.help-section {
+  margin-bottom: 16px;
+}
+
+.help-section:last-child {
+  margin-bottom: 0;
+}
+
+.help-list {
+  margin: 0;
+  padding-left: 18px;
 }
 
 @media (max-width: 700px) {

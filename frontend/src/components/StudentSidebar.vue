@@ -12,6 +12,14 @@
       </div>
 
       <div
+        class='menu-item'
+        :class='{ active: activeMenu === "class" }'
+        @click="$emit('class-click')"
+      >
+        我的班级
+      </div>
+
+      <div
         class='menu-item menu-item-parent'
         :class='{ active: activeMenu === "task-open" || activeMenu === "task-ended" }'
         @click="$emit('toggle-task-menu')"
@@ -71,6 +79,7 @@ export default {
   },
   emits: [
     'profile-click',
+    'class-click',
     'toggle-task-menu',
     'open-task-click',
     'ended-task-click',

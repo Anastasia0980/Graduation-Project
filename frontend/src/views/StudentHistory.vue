@@ -17,6 +17,8 @@
         active-menu='history'
         :task-menu-open='false'
         @profile-click='goProfile'
+        @class-click='goStudentClass'
+        @tournament-click='goTournament'
         @toggle-task-menu='goHomeOpenTasks'
         @open-task-click='goHomeOpenTasks'
         @ended-task-click='goHomeEndedTasks'
@@ -41,7 +43,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for='item in historyList' :key='item.id'>
+              <tr v-for='item in pagedHistoryList' :key='item.id'>
                 <td>{{ item.taskName }}</td>
                 <td>{{ item.modelName }}</td>
                 <td>{{ item.submitTime }}</td>
@@ -67,6 +69,12 @@
               </tr>
             </tbody>
           </table>
+          <CommonPagination
+            v-model:currentPage='historyPage'
+            v-model:pageSize='historyPageSize'
+            :total='historyList.length'
+            :page-size-options='[5, 10, 20]'
+          />
         </div>
       </main>
     </div>
@@ -103,13 +111,15 @@
 <script>
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
+import CommonPagination from '../components/CommonPagination.vue'
 import gameVideo from '../assets/game.mp4'
 
 export default {
   name: 'StudentHistoryView',
   components: {
     AppTopbar,
-    StudentSidebar
+    StudentSidebar,
+    CommonPagination
   },
   data () {
     return {
@@ -119,6 +129,8 @@ export default {
         modelName: '',
         videoUrl: ''
       },
+      historyPage: 1,
+      historyPageSize: 5,
       historyList: [
         {
           id: 1,
@@ -153,6 +165,13 @@ export default {
       ]
     }
   },
+  computed: {
+    pagedHistoryList () {
+      const start = (this.historyPage - 1) * this.historyPageSize
+      const end = start + this.historyPageSize
+      return this.historyList.slice(start, end)
+    }
+  },
   methods: {
     goHomeOpenTasks () {
       this.$router.push({ path: '/', query: { tab: 'open' } })
@@ -163,13 +182,19 @@ export default {
     goProfile () {
       this.$router.push('/student/profile')
     },
+    goStudentClass () {
+      this.$router.push('/student/class')
+    },
+    goTournament () {
+      this.$router.push('/student/tournament')
+    },
     goHistory () {
       this.$router.push('/student/history')
     },
     switchRole () {
       sessionStorage.removeItem('mock_logged_out_view')
       localStorage.setItem('mock_login_role', 'teacher')
-      this.$router.push('/')
+      this.$router.push('/teacher/home')
     },
     logout () {
       sessionStorage.setItem('mock_logged_out_view', 'true')
@@ -233,6 +258,7 @@ export default {
   border: 1px solid #dcdfe6;
   border-radius: 8px;
   overflow: hidden;
+  padding: 0 0 18px;
 }
 
 .history-table {
@@ -252,19 +278,19 @@ export default {
 
 .history-table th {
   background: #f8fafc;
-  color: #606266;
   font-weight: 700;
+  color: #606266;
 }
 
 .table-btn {
   height: 34px;
-  padding: 0 14px;
+  min-width: 86px;
   border: none;
   border-radius: 4px;
   background: #1f4e8c;
   color: #ffffff;
-  cursor: pointer;
   font-size: 13px;
+  cursor: pointer;
 }
 
 .table-btn:hover {
@@ -272,12 +298,8 @@ export default {
 }
 
 .disabled-btn {
-  background: #909399;
+  background: #c0c4cc;
   cursor: not-allowed;
-}
-
-.disabled-btn:hover {
-  background: #909399;
 }
 
 .video-mask {
@@ -287,17 +309,16 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 3000;
   padding: 20px;
 }
 
 .video-dialog {
-  width: 900px;
+  width: 860px;
   max-width: 100%;
   background: #ffffff;
-  border-radius: 8px;
   border: 1px solid #dcdfe6;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -340,7 +361,7 @@ export default {
 }
 
 .video-task-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #1f2d3d;
   margin-bottom: 8px;
@@ -353,10 +374,9 @@ export default {
 
 .video-player {
   width: 100%;
-  max-height: 540px;
+  max-height: 520px;
   background: #000000;
   border-radius: 6px;
-  display: block;
 }
 
 @media (max-width: 900px) {

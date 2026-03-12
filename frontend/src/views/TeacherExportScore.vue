@@ -27,15 +27,12 @@
         </div>
 
         <div class='card'>
-          <div class='card-title'>导出条件</div>
-
           <div class='form-grid'>
             <div class='form-item'>
               <label>选择班级</label>
               <select>
                 <option>人工智能 2201</option>
                 <option>人工智能 2202</option>
-                <option>软件工程 2201</option>
               </select>
             </div>
 
@@ -43,13 +40,13 @@
               <label>选择任务</label>
               <select>
                 <option>井字棋对战游戏</option>
-                <option>Connect Four 对战任务</option>
+                <option>井字棋单人测评任务</option>
               </select>
             </div>
           </div>
 
           <div class='action-row'>
-            <button class='primary-btn'>导出 Excel</button>
+            <button class='primary-btn'>导出成绩</button>
           </div>
         </div>
 
@@ -61,11 +58,11 @@
                 <th>班级</th>
                 <th>任务名称</th>
                 <th>导出时间</th>
-                <th>导出状态</th>
+                <th>状态</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for='item in exportList' :key='item.id'>
+              <tr v-for='item in pagedExportList' :key='item.id'>
                 <td>{{ item.className }}</td>
                 <td>{{ item.taskName }}</td>
                 <td>{{ item.exportTime }}</td>
@@ -73,6 +70,12 @@
               </tr>
             </tbody>
           </table>
+          <CommonPagination
+            v-model:currentPage='exportPage'
+            v-model:pageSize='exportPageSize'
+            :total='exportList.length'
+            :page-size-options='[5, 10, 20]'
+          />
         </div>
       </main>
     </div>
@@ -82,19 +85,30 @@
 <script>
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
+import CommonPagination from '../components/CommonPagination.vue'
 
 export default {
   name: 'TeacherExportScoreView',
   components: {
     AppTopbar,
-    TeacherSidebar
+    TeacherSidebar,
+    CommonPagination
   },
   data () {
     return {
+      exportPage: 1,
+      exportPageSize: 5,
       exportList: [
         { id: 1, className: '人工智能 2201', taskName: '井字棋对战游戏', exportTime: '2026-07-06 10:20', status: '已完成' },
         { id: 2, className: '人工智能 2202', taskName: '井字棋对战游戏', exportTime: '2026-07-05 16:40', status: '已完成' }
       ]
+    }
+  },
+  computed: {
+    pagedExportList () {
+      const start = (this.exportPage - 1) * this.exportPageSize
+      const end = start + this.exportPageSize
+      return this.exportList.slice(start, end)
     }
   },
   methods: {

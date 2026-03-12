@@ -31,7 +31,7 @@
       :class='{ active: activeMenu === "class-data" }'
       @click="$emit('class-data-click')"
     >
-      班级数据
+      班级管理
     </div>
 
     <div

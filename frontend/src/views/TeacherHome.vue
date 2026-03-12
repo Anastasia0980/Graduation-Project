@@ -58,7 +58,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for='item in recentTasks' :key='item.id'>
+                <tr v-for='item in pagedRecentTasks' :key='item.id'>
                   <td>{{ item.name }}</td>
                   <td>{{ item.deadline }}</td>
                   <td>{{ item.submitCount }}</td>
@@ -66,15 +66,12 @@
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          <div class='card'>
-            <div class='card-title'>系统提示</div>
-            <div class='notice-list'>
-              <div class='notice-item'>已有 2 个任务接近截止时间，请及时查看提交情况。</div>
-              <div class='notice-item'>本周新增 1 个班级的成绩导出请求。</div>
-              <div class='notice-item'>可前往“任务管理”页面统一查看任务状态与测评记录。</div>
-            </div>
+            <CommonPagination
+              v-model:currentPage='taskPage'
+              v-model:pageSize='taskPageSize'
+              :total='recentTasks.length'
+              :page-size-options='[5, 10, 20]'
+            />
           </div>
         </div>
       </main>
@@ -85,20 +82,31 @@
 <script>
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
+import CommonPagination from '../components/CommonPagination.vue'
 
 export default {
   name: 'TeacherHomeView',
   components: {
     AppTopbar,
-    TeacherSidebar
+    TeacherSidebar,
+    CommonPagination
   },
   data () {
     return {
+      taskPage: 1,
+      taskPageSize: 5,
       recentTasks: [
         { id: 1, name: '井字棋对战游戏', deadline: '2026-07-10 23:59', submitCount: 36, status: '进行中' },
         { id: 2, name: '井字棋对战游戏', deadline: '2026-07-15 23:59', submitCount: 28, status: '进行中' },
         { id: 3, name: '井字棋对战游戏', deadline: '2026-06-18 23:59', submitCount: 42, status: '已结束' }
       ]
+    }
+  },
+  computed: {
+    pagedRecentTasks () {
+      const start = (this.taskPage - 1) * this.taskPageSize
+      const end = start + this.taskPageSize
+      return this.recentTasks.slice(start, end)
     }
   },
   methods: {
@@ -166,7 +174,7 @@ export default {
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
+  gap: 20px;
   margin-bottom: 20px;
 }
 
@@ -174,7 +182,8 @@ export default {
   background: #ffffff;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
-  padding: 22px 18px;
+  padding: 20px;
+  text-align: center;
 }
 
 .summary-value {
@@ -191,7 +200,7 @@ export default {
 
 .content-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr;
   gap: 20px;
 }
 
@@ -205,8 +214,8 @@ export default {
 .card-title {
   font-size: 18px;
   font-weight: 700;
-  color: #1f2d3d;
   margin-bottom: 16px;
+  color: #1f2d3d;
 }
 
 .common-table {
@@ -226,32 +235,6 @@ export default {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
-}
-
-.notice-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.notice-item {
-  padding: 14px 12px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  background: #f8fafc;
-  font-size: 14px;
-  line-height: 1.8;
-  color: #606266;
-}
-
-@media (max-width: 1100px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 900px) {
