@@ -108,7 +108,7 @@
             <div class='side-desc'>
               当前任务为单人模式。学生提交模型后，平台将在预设环境中独立完成测评。
             </div>
-            <button class='primary-btn submit-action-btn' @click='openActionDialog("single")'>提交单人测评</button>
+            <button class='primary-btn submit-action-btn' @click='goSubmit'>提交单人测评</button>
           </template>
 
           <template v-else-if='taskMode === "battle"'>
@@ -185,6 +185,26 @@
             </div>
           </div>
         </div>
+
+        <div class='side-card ranking-side-card'>
+          <div class='side-title'>排行榜</div>
+          <div class='ranking-top-list'>
+            <div
+              v-for='item in topThreeRanking'
+              :key='item.rank'
+              class='ranking-top-item'
+            >
+              <div class='ranking-left'>
+                <span class='ranking-rank'>{{ item.rank }}</span>
+                <span class='ranking-name'>{{ item.name }}</span>
+              </div>
+              <div class='ranking-score'>{{ item.score }}</div>
+            </div>
+          </div>
+          <button class='secondary-btn show-all-btn' @click='showRankingDialog = true'>
+            展开所有
+          </button>
+        </div>
       </aside>
     </div>
 
@@ -199,7 +219,7 @@
           <div class='battle-option'>
             <div class='battle-option-title'>真人对战</div>
             <div class='battle-option-desc'>提交模型后加入匹配池，系统自动匹配其他学生进行对战。</div>
-            <button class='primary-btn option-btn' @click='openActionDialog("human")'>真人对战</button>
+            <button class='primary-btn option-btn' @click='goSubmit'>真人对战</button>
           </div>
 
           <div class='battle-option'>
@@ -209,7 +229,7 @@
               class='option-btn'
               :class='hasAnyBotModel ? "primary-btn" : "disabled-btn"'
               :disabled='!hasAnyBotModel'
-              @click='openActionDialog("bot")'
+              @click='goSubmit'
             >
               人机对战
             </button>
@@ -218,161 +238,30 @@
       </div>
     </div>
 
-    <div v-if='showActionDialog' class='dialog-mask' @click='closeActionDialog'>
-      <div class='dialog-box small-box' @click.stop>
+    <div v-if='showRankingDialog' class='dialog-mask' @click='showRankingDialog = false'>
+      <div class='dialog-box ranking-dialog' @click.stop>
         <div class='dialog-header'>
-          <div class='dialog-title'>任务操作</div>
-          <button class='close-btn' @click='closeActionDialog'>关闭</button>
+          <div class='dialog-title'>完整排行榜</div>
+          <button class='close-btn' @click='showRankingDialog = false'>关闭</button>
         </div>
-        <div class='dialog-body'>
-          <div class='dialog-tip strong-tip'>当前模式：{{ submitModeText }}</div>
-          <div class='action-btn-group'>
-            <button class='primary-btn' @click='openSubmitDialog'>提交</button>
-            <button class='secondary-btn' @click='openTaskListDialog'>查看测评</button>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <div v-if='showSubmitDialog' class='dialog-mask' @click='closeSubmitDialog'>
-      <div class='dialog-box' @click.stop>
-        <div class='dialog-header'>
-          <div class='dialog-title'>提交模型</div>
-          <button class='close-btn' @click='closeSubmitDialog'>关闭</button>
-        </div>
-        <div class='dialog-body'>
-          <div class='dialog-tip submit-mode-tip'>当前提交方式：{{ submitModeText }}</div>
-
-          <div class='form-item'>
-            <label>studentId</label>
-            <input v-model='studentId' type='text' placeholder='例如 2023123456' />
-          </div>
-
-          <div class='form-item'>
-            <label>environment</label>
-            <select v-model='environment'>
-              <option value='tictactoe_v3'>tictactoe_v3</option>
-            </select>
-          </div>
-
-          <div class='form-item'>
-            <label>games</label>
-            <input v-model.number='games' type='number' min='1' />
-          </div>
-
-          <div class='form-item'>
-            <label>Config</label>
-            <div class='file-picker-row'>
-              <input
-                ref='configInput'
-                class='hidden-file-input'
-                type='file'
-                accept='.json'
-                @change='handleFileChange($event, "config")'
-              />
-              <button class='file-select-btn' type='button' @click='triggerFileSelect("config")'>
-                选择文件
-              </button>
-              <div class='file-name-box'>
-                {{ selectedFiles.config ? selectedFiles.config.name : '未选择配置文件' }}
-              </div>
-              <button
-                class='file-remove-btn'
-                type='button'
-                :disabled='!selectedFiles.config'
-                @click='clearSelectedFile("config")'
-              >
-                删除
-              </button>
-            </div>
-          </div>
-
-          <div class='form-item'>
-            <label>Model</label>
-            <div class='file-picker-row'>
-              <input
-                ref='modelInput'
-                class='hidden-file-input'
-                type='file'
-                accept='.pt,.pth'
-                @change='handleFileChange($event, "model")'
-              />
-              <button class='file-select-btn' type='button' @click='triggerFileSelect("model")'>
-                选择文件
-              </button>
-              <div class='file-name-box'>
-                {{ selectedFiles.model ? selectedFiles.model.name : '未选择模型文件' }}
-              </div>
-              <button
-                class='file-remove-btn'
-                type='button'
-                :disabled='!selectedFiles.model'
-                @click='clearSelectedFile("model")'
-              >
-                删除
-              </button>
-            </div>
-          </div>
-
-          <div v-if='submitMessage' class='feedback-box' :class='submitFeedbackClass'>
-            {{ submitMessage }}
-          </div>
-
-          <div v-if='evaluationId' class='feedback-box success-box'>
-            已匹配并启动对战：evaluationId = {{ evaluationId }}
-          </div>
-        </div>
-        <div class='dialog-footer'>
-          <button class='secondary-btn footer-btn' @click='closeSubmitDialog'>取消</button>
-          <button class='primary-btn footer-btn' :disabled='loading' @click='submit'>
-            {{ loading ? '提交中...' : '提交' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if='showTaskListDialog' class='dialog-mask' @click='closeTaskListDialog'>
-      <div class='dialog-box large-box' @click.stop>
-        <div class='dialog-header'>
-          <div class='dialog-title'>查看测评</div>
-          <button class='close-btn' @click='closeTaskListDialog'>关闭</button>
-        </div>
-        <div class='dialog-body'>
-          <div class='task-dialog-top'>
-            <div class='dialog-tip'>当前展示后端返回的对战测评任务列表。</div>
-            <button class='secondary-inline-btn' :disabled='queryLoading' @click='loadTasks'>
-              {{ queryLoading ? '刷新中...' : '刷新列表' }}
-            </button>
-          </div>
-
-          <div v-if='queryMessage' class='feedback-box' :class='queryFeedbackClass'>
-            {{ queryMessage }}
-          </div>
-
-          <div v-if='taskList.length > 0' class='task-table-wrap'>
-            <table class='task-table'>
-              <thead>
-                <tr>
-                  <th>任务编号</th>
-                  <th>当前状态</th>
-                  <th>学生1</th>
-                  <th>学生2</th>
-                  <th>胜负关系</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for='task in taskList' :key='task.evaluationId'>
-                  <td>{{ task.evaluationId }}</td>
-                  <td>{{ task.status }}</td>
-                  <td>{{ task.student1Id }}</td>
-                  <td>{{ task.student2Id }}</td>
-                  <td>{{ task.winnerText }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div v-else class='empty-state'>当前暂无测评记录。</div>
+        <div class='dialog-body ranking-dialog-body'>
+          <table class='ranking-table'>
+            <thead>
+              <tr>
+                <th>排名</th>
+                <th>姓名</th>
+                <th>分数</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for='item in rankingList' :key='item.rank'>
+                <td>{{ item.rank }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.score }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -443,8 +332,6 @@
 import AppTopbar from '../components/AppTopbar.vue'
 import tictactoeImage from '../assets/tictactoe.png'
 
-const API_BASE = 'http://localhost:8080'
-
 export default {
   name: 'TaskDetailView',
   components: {
@@ -461,23 +348,16 @@ export default {
       hasMediumBot: false,
       hasHardBot: false,
       showBattleDialog: false,
-      showActionDialog: false,
-      showSubmitDialog: false,
-      showTaskListDialog: false,
-      currentSubmitMode: 'single',
-      loading: false,
-      queryLoading: false,
-      submitMessage: '',
-      queryMessage: '',
-      evaluationId: null,
-      studentId: '2023123456',
-      environment: 'tictactoe_v3',
-      games: 50,
-      selectedFiles: {
-        config: null,
-        model: null
-      },
-      taskList: [],
+      showRankingDialog: false,
+
+      rankingList: [
+        { rank: 1, name: '李四', score: 1280 },
+        { rank: 2, name: '张三', score: 1205 },
+        { rank: 3, name: '王五', score: 1150 },
+        { rank: 4, name: '赵六', score: 1088 },
+        { rank: 5, name: '陈七', score: 1020 },
+        { rank: 6, name: '孙八', score: 980 }
+      ],
 
       showCreateTeamDialog: false,
       showJoinTeamDialog: false,
@@ -497,22 +377,8 @@ export default {
     hasAnyBotModel () {
       return this.hasEasyBot || this.hasMediumBot || this.hasHardBot
     },
-    submitModeText () {
-      if (this.currentSubmitMode === 'human') {
-        return '真人对战'
-      }
-      if (this.currentSubmitMode === 'bot') {
-        return '人机对战'
-      }
-      return '单人测评'
-    },
-    submitFeedbackClass () {
-      return this.submitMessage.startsWith('提交失败') || this.submitMessage.startsWith('请')
-        ? 'error-box'
-        : 'success-box'
-    },
-    queryFeedbackClass () {
-      return this.queryMessage.startsWith('查询失败') ? 'error-box' : 'success-box'
+    topThreeRanking () {
+      return this.rankingList.slice(0, 3)
     }
   },
   created () {
@@ -550,130 +416,6 @@ export default {
     },
     botStatusClass (status) {
       return status ? 'status-ok' : 'status-off'
-    },
-    resetSubmissionState () {
-      this.submitMessage = ''
-      this.queryMessage = ''
-      this.evaluationId = null
-      this.environment = 'tictactoe_v3'
-      this.selectedFiles = {
-        config: null,
-        model: null
-      }
-      this.clearNativeFileInput('config')
-      this.clearNativeFileInput('model')
-    },
-    openActionDialog (mode) {
-      this.showBattleDialog = false
-      this.currentSubmitMode = mode
-      this.resetSubmissionState()
-      this.showActionDialog = true
-    },
-    closeActionDialog () {
-      this.showActionDialog = false
-    },
-    openSubmitDialog () {
-      this.showActionDialog = false
-      this.showSubmitDialog = true
-    },
-    closeSubmitDialog () {
-      this.showSubmitDialog = false
-      this.loading = false
-    },
-    async openTaskListDialog () {
-      this.showActionDialog = false
-      this.showTaskListDialog = true
-      await this.loadTasks()
-    },
-    closeTaskListDialog () {
-      this.showTaskListDialog = false
-    },
-    triggerFileSelect (type) {
-      if (type === 'config' && this.$refs.configInput) {
-        this.$refs.configInput.click()
-      }
-      if (type === 'model' && this.$refs.modelInput) {
-        this.$refs.modelInput.click()
-      }
-    },
-    handleFileChange (e, type) {
-      this.selectedFiles[type] = e.target.files[0] || null
-    },
-    clearNativeFileInput (type) {
-      if (type === 'config' && this.$refs.configInput) {
-        this.$refs.configInput.value = ''
-      }
-      if (type === 'model' && this.$refs.modelInput) {
-        this.$refs.modelInput.value = ''
-      }
-    },
-    clearSelectedFile (type) {
-      this.selectedFiles[type] = null
-      this.clearNativeFileInput(type)
-    },
-    async submit () {
-      if (!this.studentId) {
-        this.submitMessage = '请填写 studentId'
-        return
-      }
-      if (!this.selectedFiles.config || !this.selectedFiles.model) {
-        this.submitMessage = '请同时选择 config 和 model 文件'
-        return
-      }
-
-      const form = new FormData()
-      form.append('model', this.selectedFiles.model)
-      form.append('config', this.selectedFiles.config)
-      form.append('studentId', this.studentId)
-      form.append('environment', this.environment)
-      form.append('games', String(this.games))
-
-      this.loading = true
-      this.submitMessage = ''
-      this.evaluationId = null
-
-      try {
-        const resp = await fetch(`${API_BASE}/battle/submit`, {
-          method: 'POST',
-          body: form
-        })
-        const res = await resp.json()
-
-        if (res.code !== 0) {
-          throw new Error(res.message || '提交失败')
-        }
-
-        const payload = res.data || {}
-        this.submitMessage = payload.message || '提交成功'
-
-        if (payload.evaluationId) {
-          this.evaluationId = payload.evaluationId
-        }
-      } catch (e) {
-        this.submitMessage = `提交失败：${e.message}`
-      } finally {
-        this.loading = false
-      }
-    },
-    async loadTasks () {
-      this.queryLoading = true
-      this.queryMessage = ''
-      try {
-        const resp = await fetch(`${API_BASE}/battle/tasks`)
-        const res = await resp.json()
-
-        if (res.code !== 0) {
-          throw new Error(res.message || '查询失败')
-        }
-
-        this.taskList = res.data || []
-        this.queryMessage = '任务列表加载成功'
-      } catch (e) {
-        this.taskList = []
-        this.queryMessage = `查询失败：${e.message}`
-      } finally {
-        this.queryLoading = false
-      }
     },
     createTeam () {
       const teamName = this.newTeamName.trim() || '未命名队伍'
@@ -743,6 +485,10 @@ export default {
     logout () {
       sessionStorage.setItem('mock_logged_out_view', 'true')
       this.$router.push('/')
+    },
+    goSubmit () {
+      this.showBattleDialog = false
+      this.$router.push('/battle')
     }
   }
 }
@@ -1088,6 +834,64 @@ export default {
   text-align: right;
 }
 
+.ranking-side-card {
+  padding-bottom: 16px;
+}
+
+.ranking-top-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ranking-top-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.ranking-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ranking-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #1f4e8c;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ranking-name {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 600;
+}
+
+.ranking-score {
+  font-size: 14px;
+  color: #1f4e8c;
+  font-weight: 700;
+}
+
+.show-all-btn {
+  margin-top: 14px;
+}
+
 .dialog-mask {
   position: fixed;
   inset: 0;
@@ -1102,25 +906,22 @@ export default {
 .dialog-box {
   width: 560px;
   max-width: 100%;
-  max-height: calc(100vh - 40px);
   background: #ffffff;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 .small-box {
   width: 420px;
 }
 
-.large-box {
-  width: 900px;
+.ranking-dialog {
+  width: 720px;
 }
 
 .dialog-header {
-  min-height: 56px;
+  height: 56px;
   padding: 0 20px;
   border-bottom: 1px solid #ebeef5;
   display: flex;
@@ -1151,7 +952,31 @@ export default {
 
 .dialog-body {
   padding: 20px;
+}
+
+.ranking-dialog-body {
+  max-height: 460px;
   overflow-y: auto;
+}
+
+.ranking-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ranking-table th,
+.ranking-table td {
+  border-bottom: 1px solid #ebeef5;
+  padding: 14px 12px;
+  text-align: left;
+  font-size: 14px;
+  color: #303133;
+}
+
+.ranking-table th {
+  background: #f8fafc;
+  color: #606266;
+  font-weight: 700;
 }
 
 .battle-option {
@@ -1209,180 +1034,17 @@ export default {
   color: #606266;
 }
 
-.form-item input,
-.form-item select {
+.form-item input {
   width: 100%;
-  height: 40px;
-  padding: 0 12px;
+  padding: 10px 12px;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
-  background: #ffffff;
-  color: #303133;
-}
-
-.hidden-file-input {
-  display: none;
-}
-
-.file-picker-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 88px;
-  gap: 10px;
-  align-items: center;
-}
-
-.file-select-btn {
-  height: 40px;
-  border: 1px solid #1f4e8c;
-  border-radius: 4px;
-  background: #ecf5ff;
-  color: #1f4e8c;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.file-select-btn:hover {
-  background: #dcecff;
-}
-
-.file-name-box {
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  background: #f8fafc;
-  display: flex;
-  align-items: center;
-  color: #606266;
-  font-size: 14px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.file-remove-btn {
-  height: 40px;
-  border: 1px solid #e4b9b9;
-  border-radius: 4px;
-  background: #fff6f6;
-  color: #c45656;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.file-remove-btn:hover:not(:disabled) {
-  background: #fdeeee;
-}
-
-.file-remove-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .dialog-tip {
   font-size: 13px;
   color: #909399;
-}
-
-.strong-tip {
-  margin-bottom: 16px;
-  color: #1f4e8c;
-  font-size: 14px;
-}
-
-.submit-mode-tip {
-  margin-bottom: 16px;
-}
-
-.action-btn-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.feedback-box {
-  margin-top: 8px;
-  padding: 12px 14px;
-  border-radius: 6px;
-  font-size: 14px;
-  line-height: 1.7;
-}
-
-.success-box {
-  background: #f0f9eb;
-  border: 1px solid #d9ecff;
-  color: #1f4e8c;
-}
-
-.error-box {
-  background: #fef0f0;
-  border: 1px solid #fbc4c4;
-  color: #c45656;
-}
-
-.task-dialog-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.secondary-inline-btn {
-  min-width: 108px;
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #606266;
-  cursor: pointer;
-}
-
-.secondary-inline-btn:hover {
-  color: #1f4e8c;
-  border-color: #1f4e8c;
-}
-
-.secondary-inline-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.task-table-wrap {
-  overflow-x: auto;
-}
-
-.task-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-.task-table th,
-.task-table td {
-  border: 1px solid #ebeef5;
-  padding: 12px 10px;
-  text-align: center;
-  font-size: 14px;
-  color: #303133;
-}
-
-.task-table th {
-  background: #f8fafc;
-  color: #1f2d3d;
-  font-weight: 700;
-}
-
-.empty-state {
-  padding: 28px 12px;
-  text-align: center;
-  color: #909399;
-  border: 1px dashed #dcdfe6;
-  border-radius: 6px;
-  background: #fafafa;
 }
 
 .dialog-footer {
@@ -1411,10 +1073,6 @@ export default {
   .intro-block {
     grid-template-columns: 1fr;
   }
-
-  .large-box {
-    width: 100%;
-  }
 }
 
 @media (max-width: 700px) {
@@ -1433,19 +1091,13 @@ export default {
     padding: 16px;
   }
 
-  .task-header,
-  .task-dialog-top,
-  .dialog-footer {
+  .task-header {
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
   }
 
   .task-title {
     font-size: 24px;
-  }
-
-  .file-picker-row {
-    grid-template-columns: 1fr;
   }
 }
 </style>

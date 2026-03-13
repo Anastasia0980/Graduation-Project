@@ -73,7 +73,11 @@
               <tbody>
                 <tr v-for="stu in displayedStudents" :key="stu.studentId">
                   <td>{{ stu.studentId }}</td>
-                  <td>{{ stu.name }}</td>
+                  <td>
+                    <span class="student-name-link" @click="goStudentDetail(stu)">
+                      {{ stu.name }}
+                    </span>
+                  </td>
                   <td>{{ stu.email }}</td>
                 </tr>
               </tbody>
@@ -190,6 +194,9 @@ export default {
       this.selectedClass = this.classList.length > 0 ? this.classList[0] : null
       this.expandAll = false
       this.showDismissDialog = false
+    },
+    goStudentDetail (stu) {
+      this.$router.push(`/teacher/student-detail/${stu.studentId}`)
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
@@ -341,6 +348,16 @@ export default {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
+}
+
+.student-name-link {
+  color: #1f4e8c;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.student-name-link:hover {
+  text-decoration: underline;
 }
 
 .expand-row {

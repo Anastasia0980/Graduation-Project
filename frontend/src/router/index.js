@@ -91,6 +91,21 @@ const routes = [
     path: '/teacher/export',
     name: 'teacherExport',
     component: TeacherExportScore
+  },
+  {
+    path: '/teacher/student-detail/:studentId',
+    name: 'TeacherStudentDetail',
+    component: () => import('../views/TeacherStudentDetail.vue')
+  },
+  {
+    path: '/teacher/task-edit/:taskId',
+    name: 'TeacherTaskEdit',
+    component: () => import('../views/TeacherTaskEdit.vue')
+  },
+  {
+    path: '/teacher/task-submissions/:taskId',
+    name: 'TeacherTaskSubmissions',
+    component: () => import('../views/TeacherTaskSubmissions.vue')
   }
 ]
 

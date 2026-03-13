@@ -13,7 +13,7 @@
 
     <div class='layout'>
       <TeacherSidebar
-        active-menu='publish-task'
+        active-menu='task-manage'
         @teacher-home-click='goTeacherHome'
         @publish-click='goPublishTask'
         @manage-click='goTaskManage'
@@ -23,7 +23,10 @@
 
       <main class='content-area'>
         <div class='page-header'>
-          <h2>发布任务</h2>
+          <div class='header-left'>
+            <button class='back-btn' @click='goBack'>返回</button>
+            <h2>修改任务</h2>
+          </div>
         </div>
 
         <div class='card'>
@@ -296,8 +299,7 @@
         </div>
 
         <div class='bottom-action-row'>
-          <button class='secondary-btn' type='button'>保存草稿</button>
-          <button class='primary-btn' type='button'>发布任务</button>
+          <button class='primary-btn' type='button' @click='saveTask'>保存修改</button>
         </div>
       </main>
     </div>
@@ -308,14 +310,87 @@
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 
+const mockTaskMap = {
+  1: {
+    name: '井字棋对战游戏',
+    className: '人工智能 2201',
+    environment: 'PettingZoo 井字棋环境',
+    startTime: '2026-07-01T08:00',
+    deadline: '2026-07-10T23:59',
+    mode: 'battle',
+    taskIconName: 'tictactoe-battle.png',
+    templateFileName: 'battle_template.zip',
+    easyBotName: 'easy_model.zip',
+    mediumBotName: 'medium_model.zip',
+    hardBotName: 'hard_model.zip',
+    teamMin: '1',
+    teamMax: '3',
+    submitStrategy: 'once',
+    tournamentRule: '',
+    intro: '本任务基于 PettingZoo 提供的井字棋环境开展智能体测评与对战。学生需按照任务要求提交模型文件与必要配置，平台将在统一环境中执行测评流程，并保存结果与相关记录。',
+    rule: '井字棋棋盘由 3 × 3 的九个格子组成，双方轮流在空位置落子。一方若先在横向、纵向或对角线上形成连续三个相同标记，则判定获胜。若棋盘全部填满且无人形成三连，则判定为平局。智能体只能在尚未被占用的位置执行动作。若输出非法动作，例如落在已被占用的位置，平台会将其视为违规操作并记录在结果中。',
+    observation: '环境观测由当前棋盘状态构成，可视为对 9 个位置的离散描述。每个位置一般包括空位、己方落子、对方落子等信息。智能体需要根据当前观测选择合适的落子位置。',
+    actionSpace: '动作空间为离散动作空间，可表示为：A = {0, 1, 2, 3, 4, 5, 6, 7, 8}。',
+    reward: '平台测评时可采用简化奖励设计来衡量智能体表现，例如获胜给予正奖励，平局给予较小奖励，非法动作给予惩罚，并在结果中记录违规行为。',
+    evaluation: '测评环境：PettingZoo 井字棋环境；任务类型：对战模式；模型要求：需提交可被平台脚本正常加载的模型与配置文件；动作限制：仅允许输出合法离散动作；时间限制：单步决策时间与总执行时间均受平台控制；结果输出：平台保存结果、状态与视频记录。'
+  },
+  2: {
+    name: '井字棋单人测评任务',
+    className: '人工智能 2202',
+    environment: 'PettingZoo 井字棋环境',
+    startTime: '2026-07-02T08:00',
+    deadline: '2026-07-15T23:59',
+    mode: 'single',
+    taskIconName: 'tictactoe-single.png',
+    templateFileName: 'single_template.zip',
+    easyBotName: '当前未选择文件',
+    mediumBotName: '当前未选择文件',
+    hardBotName: '当前未选择文件',
+    teamMin: '1',
+    teamMax: '3',
+    submitStrategy: 'once',
+    tournamentRule: '',
+    intro: '本任务面向强化学习课程中的单人测评场景，学生提交模型后，平台将在统一环境下自动完成运行与评分，用于考察学生对环境建模和模型训练的掌握情况。',
+    rule: '学生提交模型后，由平台在统一环境中执行固定轮次测评。若模型无法正常加载、动作非法或运行超时，系统将记录异常并影响最终结果。',
+    observation: '观测信息由当前棋盘状态或环境状态组成，学生需要确保模型能够正确解析输入数据，并输出与环境动作空间一致的结果。',
+    actionSpace: '动作空间为离散动作集合，学生提交的模型输出必须落在平台允许的动作编号范围内。',
+    reward: '测评结果依据环境奖励累计值、成功率、稳定性以及是否存在非法动作等因素综合统计。',
+    evaluation: '平台统一完成模型加载、环境执行、结果记录与数据入库，最终保存测评状态、得分结果与相关运行日志。'
+  },
+  3: {
+    name: '井字棋团队锦标赛任务',
+    className: '软件工程 2201',
+    environment: 'PettingZoo 井字棋环境',
+    startTime: '2026-06-01T08:00',
+    deadline: '2026-06-18T23:59',
+    mode: 'tournament',
+    taskIconName: 'tictactoe-tournament.png',
+    templateFileName: 'tournament_template.zip',
+    easyBotName: '当前未选择文件',
+    mediumBotName: '当前未选择文件',
+    hardBotName: '当前未选择文件',
+    teamMin: '1',
+    teamMax: '3',
+    submitStrategy: 'once',
+    tournamentRule: '学生需先在任务详情页完成组队，再由队伍统一参与锦标赛。平台依据既定对战树逐轮推进比赛，并最终决出冠军队伍。',
+    intro: '该任务用于团队锦标赛测评场景，学生需要先创建队伍或加入队伍，再由队伍参与统一赛程。平台会保存每轮对战结果和最终排名。',
+    rule: '团队锦标赛采用淘汰赛机制。队伍在规定时间内提交模型后进入赛程。若某队模型无法正常运行或存在非法动作，平台将记录异常并影响晋级结果。',
+    observation: '环境观测仍以井字棋状态信息为主，队伍提交的模型必须与平台约定的观测格式和执行脚本保持一致。',
+    actionSpace: '动作空间为离散动作集合，对应井字棋棋盘位置编号。模型仅允许输出合法空位动作。',
+    reward: '锦标赛中主要记录胜负关系、轮次进展和最终名次，也可结合奖励累计值作为辅助评价指标。',
+    evaluation: '平台将保存每轮对战记录、晋级情况、最终名次与相关视频回放，用于课程考核展示与成绩评定。'
+  }
+}
+
 export default {
-  name: 'TeacherPublishTaskView',
+  name: 'TeacherTaskEditView',
   components: {
     AppTopbar,
     TeacherSidebar
   },
   data () {
     return {
+      taskId: '',
       taskMode: 'single',
       teamMin: '1',
       teamMax: '3',
@@ -341,7 +416,39 @@ export default {
       }
     }
   },
+  created () {
+    this.initTaskData()
+  },
   methods: {
+    initTaskData () {
+      this.taskId = this.$route.params.taskId
+      const currentTask = mockTaskMap[this.taskId] || mockTaskMap[1]
+
+      this.taskForm = {
+        name: currentTask.name,
+        className: currentTask.className,
+        environment: currentTask.environment,
+        startTime: currentTask.startTime,
+        deadline: currentTask.deadline,
+        intro: currentTask.intro,
+        rule: currentTask.rule,
+        observation: currentTask.observation,
+        actionSpace: currentTask.actionSpace,
+        reward: currentTask.reward,
+        evaluation: currentTask.evaluation,
+        tournamentRule: currentTask.tournamentRule
+      }
+
+      this.taskMode = currentTask.mode
+      this.teamMin = currentTask.teamMin
+      this.teamMax = currentTask.teamMax
+      this.submitStrategy = currentTask.submitStrategy
+      this.taskIconFileName = currentTask.taskIconName
+      this.templateFileName = currentTask.templateFileName
+      this.easyBotFileName = currentTask.easyBotName
+      this.mediumBotFileName = currentTask.mediumBotName
+      this.hardBotFileName = currentTask.hardBotName
+    },
     triggerFileInput (refName) {
       const input = this.$refs[refName]
       if (input) {
@@ -350,23 +457,29 @@ export default {
     },
     handleTaskIconChange (event) {
       const file = event.target.files && event.target.files[0]
-      this.taskIconFileName = file ? file.name : '当前未选择文件'
+      this.taskIconFileName = file ? file.name : this.taskIconFileName
     },
     handleTemplateFileChange (event) {
       const file = event.target.files && event.target.files[0]
-      this.templateFileName = file ? file.name : '当前未选择文件'
+      this.templateFileName = file ? file.name : this.templateFileName
     },
     handleBotFileChange (event, level) {
       const file = event.target.files && event.target.files[0]
-      const fileName = file ? file.name : '当前未选择文件'
+      if (!file) return
 
       if (level === 'easy') {
-        this.easyBotFileName = fileName
+        this.easyBotFileName = file.name
       } else if (level === 'medium') {
-        this.mediumBotFileName = fileName
+        this.mediumBotFileName = file.name
       } else if (level === 'hard') {
-        this.hardBotFileName = fileName
+        this.hardBotFileName = file.name
       }
+    },
+    saveTask () {
+      alert('保存修改成功')
+    },
+    goBack () {
+      this.$router.push('/teacher/tasks')
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
@@ -422,11 +535,27 @@ export default {
   margin-bottom: 18px;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .page-header h2 {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
   color: #1f2d3d;
+}
+
+.back-btn {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #dcdfe6;
+  background: #ffffff;
+  color: #606266;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .card {
@@ -590,17 +719,13 @@ export default {
   gap: 12px;
 }
 
-.primary-btn,
-.secondary-btn {
+.primary-btn {
   min-width: 96px;
   height: 38px;
   padding: 0 16px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-}
-
-.primary-btn {
   border: none;
   background: #1f4e8c;
   color: #ffffff;
@@ -608,17 +733,6 @@ export default {
 
 .primary-btn:hover {
   background: #173b69;
-}
-
-.secondary-btn {
-  border: 1px solid #dcdfe6;
-  background: #ffffff;
-  color: #606266;
-}
-
-.secondary-btn:hover {
-  color: #1f4e8c;
-  border-color: #1f4e8c;
 }
 
 @media (max-width: 900px) {
