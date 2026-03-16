@@ -2,7 +2,7 @@
   <div class="page">
     <AppTopbar
       :logged-in="true"
-      user-name="王老师"
+      :user-name="teacherName"
       current-role="teacher"
       active-nav="home"
       @platform-click="goTeacherHome"
@@ -39,7 +39,15 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in pagedTaskList" :key="item.id">
+              <tr v-if="loading">
+                <td colspan="6" class="table-empty-cell">任务加载中...</td>
+              </tr>
+
+              <tr v-else-if="pagedTaskList.length === 0">
+                <td colspan="6" class="table-empty-cell">当前暂无任务</td>
+              </tr>
+
+              <tr v-else v-for="item in pagedTaskList" :key="item.id">
                 <td>{{ item.name }}</td>
                 <td>{{ item.className }}</td>
                 <td>{{ item.startTime }}</td>
@@ -74,7 +82,8 @@
         </div>
 
         <div class="dialog-body">
-          确定要删除任务“{{ currentTask ? currentTask.name : '' }}”吗？
+          <div>确定要删除任务“{{ currentTask ? currentTask.name : '' }}”吗？</div>
+          <div class="dialog-tip">当前后端暂未提供删除任务接口，因此此按钮暂不执行真实删除。</div>
         </div>
 
         <div class="dialog-footer">
@@ -91,6 +100,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 
+const API_BASE = 'http://localhost:8080'
+
 export default {
   name: 'TeacherTaskManageView',
   components: {
@@ -100,15 +111,14 @@ export default {
   },
   data () {
     return {
+      teacherName: localStorage.getItem('auth_name') || '王老师',
       taskPage: 1,
       taskPageSize: 5,
       showDeleteDialog: false,
       currentTask: null,
-      taskList: [
-        { id: 1, name: '井字棋对战游戏', className: '人工智能 2201', startTime: '2026-07-01 08:00', deadline: '2026-07-10 23:59', status: '进行中' },
-        { id: 2, name: '井字棋单人测评任务', className: '人工智能 2202', startTime: '2026-07-02 08:00', deadline: '2026-07-15 23:59', status: '进行中' },
-        { id: 3, name: '井字棋团队锦标赛任务', className: '软件工程 2201', startTime: '2026-06-01 08:00', deadline: '2026-06-18 23:59', status: '已结束' }
-      ]
+      loading: false,
+      taskList: [],
+      classMap: {}
     }
   },
   computed: {
@@ -118,7 +128,118 @@ export default {
       return this.taskList.slice(start, end)
     }
   },
+  created () {
+    this.loadTaskList()
+  },
   methods: {
+    async loadTaskList () {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        alert('登录信息已失效，请重新登录')
+        return
+      }
+
+      this.loading = true
+      try {
+        await this.loadClassMap(token)
+
+        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '任务列表加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+
+        this.taskList = content.map(item => this.mapTaskItem(item))
+      } catch (error) {
+        this.taskList = []
+        alert(error.message || '任务列表加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    async loadClassMap (token) {
+      try {
+        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=100`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          this.classMap = {}
+          return
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        const map = {}
+
+        content.forEach(item => {
+          map[item.id] = item.name
+        })
+
+        this.classMap = map
+      } catch (error) {
+        this.classMap = {}
+      }
+    },
+    mapTaskItem (item) {
+      const classId = item.studentClass && item.studentClass.id ? item.studentClass.id : null
+      const className = classId && this.classMap[classId]
+        ? this.classMap[classId]
+        : '未命名班级'
+
+      return {
+        id: item.id,
+        name: item.title || '未命名任务',
+        className,
+        startTime: this.formatDateTime(item.createTime),
+        deadline: this.formatDateTime(item.deadline),
+        status: this.computeTaskStatus(item.deadline),
+        raw: item
+      }
+    },
+    formatDateTime (value) {
+      if (!value) {
+        return '--'
+      }
+
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return value
+      }
+
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+
+      return `${year}-${month}-${day} ${hour}:${minute}`
+    },
+    computeTaskStatus (deadline) {
+      if (!deadline) {
+        return '进行中'
+      }
+
+      const deadlineDate = new Date(deadline)
+      if (Number.isNaN(deadlineDate.getTime())) {
+        return '进行中'
+      }
+
+      return deadlineDate.getTime() < Date.now() ? '已结束' : '进行中'
+    },
     goEditTask (item) {
       this.$router.push(`/teacher/task-edit/${item.id}`)
     },
@@ -130,10 +251,9 @@ export default {
       this.showDeleteDialog = true
     },
     confirmDelete () {
-      if (!this.currentTask) return
-      this.taskList = this.taskList.filter(item => item.id !== this.currentTask.id)
-      this.currentTask = null
       this.showDeleteDialog = false
+      this.currentTask = null
+      alert('当前后端暂未提供删除任务接口，此按钮暂不执行真实删除。')
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
@@ -220,6 +340,11 @@ export default {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
+}
+
+.table-empty-cell {
+  text-align: center !important;
+  color: #909399;
 }
 
 .action-group {
@@ -317,6 +442,12 @@ export default {
   padding: 20px;
   font-size: 14px;
   line-height: 1.8;
+}
+
+.dialog-tip {
+  margin-top: 10px;
+  color: #909399;
+  font-size: 13px;
 }
 
 .dialog-footer {

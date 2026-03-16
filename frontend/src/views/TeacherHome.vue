@@ -2,7 +2,7 @@
   <div class="page">
     <AppTopbar
       :logged-in="true"
-      user-name="王老师"
+      :user-name="profile.name"
       current-role="teacher"
       active-nav="home"
       @platform-click="goTeacherHome"
@@ -152,6 +152,7 @@
         <div class="dialog-footer right-btn-footer">
           <button class="danger-btn" @click="showDeleteDialog = true">注销</button>
           <button class="primary-btn" @click="showPwdDialog = true">修改密码</button>
+          <button class="save-btn" @click="saveProfileChanges">保存</button>
           <button class="secondary-btn" @click="closeEditDialog">关闭</button>
         </div>
       </div>
@@ -205,6 +206,23 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showResultDialog" class="dialog-mask" @click="showResultDialog = false">
+      <div class="dialog-box small-dialog" @click.stop>
+        <div class="dialog-header">
+          <div class="dialog-title">提示</div>
+          <button class="close-btn" @click="showResultDialog = false">关闭</button>
+        </div>
+
+        <div class="dialog-body">
+          {{ resultMessage }}
+        </div>
+
+        <div class="dialog-footer">
+          <button class="primary-btn" @click="showResultDialog = false">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -213,6 +231,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import defaultAvatar from '../assets/logo.png'
+
+const API_BASE = 'http://localhost:8080'
 
 export default {
   name: 'TeacherHomeView',
@@ -225,11 +245,11 @@ export default {
     return {
       profile: {
         avatar: defaultAvatar,
-        name: '王老师',
-        email: 'wanglaoshi@bjtu.edu.cn',
+        name: '教师',
+        email: '',
         role: '教师',
-        createTime: '2026-03-01 09:10:15',
-        updateTime: '2026-03-12 16:25:41'
+        createTime: '',
+        updateTime: ''
       },
       editForm: {
         avatar: defaultAvatar,
@@ -239,6 +259,8 @@ export default {
       showEditDialog: false,
       showDeleteDialog: false,
       showPwdDialog: false,
+      showResultDialog: false,
+      resultMessage: '',
       passwordForm: {
         oldPassword: '',
         newPassword: '',
@@ -260,7 +282,53 @@ export default {
       return this.recentTasks.slice(start, end)
     }
   },
+  created () {
+    this.loadProfile()
+  },
   methods: {
+    getAuthHeaders (withJson = false) {
+      const token = localStorage.getItem('auth_token') || ''
+      const headers = {
+        Authorization: `Bearer ${token}`
+      }
+      if (withJson) {
+        headers['Content-Type'] = 'application/json'
+      }
+      return headers
+    },
+    formatRole (role) {
+      if (role === 'ADMIN') return '管理员'
+      if (role === 'STUDENT') return '学生'
+      return '教师'
+    },
+    formatDateTime (value) {
+      if (!value) return ''
+      return String(value).replace('T', ' ').slice(0, 19)
+    },
+    async loadProfile () {
+      try {
+        const response = await fetch(`${API_BASE}/user/userInfo`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0 || !result.data) {
+          return
+        }
+
+        const userInfo = result.data
+        this.profile.avatar = userInfo.userPic || defaultAvatar
+        this.profile.name = userInfo.username || '教师'
+        this.profile.email = userInfo.email || ''
+        this.profile.role = this.formatRole(userInfo.role)
+        this.profile.createTime = this.formatDateTime(userInfo.createTime)
+        this.profile.updateTime = this.formatDateTime(userInfo.updateTime)
+
+        localStorage.setItem('auth_name', this.profile.name)
+        localStorage.setItem('auth_email', this.profile.email)
+      } catch (error) {
+      }
+    },
     openEditDialog () {
       this.editForm = {
         avatar: this.profile.avatar,
@@ -278,6 +346,43 @@ export default {
       if (!file) return
       this.editForm.avatar = URL.createObjectURL(file)
     },
+    async saveProfileChanges () {
+      if (!this.editForm.name || !this.editForm.email) {
+        this.resultMessage = '请填写完整的姓名和邮箱。'
+        this.showResultDialog = true
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/user/update`, {
+          method: 'PUT',
+          headers: this.getAuthHeaders(true),
+          body: JSON.stringify({
+            username: this.editForm.name,
+            email: this.editForm.email
+          })
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          this.resultMessage = result.message || '修改失败。'
+          this.showResultDialog = true
+          return
+        }
+
+        this.profile.name = this.editForm.name
+        this.profile.email = this.editForm.email
+        localStorage.setItem('auth_name', this.profile.name)
+        localStorage.setItem('auth_email', this.profile.email)
+        await this.loadProfile()
+        this.showEditDialog = false
+        this.resultMessage = '个人信息修改完成。'
+        this.showResultDialog = true
+      } catch (error) {
+        this.resultMessage = '个人信息修改请求失败，请检查后端服务。'
+        this.showResultDialog = true
+      }
+    },
     closePwdDialog () {
       this.showPwdDialog = false
       this.passwordForm = {
@@ -288,9 +393,41 @@ export default {
     },
     confirmDelete () {
       this.showDeleteDialog = false
+      this.resultMessage = '当前后端暂未提供账号注销接口，暂不能完成注销操作。'
+      this.showResultDialog = true
     },
-    confirmChangePassword () {
-      // 逻辑暂不写
+    async confirmChangePassword () {
+      if (!this.passwordForm.oldPassword || !this.passwordForm.newPassword || !this.passwordForm.confirmPassword) {
+        this.resultMessage = '请填写完整的密码信息。'
+        this.showResultDialog = true
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/user/updatePwd`, {
+          method: 'PATCH',
+          headers: this.getAuthHeaders(true),
+          body: JSON.stringify({
+            oldPwd: this.passwordForm.oldPassword,
+            newPwd: this.passwordForm.newPassword,
+            rePwd: this.passwordForm.confirmPassword
+          })
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          this.resultMessage = result.message || '密码修改失败。'
+          this.showResultDialog = true
+          return
+        }
+
+        this.closePwdDialog()
+        this.resultMessage = '密码修改完成。'
+        this.showResultDialog = true
+      } catch (error) {
+        this.resultMessage = '密码修改请求失败，请检查后端服务。'
+        this.showResultDialog = true
+      }
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
@@ -314,6 +451,10 @@ export default {
     },
     logout () {
       sessionStorage.setItem('mock_logged_out_view', 'true')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
       this.$router.push('/')
     }
   }
@@ -619,6 +760,21 @@ export default {
 
 .primary-btn:hover {
   background: #173b69;
+}
+
+.save-btn {
+  height: 38px;
+  min-width: 96px;
+  border: none;
+  border-radius: 4px;
+  background: #3f8f5f;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.save-btn:hover {
+  background: #32724c;
 }
 
 .secondary-btn {

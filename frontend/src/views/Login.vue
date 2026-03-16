@@ -3,24 +3,7 @@
     <div class="login-card">
       <div class="login-header">
         <h1>强化学习智能体测评平台</h1>
-        <p>请选择身份并使用邮箱登录系统</p>
-      </div>
-
-      <div class="role-tabs">
-        <button
-          class="role-tab"
-          :class="{ active: activeRole === 'student' }"
-          @click="activeRole = 'student'"
-        >
-          学生登录
-        </button>
-        <button
-          class="role-tab"
-          :class="{ active: activeRole === 'teacher' }"
-          @click="activeRole = 'teacher'"
-        >
-          教师登录
-        </button>
+        <p>请使用邮箱登录系统</p>
       </div>
 
       <div class="form-area">
@@ -43,7 +26,9 @@
         </div>
 
         <div class="action-row">
-          <button class="primary-btn" @click="handleLogin">登录</button>
+          <button class="primary-btn" :disabled="loading" @click="handleLogin">
+            {{ loading ? '登录中...' : '登录' }}
+          </button>
         </div>
 
         <div class="bottom-row">
@@ -56,11 +41,13 @@
 </template>
 
 <script>
+const API_BASE = 'http://localhost:8080'
+
 export default {
   name: 'LoginView',
   data () {
     return {
-      activeRole: 'student',
+      loading: false,
       loginForm: {
         account: '',
         password: ''
@@ -68,18 +55,65 @@ export default {
     }
   },
   methods: {
-    handleLogin () {
+    async handleLogin () {
       if (!this.loginForm.account || !this.loginForm.password) {
         alert('请填写完整登录信息')
         return
       }
 
-      if (this.activeRole === 'teacher') {
-        localStorage.setItem('mock_login_role', 'teacher')
-        this.$router.push('/teacher/home')
-      } else {
-        localStorage.setItem('mock_login_role', 'student')
-        this.$router.push({ path: '/', query: { tab: 'open' } })
+      this.loading = true
+      try {
+        const params = new URLSearchParams()
+        params.append('email', this.loginForm.account)
+        params.append('password', this.loginForm.password)
+
+        const response = await fetch(`${API_BASE}/user/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+          },
+          body: params.toString()
+        })
+
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0 || !result.data) {
+          alert(result.message || '登录失败')
+          return
+        }
+
+        const token = result.data
+        localStorage.setItem('auth_token', token)
+
+        const userResponse = await fetch(`${API_BASE}/user/userInfo`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+
+        const userResult = await userResponse.json()
+
+        if (!userResponse.ok || userResult.code !== 0 || !userResult.data) {
+          alert(userResult.message || '获取用户信息失败')
+          localStorage.removeItem('auth_token')
+          return
+        }
+
+        const userInfo = userResult.data
+        localStorage.setItem('auth_name', userInfo.username || '')
+        localStorage.setItem('auth_email', userInfo.email || '')
+        localStorage.setItem('auth_role', userInfo.role || '')
+
+        if (userInfo.role === 'TEACHER') {
+          this.$router.push('/teacher/home')
+        } else {
+          this.$router.push('/')
+        }
+      } catch (error) {
+        alert('登录请求失败，请检查后端是否已启动')
+      } finally {
+        this.loading = false
       }
     },
     goRegister () {
@@ -131,30 +165,6 @@ export default {
   color: #606266;
 }
 
-.role-tabs {
-  display: flex;
-  padding: 16px 20px 0;
-  gap: 12px;
-}
-
-.role-tab {
-  flex: 1;
-  height: 40px;
-  border: 1px solid #dcdfe6;
-  background: #ffffff;
-  color: #606266;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.role-tab.active {
-  color: #1f4e8c;
-  border-color: #1f4e8c;
-  background: #ecf5ff;
-  font-weight: 600;
-}
-
 .form-area {
   padding: 20px 28px 28px;
 }
@@ -203,6 +213,11 @@ export default {
 
 .primary-btn:hover {
   background: #173b69;
+}
+
+.primary-btn:disabled {
+  background: #90a4c3;
+  cursor: not-allowed;
 }
 
 .bottom-row {

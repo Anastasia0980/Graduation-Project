@@ -2,12 +2,11 @@
   <div class="page">
     <AppTopbar
       :logged-in="true"
-      user-name="王老师"
+      :user-name="displayUserName"
       current-role="teacher"
       active-nav="home"
       @platform-click="goTeacherHome"
       @user-click="goTeacherHome"
-      @switch-role="switchRole"
       @logout="logout"
     />
 
@@ -56,19 +55,19 @@
             <div class="card-title">学习概览</div>
             <div class="summary-grid">
               <div class="summary-item">
-                <div class="summary-value">12</div>
+                <div class="summary-value">{{ summary.totalSubmissionCount }}</div>
                 <div class="summary-label">总提交次数</div>
               </div>
               <div class="summary-item">
-                <div class="summary-value">7</div>
+                <div class="summary-value">{{ summary.finishedEvaluationCount }}</div>
                 <div class="summary-label">已完成测评</div>
               </div>
               <div class="summary-item">
-                <div class="summary-value">3</div>
+                <div class="summary-value">{{ summary.winCount }}</div>
                 <div class="summary-label">获胜次数</div>
               </div>
               <div class="summary-item">
-                <div class="summary-value">2</div>
+                <div class="summary-value">{{ summary.runningCount }}</div>
                 <div class="summary-label">测评中</div>
               </div>
             </div>
@@ -88,7 +87,13 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in pagedHistoryList" :key="item.id">
+                <tr v-if="loading">
+                  <td colspan="6" class="empty-cell">加载中...</td>
+                </tr>
+                <tr v-else-if="pagedHistoryList.length === 0">
+                  <td colspan="6" class="empty-cell">当前暂无记录</td>
+                </tr>
+                <tr v-else v-for="item in pagedHistoryList" :key="item.id">
                   <td>{{ item.taskName }}</td>
                   <td>{{ item.modelName }}</td>
                   <td>{{ item.submitTime }}</td>
@@ -160,7 +165,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import defaultAvatar from '../assets/logo.png'
-import gameVideo from '../assets/game.mp4'
+
+const API_BASE = 'http://localhost:8080'
 
 export default {
   name: 'TeacherStudentDetailView',
@@ -171,51 +177,28 @@ export default {
   },
   data () {
     return {
+      displayUserName: localStorage.getItem('auth_name') || '教师',
       student: {
         avatar: defaultAvatar,
-        name: '张三',
-        email: 'zhangsan@bjtu.edu.cn'
+        name: '—',
+        email: '—'
+      },
+      summary: {
+        totalSubmissionCount: 0,
+        finishedEvaluationCount: 0,
+        winCount: 0,
+        runningCount: 0
       },
       historyPage: 1,
       historyPageSize: 5,
+      loading: false,
       videoVisible: false,
       currentVideo: {
         taskName: '',
         modelName: '',
         videoUrl: ''
       },
-      historyList: [
-        {
-          id: 1,
-          taskName: '井字棋对战游戏',
-          modelName: 'model_v1.pt',
-          submitTime: '2026-07-01 20:15',
-          status: '已完成',
-          result: '获胜',
-          hasVideo: true,
-          videoUrl: gameVideo
-        },
-        {
-          id: 2,
-          taskName: '井字棋对战游戏',
-          modelName: 'model_v2.pt',
-          submitTime: '2026-07-03 18:42',
-          status: '已完成',
-          result: '失败',
-          hasVideo: true,
-          videoUrl: gameVideo
-        },
-        {
-          id: 3,
-          taskName: '井字棋对战游戏',
-          modelName: 'model_v3.pt',
-          submitTime: '2026-07-05 14:10',
-          status: '测评中',
-          result: '-',
-          hasVideo: false,
-          videoUrl: ''
-        }
-      ]
+      historyList: []
     }
   },
   computed: {
@@ -225,14 +208,138 @@ export default {
       return this.historyList.slice(start, end)
     }
   },
+  created () {
+    this.initPageData()
+  },
   methods: {
-    openVideo (item) {
-      this.currentVideo = {
-        taskName: item.taskName,
-        modelName: item.modelName,
-        videoUrl: item.videoUrl
+    getAuthHeaders () {
+      const token = localStorage.getItem('auth_token') || ''
+      return {
+        Authorization: `Bearer ${token}`
       }
-      this.videoVisible = true
+    },
+    async initPageData () {
+      await Promise.all([
+        this.loadStudentBasicInfo(),
+        this.loadStudentSubmissions()
+      ])
+    },
+    async loadStudentBasicInfo () {
+      const studentId = this.$route.params.studentId
+      if (!studentId) return
+
+      try {
+        const response = await fetch(`${API_BASE}/user/list?pageNum=0&pageSize=200&role=STUDENT&isDeleted=false`, {
+          method: 'GET',
+          headers: {
+            ...this.getAuthHeaders()
+          }
+        })
+
+        const result = await response.json()
+        if (!response.ok || result.code !== 0 || !result.data || !Array.isArray(result.data.content)) {
+          return
+        }
+
+        const targetStudent = result.data.content.find(item => String(item.id) === String(studentId))
+        if (!targetStudent) return
+
+        this.student = {
+          avatar: targetStudent.userPic || defaultAvatar,
+          name: targetStudent.username || '—',
+          email: targetStudent.email || '—'
+        }
+      } catch (error) {
+        console.error('加载学生基本信息失败：', error)
+      }
+    },
+    async loadStudentSubmissions () {
+      const studentId = this.$route.params.studentId
+      if (!studentId) {
+        this.historyList = []
+        this.summary = {
+          totalSubmissionCount: 0,
+          finishedEvaluationCount: 0,
+          winCount: 0,
+          runningCount: 0
+        }
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await fetch(`${API_BASE}/students/${studentId}/submissions`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '提交历史加载失败')
+        }
+
+        const list = Array.isArray(result.data) ? result.data : []
+        this.historyList = list.map(item => ({
+          id: item.evaluationId,
+          evaluationId: item.evaluationId,
+          evaluationResultId: item.evaluationResultId,
+          taskName: item.taskTitle || '未知任务',
+          modelName: item.modelName || '--',
+          submitTime: item.submitTime || '--',
+          status: item.status || '--',
+          result: item.resultText || '-',
+          hasVideo: !!item.hasVideo
+        }))
+
+        this.summary = {
+          totalSubmissionCount: list.length,
+          finishedEvaluationCount: list.filter(item => item.status === '已完成').length,
+          winCount: list.filter(item => item.resultText === '获胜').length,
+          runningCount: list.filter(item => item.status === '测评中' || item.status === '待开始').length
+        }
+      } catch (error) {
+        this.historyList = []
+        this.summary = {
+          totalSubmissionCount: 0,
+          finishedEvaluationCount: 0,
+          winCount: 0,
+          runningCount: 0
+        }
+        alert(error.message || '提交历史加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    async openVideo (item) {
+      if (!item.evaluationResultId) {
+        alert('暂无可播放录像')
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/evaluation-results/${item.evaluationResultId}/video`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+
+        if (!response.ok) {
+          throw new Error(`视频加载失败（${response.status}）`)
+        }
+
+        const blob = await response.blob()
+        if (!blob || blob.size === 0) {
+          throw new Error('视频文件为空')
+        }
+
+        const objectUrl = URL.createObjectURL(blob)
+        this.currentVideo = {
+          taskName: item.taskName,
+          modelName: item.modelName,
+          videoUrl: objectUrl
+        }
+        this.videoVisible = true
+      } catch (error) {
+        alert(error.message || '视频加载失败')
+      }
     },
     closeVideo () {
       const player = this.$refs.videoPlayer
@@ -240,10 +347,18 @@ export default {
         player.pause()
         player.currentTime = 0
       }
+      if (this.currentVideo.videoUrl && this.currentVideo.videoUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this.currentVideo.videoUrl)
+      }
+      this.currentVideo = {
+        taskName: '',
+        modelName: '',
+        videoUrl: ''
+      }
       this.videoVisible = false
     },
     goBack () {
-      this.$router.push('/teacher/classes')
+      this.$router.push('/teacher/tasks')
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
@@ -260,14 +375,12 @@ export default {
     goExportScore () {
       this.$router.push('/teacher/export')
     },
-    switchRole () {
-      sessionStorage.removeItem('mock_logged_out_view')
-      localStorage.setItem('mock_login_role', 'student')
-      this.$router.push({ path: '/', query: { tab: 'open' } })
-    },
     logout () {
-      sessionStorage.setItem('mock_logged_out_view', 'true')
-      this.$router.push('/')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
+      this.$router.push('/login')
     }
   }
 }
@@ -281,6 +394,7 @@ export default {
 .page {
   min-height: 100vh;
   background: #f5f7fa;
+  font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif;
   font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif;
   color: #303133;
 }
@@ -444,6 +558,11 @@ export default {
   color: #606266;
 }
 
+.empty-cell {
+  text-align: center;
+  color: #909399;
+}
+
 .table-btn {
   height: 34px;
   min-width: 86px;
@@ -526,7 +645,7 @@ export default {
   font-size: 16px;
   font-weight: 700;
   color: #1f2d3d;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .video-model-name {
@@ -536,9 +655,14 @@ export default {
 
 .video-player {
   width: 100%;
-  max-height: 520px;
+  border-radius: 8px;
   background: #000000;
-  border-radius: 6px;
+}
+
+@media (max-width: 1000px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -547,28 +671,6 @@ export default {
   }
 
   .content-area {
-    padding: 16px;
-  }
-
-  .profile-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .full-width {
-    grid-column: auto;
-  }
-
-  .card {
-    overflow-x: auto;
-  }
-
-  .history-table {
-    min-width: 760px;
-  }
-}
-
-@media (max-width: 700px) {
-  .video-dialog-body {
     padding: 16px;
   }
 }

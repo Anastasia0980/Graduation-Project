@@ -2,7 +2,7 @@
   <div class="page">
     <AppTopbar
       :logged-in="true"
-      user-name="王老师"
+      :user-name="displayUserName"
       current-role="teacher"
       active-nav="home"
       @platform-click="goTeacherHome"
@@ -43,7 +43,13 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in pagedSubmissionList" :key="item.id">
+              <tr v-if="loading">
+                <td colspan="7" class="table-empty-cell">提交记录加载中...</td>
+              </tr>
+              <tr v-else-if="pagedSubmissionList.length === 0">
+                <td colspan="7" class="table-empty-cell">当前暂无提交记录</td>
+              </tr>
+              <tr v-else v-for="item in pagedSubmissionList" :key="item.id">
                 <td>
                   <span class="student-link" @click="goStudentDetail(item.studentId)">
                     {{ item.studentName }}
@@ -117,7 +123,8 @@
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
-import gameVideo from '../assets/game.mp4'
+
+const API_BASE = 'http://localhost:8080'
 
 export default {
   name: 'TeacherTaskSubmissionsView',
@@ -128,52 +135,17 @@ export default {
   },
   data () {
     return {
+      displayUserName: localStorage.getItem('auth_name') || '教师',
       currentPage: 1,
       pageSize: 5,
+      loading: false,
       videoVisible: false,
       currentVideo: {
         taskName: '',
         modelName: '',
         videoUrl: ''
       },
-      submissionList: [
-        {
-          id: 1,
-          studentId: '202201001',
-          studentName: '张三',
-          taskName: '井字棋对战游戏',
-          modelName: 'model_v1.pt',
-          submitTime: '2026-07-01 20:15',
-          status: '已完成',
-          result: '获胜',
-          hasVideo: true,
-          videoUrl: gameVideo
-        },
-        {
-          id: 2,
-          studentId: '202201002',
-          studentName: '李四',
-          taskName: '井字棋对战游戏',
-          modelName: 'model_v2.pt',
-          submitTime: '2026-07-03 18:42',
-          status: '已完成',
-          result: '失败',
-          hasVideo: true,
-          videoUrl: gameVideo
-        },
-        {
-          id: 3,
-          studentId: '202201003',
-          studentName: '王五',
-          taskName: '井字棋对战游戏',
-          modelName: 'model_v3.pt',
-          submitTime: '2026-07-05 14:10',
-          status: '测评中',
-          result: '-',
-          hasVideo: false,
-          videoUrl: ''
-        }
-      ]
+      submissionList: []
     }
   },
   computed: {
@@ -183,23 +155,103 @@ export default {
       return this.submissionList.slice(start, end)
     }
   },
+  created () {
+    this.loadSubmissionList()
+  },
   methods: {
+    getAuthHeaders () {
+      const token = localStorage.getItem('auth_token') || ''
+      return {
+        Authorization: `Bearer ${token}`
+      }
+    },
+    async loadSubmissionList () {
+      const taskId = this.$route.params.taskId
+      if (!taskId) {
+        this.submissionList = []
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${taskId}/submissions`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '提交记录加载失败')
+        }
+
+        const list = Array.isArray(result.data) ? result.data : []
+        this.submissionList = list.map(item => ({
+          id: item.evaluationId,
+          evaluationId: item.evaluationId,
+          evaluationResultId: item.evaluationResultId,
+          studentId: item.studentId,
+          studentName: item.studentName || '未知学生',
+          taskName: item.taskTitle || '未知任务',
+          modelName: item.modelName || '--',
+          submitTime: item.submitTime || '--',
+          status: item.status || '--',
+          result: item.resultText || '-',
+          hasVideo: !!item.hasVideo
+        }))
+      } catch (error) {
+        this.submissionList = []
+        alert(error.message || '提交记录加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
     goStudentDetail (studentId) {
       this.$router.push(`/teacher/student-detail/${studentId}`)
     },
-    openVideo (item) {
-      this.currentVideo = {
-        taskName: item.taskName,
-        modelName: item.modelName,
-        videoUrl: item.videoUrl
+    async openVideo (item) {
+      if (!item.evaluationResultId) {
+        alert('暂无可播放录像')
+        return
       }
-      this.videoVisible = true
+
+      try {
+        const response = await fetch(`${API_BASE}/evaluation-results/${item.evaluationResultId}/video`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+
+        if (!response.ok) {
+          throw new Error(`视频加载失败（${response.status}）`)
+        }
+
+        const blob = await response.blob()
+        if (!blob || blob.size === 0) {
+          throw new Error('视频文件为空')
+        }
+
+        const objectUrl = URL.createObjectURL(blob)
+        this.currentVideo = {
+          taskName: item.taskName,
+          modelName: item.modelName,
+          videoUrl: objectUrl
+        }
+        this.videoVisible = true
+      } catch (error) {
+        alert(error.message || '视频加载失败')
+      }
     },
     closeVideo () {
       const player = this.$refs.videoPlayer
       if (player) {
         player.pause()
         player.currentTime = 0
+      }
+      if (this.currentVideo.videoUrl && this.currentVideo.videoUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this.currentVideo.videoUrl)
+      }
+      this.currentVideo = {
+        taskName: '',
+        modelName: '',
+        videoUrl: ''
       }
       this.videoVisible = false
     },
@@ -258,6 +310,7 @@ export default {
 
 .page-header {
   margin-bottom: 18px;
+  margin-bottom: 18px;
 }
 
 .header-left {
@@ -306,6 +359,11 @@ export default {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
+}
+
+.table-empty-cell {
+  text-align: center;
+  color: #909399;
 }
 
 .student-link {

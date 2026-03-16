@@ -44,7 +44,9 @@
         </div>
 
         <div class="action-row">
-          <button class="primary-btn" @click="handleRegister">注册</button>
+          <button class="primary-btn" :disabled="loading" @click="handleRegister">
+            {{ loading ? '注册中...' : '注册' }}
+          </button>
         </div>
 
         <div class="bottom-row">
@@ -57,10 +59,13 @@
 </template>
 
 <script>
+const API_BASE = 'http://localhost:8080'
+
 export default {
   name: 'RegisterView',
   data () {
     return {
+      loading: false,
       registerForm: {
         name: '',
         email: '',
@@ -70,7 +75,7 @@ export default {
     }
   },
   methods: {
-    handleRegister () {
+    async handleRegister () {
       const { name, email, password, confirmPassword } = this.registerForm
 
       if (!name || !email || !password || !confirmPassword) {
@@ -83,8 +88,35 @@ export default {
         return
       }
 
-      alert('注册成功')
-      this.$router.push('/login')
+      this.loading = true
+      try {
+        const params = new URLSearchParams()
+        params.append('name', name)
+        params.append('email', email)
+        params.append('password', password)
+
+        const response = await fetch(`${API_BASE}/user/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+          },
+          body: params.toString()
+        })
+
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          alert(result.message || '注册失败')
+          return
+        }
+
+        alert('注册成功')
+        this.$router.push('/login')
+      } catch (error) {
+        alert('注册请求失败，请检查后端是否已启动')
+      } finally {
+        this.loading = false
+      }
     },
     goLogin () {
       this.$router.push('/login')
@@ -183,6 +215,11 @@ export default {
 
 .primary-btn:hover {
   background: #173b69;
+}
+
+.primary-btn:disabled {
+  background: #90a4c3;
+  cursor: not-allowed;
 }
 
 .bottom-row {

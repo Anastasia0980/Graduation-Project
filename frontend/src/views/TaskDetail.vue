@@ -25,24 +25,28 @@
               <h1 class='task-title'>{{ taskTitle }}</h1>
               <div class='task-subtitle'>{{ taskSubtitle }}</div>
             </div>
-            <div class='task-status'>开放中</div>
+            <div class='task-status'>{{ taskStatusText }}</div>
           </div>
+
+          <section class='detail-section'>
+            <h2>可选模型</h2>
+            <div v-if='algorithmTags.length > 0' class='algorithm-tag-list'>
+              <span
+                v-for='item in algorithmTags'
+                :key='item'
+                class='algorithm-tag'
+              >
+                {{ item }}
+              </span>
+            </div>
+            <div v-else class='empty-algorithm-text'>当前未配置可选模型</div>
+          </section>
 
           <section class='detail-section'>
             <h2>简介</h2>
             <div class='intro-block'>
               <div class='intro-text'>
-                <p>
-                  本任务基于 PettingZoo 提供的井字棋环境开展智能体测评与对战。学生需按照任务要求提交模型文件与必要配置，
-                  平台将在统一环境中执行测评流程，并保存结果与相关记录。
-                </p>
-                <p>
-                  当前任务模式为“{{ modeLabelText }}”。若为团队锦标赛模式，学生需在当前任务详情页完成创建队伍、加入队伍或退出队伍等操作，
-                  并在队伍建立后查看当前对战安排。
-                </p>
-                <p>
-                  该任务适合作为强化学习课程中的基础测评任务，用于考察学生对离散动作空间、状态建模、对战流程与模型提交规范的掌握情况。
-                </p>
+                <p>{{ introText }}</p>
               </div>
 
               <div class='intro-image-box'>
@@ -53,49 +57,27 @@
 
           <section class='detail-section'>
             <h2>规则</h2>
-            <p>
-              井字棋棋盘由 3 × 3 的九个格子组成，双方轮流在空位置落子。一方若先在横向、纵向或对角线上形成连续三个相同标记，则判定获胜。
-              若棋盘全部填满且无人形成三连，则判定为平局。
-            </p>
-            <p>
-              智能体只能在尚未被占用的位置执行动作。若输出非法动作，例如落在已被占用的位置，平台会将其视为违规操作并记录在结果中。
-            </p>
+            <p>{{ ruleText }}</p>
           </section>
 
           <section class='detail-section'>
             <h2>观测</h2>
-            <p>
-              环境观测由当前棋盘状态构成，可视为对 9 个位置的离散描述。每个位置一般包括空位、己方落子、对方落子等信息。
-              智能体需要根据当前观测选择合适的落子位置。
-            </p>
+            <p>{{ observationText }}</p>
           </section>
 
           <section class='detail-section'>
             <h2>动作空间</h2>
-            <p>动作空间为离散动作空间，可表示为：</p>
-            <div class='formula-box'>
-              <span class='formula'>A = {0, 1, 2, 3, 4, 5, 6, 7, 8}</span>
-            </div>
+            <p>{{ actionSpaceText }}</p>
           </section>
 
           <section class='detail-section'>
             <h2>奖励</h2>
-            <p>平台测评时可采用简化奖励设计来衡量智能体表现，例如：</p>
-            <div class='formula-box'>
-              <span class='formula'>R = winReward · I_win + drawReward · I_draw - invalidPenalty · I_invalid</span>
-            </div>
+            <p>{{ rewardText }}</p>
           </section>
 
           <section class='detail-section'>
             <h2>评测说明</h2>
-            <ul class='detail-list'>
-              <li>测评环境：PettingZoo 井字棋环境</li>
-              <li>任务类型：{{ modeLabelText }}</li>
-              <li>模型要求：需提交可被平台脚本正常加载的模型与配置文件</li>
-              <li>动作限制：仅允许输出合法离散动作</li>
-              <li>时间限制：单步决策时间与总执行时间均受平台控制</li>
-              <li>结果输出：平台保存结果、状态与视频记录</li>
-            </ul>
+            <p>{{ evaluationText }}</p>
           </section>
         </div>
       </div>
@@ -108,14 +90,26 @@
             <div class='side-desc'>
               当前任务为单人模式。学生提交模型后，平台将在预设环境中独立完成测评。
             </div>
-            <button class='primary-btn submit-action-btn' @click='goSubmit'>提交单人测评</button>
+            <button
+              class='primary-btn submit-action-btn'
+              :class='{ "ended-submit-btn": isTaskEnded }'
+              @click='handleSingleSubmitClick'
+            >
+              提交单人测评
+            </button>
           </template>
 
           <template v-else-if='taskMode === "battle"'>
             <div class='side-desc'>
               当前任务为对战模式。点击下方按钮后，可继续选择“真人对战”或“人机对战”。
             </div>
-            <button class='primary-btn submit-action-btn' @click='showBattleDialog = true'>选择对战方式</button>
+            <button
+              class='primary-btn submit-action-btn'
+              :class='{ "ended-submit-btn": isTaskEnded }'
+              @click='handleBattleEntryClick'
+            >
+              选择对战方式
+            </button>
 
             <div class='mini-bot-info'>
               <div class='mini-bot-title'>人机模型配置情况</div>
@@ -177,11 +171,11 @@
             </div>
             <div class='mini-info-row'>
               <span class='mini-label'>环境</span>
-              <span class='mini-value'>PettingZoo 井字棋</span>
+              <span class='mini-value'>{{ environmentText }}</span>
             </div>
             <div class='mini-info-row'>
-              <span class='mini-label'>教师</span>
-              <span class='mini-value'>王老师</span>
+              <span class='mini-label'>截止时间</span>
+              <span class='mini-value'>{{ deadlineText }}</span>
             </div>
           </div>
         </div>
@@ -218,22 +212,201 @@
         <div class='dialog-body'>
           <div class='battle-option'>
             <div class='battle-option-title'>真人对战</div>
-            <div class='battle-option-desc'>提交模型后加入匹配池，系统自动匹配其他学生进行对战。</div>
-            <button class='primary-btn option-btn' @click='goSubmit'>真人对战</button>
+            <div class='battle-option-desc'>学生与其他学生进行对战，提交后进入匹配流程。</div>
+            <button class='primary-btn option-btn' @click='openSubmitDialog("human")'>真人对战</button>
           </div>
 
           <div class='battle-option'>
             <div class='battle-option-title'>人机对战</div>
-            <div class='battle-option-desc'>教师若上传了任意难度的人机模型，则本按钮可点击；否则保持灰色不可用。</div>
+            <div class='battle-option-desc'>教师若上传了任意难度的人机模型，则可继续选择具体难度进行对战。</div>
             <button
               class='option-btn'
               :class='hasAnyBotModel ? "primary-btn" : "disabled-btn"'
               :disabled='!hasAnyBotModel'
-              @click='goSubmit'
+              @click='openBotDifficultyDialog'
             >
               人机对战
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if='showBotDifficultyDialog' class='dialog-mask' @click='closeBotDifficultyDialog'>
+      <div class='dialog-box small-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>选择人机难度</div>
+          <button class='close-btn' @click='closeBotDifficultyDialog'>关闭</button>
+        </div>
+
+        <div class='dialog-body'>
+          <div class='action-btn-group'>
+            <button
+              class='option-btn'
+              :class='hasEasyBot ? "primary-btn" : "disabled-btn"'
+              :disabled='!hasEasyBot'
+              @click='openSubmitDialog("bot-easy")'
+            >
+              简单人机对战
+            </button>
+            <button
+              class='option-btn'
+              :class='hasMediumBot ? "primary-btn" : "disabled-btn"'
+              :disabled='!hasMediumBot'
+              @click='openSubmitDialog("bot-medium")'
+            >
+              中等人机对战
+            </button>
+            <button
+              class='option-btn'
+              :class='hasHardBot ? "primary-btn" : "disabled-btn"'
+              :disabled='!hasHardBot'
+              @click='openSubmitDialog("bot-hard")'
+            >
+              困难人机对战
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if='showEndedDialog' class='dialog-mask' @click='showEndedDialog = false'>
+      <div class='dialog-box small-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>任务提示</div>
+          <button class='close-btn' @click='showEndedDialog = false'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          任务已结束，不可提交。
+        </div>
+        <div class='dialog-footer'>
+          <button class='primary-btn footer-btn' @click='showEndedDialog = false'>确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if='showSubmitDialog' class='dialog-mask' @click='closeSubmitDialog'>
+      <div class='dialog-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>提交模型</div>
+          <button class='close-btn' @click='closeSubmitDialog'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          <div class='dialog-tip submit-mode-tip'>当前提交方式：{{ submitModeText }}</div>
+
+          <div class='form-item'>
+            <label>Config</label>
+            <div class='file-picker-row'>
+              <input
+                ref='configInput'
+                class='hidden-file-input'
+                type='file'
+                accept='.json'
+                @change='handleFileChange($event, "config")'
+              />
+              <button class='file-select-btn' type='button' @click='triggerFileSelect("config")'>
+                选择文件
+              </button>
+              <div class='file-name-box'>
+                {{ selectedFiles.config ? selectedFiles.config.name : '未选择配置文件' }}
+              </div>
+              <button
+                class='file-remove-btn'
+                type='button'
+                :disabled='!selectedFiles.config'
+                @click='clearSelectedFile("config")'
+              >
+                删除
+              </button>
+            </div>
+          </div>
+
+          <div class='form-item'>
+            <label>Model</label>
+            <div class='file-picker-row'>
+              <input
+                ref='modelInput'
+                class='hidden-file-input'
+                type='file'
+                accept='.pt,.pth'
+                @change='handleFileChange($event, "model")'
+              />
+              <button class='file-select-btn' type='button' @click='triggerFileSelect("model")'>
+                选择文件
+              </button>
+              <div class='file-name-box'>
+                {{ selectedFiles.model ? selectedFiles.model.name : '未选择模型文件' }}
+              </div>
+              <button
+                class='file-remove-btn'
+                type='button'
+                :disabled='!selectedFiles.model'
+                @click='clearSelectedFile("model")'
+              >
+                删除
+              </button>
+            </div>
+          </div>
+
+          <div v-if='submitMessage' class='feedback-box' :class='submitFeedbackClass'>
+            {{ submitMessage }}
+          </div>
+
+          <div v-if='evaluationId' class='feedback-box success-box'>
+            提交成功：evaluationId = {{ evaluationId }}
+          </div>
+        </div>
+        <div class='dialog-footer'>
+          <button class='secondary-btn footer-btn' @click='closeSubmitDialog'>取消</button>
+          <button class='primary-btn footer-btn' :disabled='loadingSubmit' @click='submit'>
+            {{ loadingSubmit ? '提交中...' : '提交' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if='showTaskListDialog' class='dialog-mask' @click='closeTaskListDialog'>
+      <div class='dialog-box large-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>查看测评</div>
+          <button class='close-btn' @click='closeTaskListDialog'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          <div class='task-dialog-top'>
+            <div class='dialog-tip'>当前展示后端返回的对战测评任务列表。</div>
+            <button class='secondary-inline-btn' :disabled='queryLoading' @click='loadTasks'>
+              {{ queryLoading ? '刷新中...' : '刷新列表' }}
+            </button>
+          </div>
+
+          <div v-if='queryMessage' class='feedback-box' :class='queryFeedbackClass'>
+            {{ queryMessage }}
+          </div>
+
+          <div v-if='taskList.length > 0' class='task-table-wrap'>
+            <table class='task-table'>
+              <thead>
+                <tr>
+                  <th>任务编号</th>
+                  <th>当前状态</th>
+                  <th>学生1</th>
+                  <th>学生2</th>
+                  <th>胜负关系</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for='task in taskList' :key='task.evaluationId'>
+                  <td>{{ task.evaluationId }}</td>
+                  <td>{{ task.status }}</td>
+                  <td>{{ task.student1Id }}</td>
+                  <td>{{ task.student2Id }}</td>
+                  <td>{{ task.winnerText }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-else class='empty-state'>当前暂无测评记录。</div>
         </div>
       </div>
     </div>
@@ -332,6 +505,8 @@
 import AppTopbar from '../components/AppTopbar.vue'
 import tictactoeImage from '../assets/tictactoe.png'
 
+const API_BASE = 'http://localhost:8080'
+
 export default {
   name: 'TaskDetailView',
   components: {
@@ -340,16 +515,43 @@ export default {
   data () {
     return {
       tictactoeImage,
+      loadingPage: false,
+      loadingSubmit: false,
       taskTitle: '井字棋任务',
       taskMode: 'single',
       modeLabelText: '单人模式',
       taskSubtitle: 'PettingZoo 环境下的强化学习测评任务',
+      taskStatusText: '开放中',
+      environmentText: 'tictactoe_v3',
+      deadlineText: '--',
+      taskEnvironmentValue: 'tictactoe_v3',
+      introText: '当前暂无任务简介。',
+      ruleText: '当前暂无任务规则说明。',
+      observationText: '当前暂无观测说明。',
+      actionSpaceText: '当前暂无动作空间说明。',
+      rewardText: '当前暂无奖励说明。',
+      evaluationText: '当前暂无评测说明。',
+      algorithmTags: [],
       hasEasyBot: false,
       hasMediumBot: false,
       hasHardBot: false,
       showBattleDialog: false,
+      showBotDifficultyDialog: false,
+      showEndedDialog: false,
+      showSubmitDialog: false,
+      showTaskListDialog: false,
       showRankingDialog: false,
-
+      currentSubmitMode: 'single',
+      currentBotDifficulty: '',
+      queryLoading: false,
+      submitMessage: '',
+      queryMessage: '',
+      evaluationId: null,
+      selectedFiles: {
+        config: null,
+        model: null
+      },
+      taskList: [],
       rankingList: [
         { rank: 1, name: '李四', score: 1280 },
         { rank: 2, name: '张三', score: 1205 },
@@ -358,7 +560,6 @@ export default {
         { rank: 5, name: '陈七', score: 1020 },
         { rank: 6, name: '孙八', score: 980 }
       ],
-
       showCreateTeamDialog: false,
       showJoinTeamDialog: false,
       showLeaveTeamDialog: false,
@@ -379,6 +580,32 @@ export default {
     },
     topThreeRanking () {
       return this.rankingList.slice(0, 3)
+    },
+    isTaskEnded () {
+      return this.taskStatusText === '已结束'
+    },
+    submitModeText () {
+      if (this.currentSubmitMode === 'human') {
+        return '真人对战'
+      }
+      if (this.currentSubmitMode === 'bot-easy') {
+        return '简单人机对战'
+      }
+      if (this.currentSubmitMode === 'bot-medium') {
+        return '中等人机对战'
+      }
+      if (this.currentSubmitMode === 'bot-hard') {
+        return '困难人机对战'
+      }
+      return '单人测评'
+    },
+    submitFeedbackClass () {
+      return this.submitMessage.startsWith('提交失败') || this.submitMessage.startsWith('请')
+        ? 'error-box'
+        : 'success-box'
+    },
+    queryFeedbackClass () {
+      return this.queryMessage.startsWith('查询失败') ? 'error-box' : 'success-box'
     }
   },
   created () {
@@ -393,16 +620,148 @@ export default {
     }
   },
   methods: {
-    initTaskInfo () {
+    async initTaskInfo () {
       const title = this.$route.query.title
       const taskMode = this.$route.query.taskMode || 'single'
+      const assignmentId = this.getAssignmentId()
 
       this.taskTitle = title || '井字棋任务'
       this.taskMode = taskMode
-      this.hasEasyBot = this.$route.query.hasEasyBot === 'true'
-      this.hasMediumBot = this.$route.query.hasMediumBot === 'true'
-      this.hasHardBot = this.$route.query.hasHardBot === 'true'
+      this.applyTaskModeInfo(taskMode)
 
+      if (assignmentId) {
+        await this.loadTaskDetail(assignmentId)
+        if (this.taskMode === 'battle') {
+          await this.loadBotStatus(assignmentId)
+        }
+      } else {
+        this.hasEasyBot = this.$route.query.hasEasyBot === 'true'
+        this.hasMediumBot = this.$route.query.hasMediumBot === 'true'
+        this.hasHardBot = this.$route.query.hasHardBot === 'true'
+      }
+    },
+    getAssignmentId () {
+      return this.$route.query.assignmentId || this.$route.query.taskId || this.$route.query.id || ''
+    },
+    async loadTaskDetail (assignmentId) {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        return
+      }
+
+      this.loadingPage = true
+      try {
+        const response = await fetch(`${API_BASE}/me/assignments?pageNum=0&pageSize=100`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '任务详情加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        const currentTask = content.find(item => String(item.id) === String(assignmentId))
+
+        if (!currentTask) {
+          return
+        }
+
+        this.fillTaskDetail(currentTask)
+      } catch (error) {
+        alert(error.message || '任务详情加载失败')
+      } finally {
+        this.loadingPage = false
+      }
+    },
+    async loadBotStatus (assignmentId) {
+      const token = localStorage.auth_token
+        ? `Bearer ${localStorage.auth_token}`
+        : ''
+
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/system-bots/status`, {
+          method: 'GET',
+          headers: {
+            Authorization: token
+          }
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0 || !result.data) {
+          this.hasEasyBot = false
+          this.hasMediumBot = false
+          this.hasHardBot = false
+          return
+        }
+
+        this.hasEasyBot = !!result.data.easy
+        this.hasMediumBot = !!result.data.medium
+        this.hasHardBot = !!result.data.hard
+      } catch (error) {
+        this.hasEasyBot = false
+        this.hasMediumBot = false
+        this.hasHardBot = false
+      }
+    },
+    fillTaskDetail (task) {
+      const config = this.parseTaskConfig(task)
+      const taskMode = this.mapTaskMode(task.evaluationMode)
+
+      this.taskTitle = titleSafe(task.title, this.taskTitle)
+      this.taskMode = taskMode
+      this.applyTaskModeInfo(taskMode)
+
+      this.environmentText = task.environment || 'tictactoe_v3'
+      this.taskEnvironmentValue = task.environment || 'tictactoe_v3'
+      this.deadlineText = this.formatDateTime(task.deadline)
+      this.taskStatusText = this.computeTaskStatus(task.deadline)
+
+      this.introText = config.overview || '当前暂无任务简介。'
+      this.ruleText = config.rules || '当前暂无任务规则说明。'
+      this.observationText = config.observationSpace || '当前暂无观测说明。'
+      this.actionSpaceText = config.actionSpace || '当前暂无动作空间说明。'
+      this.rewardText = config.rewardFunction || '当前暂无奖励说明。'
+      this.evaluationText = config.evaluationFunction || '当前暂无评测说明。'
+      this.algorithmTags = this.parseAgentNames(task.agentName)
+    },
+    parseTaskConfig (task) {
+      if (task.config && typeof task.config === 'object') {
+        return task.config
+      }
+      if (task.configJson) {
+        try {
+          return JSON.parse(task.configJson)
+        } catch (error) {
+          return {}
+        }
+      }
+      return {}
+    },
+    parseAgentNames (value) {
+      if (!value) {
+        return []
+      }
+      return String(value)
+        .split(',')
+        .map(item => item.trim())
+        .filter(item => item)
+    },
+    mapTaskMode (evaluationMode) {
+      const mode = (evaluationMode || '').toUpperCase()
+      if (mode === 'VERSUS' || mode === 'BATTLE') {
+        return 'battle'
+      }
+      if (mode === 'TEAM' || mode === 'TOURNAMENT') {
+        return 'tournament'
+      }
+      return 'single'
+    },
+    applyTaskModeInfo (taskMode) {
       if (taskMode === 'single') {
         this.modeLabelText = '单人模式'
         this.taskSubtitle = 'PettingZoo 环境下的单模型独立测评任务'
@@ -414,8 +773,196 @@ export default {
         this.taskSubtitle = '学生在当前任务详情页中完成组队、退队与查看对战安排等操作'
       }
     },
+    formatDateTime (value) {
+      if (!value) {
+        return '--'
+      }
+
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return value
+      }
+
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+
+      return `${year}-${month}-${day} ${hour}:${minute}`
+    },
+    computeTaskStatus (deadline) {
+      if (!deadline) {
+        return '开放中'
+      }
+
+      const deadlineDate = new Date(deadline)
+      if (Number.isNaN(deadlineDate.getTime())) {
+        return '开放中'
+      }
+
+      return deadlineDate.getTime() < Date.now() ? '已结束' : '开放中'
+    },
     botStatusClass (status) {
       return status ? 'status-ok' : 'status-off'
+    },
+    handleSingleSubmitClick () {
+      if (this.isTaskEnded) {
+        this.showEndedDialog = true
+        return
+      }
+      this.openSubmitDialog('single')
+    },
+    handleBattleEntryClick () {
+      if (this.isTaskEnded) {
+        this.showEndedDialog = true
+        return
+      }
+      this.showBattleDialog = true
+    },
+    openBotDifficultyDialog () {
+      this.showBattleDialog = false
+      this.showBotDifficultyDialog = true
+    },
+    closeBotDifficultyDialog () {
+      this.showBotDifficultyDialog = false
+    },
+    resetSubmissionState () {
+      this.submitMessage = ''
+      this.queryMessage = ''
+      this.evaluationId = null
+      this.selectedFiles = {
+        config: null,
+        model: null
+      }
+      this.clearNativeFileInput('config')
+      this.clearNativeFileInput('model')
+    },
+    openSubmitDialog (mode) {
+      this.showBattleDialog = false
+      this.showBotDifficultyDialog = false
+      this.currentSubmitMode = mode
+      this.currentBotDifficulty = mode.startsWith('bot-') ? mode.replace('bot-', '') : ''
+      this.resetSubmissionState()
+      this.showSubmitDialog = true
+    },
+    closeSubmitDialog () {
+      this.showSubmitDialog = false
+      this.loadingSubmit = false
+    },
+    async openTaskListDialog () {
+      await this.loadTasks()
+      this.showTaskListDialog = true
+    },
+    closeTaskListDialog () {
+      this.showTaskListDialog = false
+    },
+    triggerFileSelect (type) {
+      if (type === 'config' && this.$refs.configInput) {
+        this.$refs.configInput.click()
+      }
+      if (type === 'model' && this.$refs.modelInput) {
+        this.$refs.modelInput.click()
+      }
+    },
+    handleFileChange (e, type) {
+      this.selectedFiles[type] = e.target.files[0] || null
+    },
+    clearNativeFileInput (type) {
+      if (type === 'config' && this.$refs.configInput) {
+        this.$refs.configInput.value = ''
+      }
+      if (type === 'model' && this.$refs.modelInput) {
+        this.$refs.modelInput.value = ''
+      }
+    },
+    clearSelectedFile (type) {
+      this.selectedFiles[type] = null
+      this.clearNativeFileInput(type)
+    },
+    async submit () {
+      if (!this.selectedFiles.config || !this.selectedFiles.model) {
+        this.submitMessage = '请同时选择 config 和 model 文件'
+        return
+      }
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.submitMessage = '当前未登录或登录已过期，请重新登录'
+        return
+      }
+
+      const form = new FormData()
+      form.append('model', this.selectedFiles.model)
+      form.append('config', this.selectedFiles.config)
+
+      if (this.currentBotDifficulty) {
+        form.append('difficulty', this.currentBotDifficulty)
+      }
+
+      this.loadingSubmit = true
+      this.submitMessage = ''
+      this.evaluationId = null
+
+      try {
+        const assignmentId = this.getAssignmentId()
+
+        let submitUrl = ''
+        if (this.currentSubmitMode === 'human') {
+          submitUrl = `${API_BASE}/battle/submit/${assignmentId}`
+        } else if (this.currentSubmitMode.startsWith('bot-')) {
+          submitUrl = `${API_BASE}/battle/bot-submit/${assignmentId}`
+        } else {
+          submitUrl = `${API_BASE}/evaluations/uploadAndRun`
+        }
+
+        const resp = await fetch(submitUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: form
+        })
+
+        const res = await resp.json()
+
+        if (!resp.ok || res.code !== 0) {
+          throw new Error(res.message || '提交失败')
+        }
+
+        const payload = res.data || {}
+        this.submitMessage = payload.message || '提交成功'
+
+        if (payload.evaluationId) {
+          this.evaluationId = payload.evaluationId
+        } else if (payload.id) {
+          this.evaluationId = payload.id
+        }
+      } catch (e) {
+        this.submitMessage = `提交失败：${e.message}`
+      } finally {
+        this.loadingSubmit = false
+      }
+    },
+    async loadTasks () {
+      this.queryLoading = true
+      this.queryMessage = ''
+      try {
+        const resp = await fetch(`${API_BASE}/battle/tasks`)
+        const res = await resp.json()
+
+        if (res.code !== 0) {
+          throw new Error(res.message || '查询失败')
+        }
+
+        this.taskList = res.data || []
+        this.queryMessage = '任务列表加载成功'
+      } catch (e) {
+        this.taskList = []
+        this.queryMessage = `查询失败：${e.message}`
+      } finally {
+        this.queryLoading = false
+      }
     },
     createTeam () {
       const teamName = this.newTeamName.trim() || '未命名队伍'
@@ -485,12 +1032,12 @@ export default {
     logout () {
       sessionStorage.setItem('mock_logged_out_view', 'true')
       this.$router.push('/')
-    },
-    goSubmit () {
-      this.showBattleDialog = false
-      this.$router.push('/battle')
     }
   }
+}
+
+function titleSafe (value, fallback) {
+  return value || fallback
 }
 </script>
 
@@ -628,6 +1175,7 @@ export default {
   font-size: 14px;
   line-height: 1.9;
   color: #303133;
+  white-space: pre-wrap;
 }
 
 .intro-block {
@@ -650,31 +1198,28 @@ export default {
   display: block;
 }
 
-.formula-box {
-  margin: 12px 0 14px;
-  padding: 14px 16px;
-  background: #f8fafc;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  overflow-x: auto;
+.algorithm-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.formula {
-  font-size: 15px;
-  color: #1f2d3d;
-  font-family: 'Times New Roman', serif;
+.algorithm-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: #ecf5ff;
+  color: #1f4e8c;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid #bfd7f4;
 }
 
-.detail-list {
-  margin: 0 0 12px 18px;
-  padding: 0;
-  color: #303133;
-}
-
-.detail-list li {
-  margin-bottom: 8px;
+.empty-algorithm-text {
   font-size: 14px;
-  line-height: 1.8;
+  color: #909399;
 }
 
 .right-sidebar {
@@ -720,6 +1265,15 @@ export default {
 
 .primary-btn:hover {
   background: #173b69;
+}
+
+.ended-submit-btn {
+  background: #c0c4cc;
+  color: #ffffff;
+}
+
+.ended-submit-btn:hover {
+  background: #c0c4cc;
 }
 
 .secondary-btn {
@@ -832,6 +1386,7 @@ export default {
   font-weight: 600;
   color: #303133;
   text-align: right;
+  word-break: break-word;
 }
 
 .ranking-side-card {
@@ -906,14 +1461,21 @@ export default {
 .dialog-box {
   width: 560px;
   max-width: 100%;
+  max-height: calc(100vh - 40px);
   background: #ffffff;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .small-box {
   width: 420px;
+}
+
+.large-box {
+  width: 900px;
 }
 
 .ranking-dialog {
@@ -921,7 +1483,7 @@ export default {
 }
 
 .dialog-header {
-  height: 56px;
+  min-height: 56px;
   padding: 0 20px;
   border-bottom: 1px solid #ebeef5;
   display: flex;
@@ -952,6 +1514,7 @@ export default {
 
 .dialog-body {
   padding: 20px;
+  overflow-y: auto;
 }
 
 .ranking-dialog-body {
@@ -1034,17 +1597,176 @@ export default {
   color: #606266;
 }
 
-.form-item input {
+.form-item input,
+.form-item select {
   width: 100%;
-  padding: 10px 12px;
+  height: 40px;
+  padding: 0 12px;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  background: #ffffff;
+  color: #303133;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.file-picker-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 88px;
+  gap: 10px;
+  align-items: center;
+}
+
+.file-select-btn {
+  height: 40px;
+  border: 1px solid #1f4e8c;
+  border-radius: 4px;
+  background: #ecf5ff;
+  color: #1f4e8c;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.file-select-btn:hover {
+  background: #dcecff;
+}
+
+.file-name-box {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  color: #606266;
+  font-size: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.file-remove-btn {
+  height: 40px;
+  border: 1px solid #e4b9b9;
+  border-radius: 4px;
+  background: #fff6f6;
+  color: #c45656;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.file-remove-btn:hover:not(:disabled) {
+  background: #fdeeee;
+}
+
+.file-remove-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .dialog-tip {
   font-size: 13px;
   color: #909399;
+}
+
+.submit-mode-tip {
+  margin-bottom: 16px;
+  color: #1f4e8c;
+  font-size: 14px;
+}
+
+.action-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feedback-box {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.success-box {
+  background: #f0f9eb;
+  border: 1px solid #d9ecff;
+  color: #1f4e8c;
+}
+
+.error-box {
+  background: #fef0f0;
+  border: 1px solid #fbc4c4;
+  color: #c45656;
+}
+
+.task-dialog-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.secondary-inline-btn {
+  min-width: 108px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #606266;
+  cursor: pointer;
+}
+
+.secondary-inline-btn:hover {
+  color: #1f4e8c;
+  border-color: #1f4e8c;
+}
+
+.secondary-inline-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.task-table-wrap {
+  overflow-x: auto;
+}
+
+.task-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.task-table th,
+.task-table td {
+  border: 1px solid #ebeef5;
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 14px;
+  color: #303133;
+}
+
+.task-table th {
+  background: #f8fafc;
+  color: #1f2d3d;
+  font-weight: 700;
+}
+
+.empty-state {
+  padding: 28px 12px;
+  text-align: center;
+  color: #909399;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  background: #fafafa;
 }
 
 .dialog-footer {
@@ -1073,6 +1795,10 @@ export default {
   .intro-block {
     grid-template-columns: 1fr;
   }
+
+  .large-box {
+    width: 100%;
+  }
 }
 
 @media (max-width: 700px) {
@@ -1091,13 +1817,19 @@ export default {
     padding: 16px;
   }
 
-  .task-header {
+  .task-header,
+  .task-dialog-top,
+  .dialog-footer {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
   .task-title {
     font-size: 24px;
+  }
+
+  .file-picker-row {
+    grid-template-columns: 1fr;
   }
 }
 </style>

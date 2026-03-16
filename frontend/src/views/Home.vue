@@ -1,123 +1,134 @@
 <template>
-  <div class='home-page'>
+  <div class="home-page">
     <AppTopbar
-      :logged-in='isLoggedIn'
-      :user-name='userName'
-      :current-role='currentRole'
-      active-nav='home'
-      @platform-click='goHomeOpenTasks'
-      @user-click='handleUserClick'
-      @switch-role='switchRole'
-      @logout='logout'
-      @login='goLogin'
-      @register='goRegister'
+      :logged-in="isLoggedIn"
+      :user-name="userName"
+      :current-role="currentRole"
+      active-nav="home"
+      @platform-click="goHome"
+      @user-click="handleUserClick"
+      @logout="logout"
+      @login="goLogin"
+      @register="goRegister"
     />
 
-    <div class='layout'>
+    <div class="layout">
       <StudentSidebar
-        v-if='!loggedOutView && isLoggedIn && currentRole === "student"'
-        :logged-in='true'
-        :active-menu='currentMenu'
-        :task-menu-open='taskMenuOpen'
-        @profile-click='goProfile'
-        @class-click='goStudentClass'
-        @toggle-task-menu='toggleTaskMenu'
-        @open-task-click='selectOpenMenu'
-        @ended-task-click='selectEndedMenu'
-        @history-click='goHistory'
+        v-if="isLoggedIn && currentRole === 'student'"
+        :logged-in="true"
+        :active-menu="currentMenu"
+        :task-menu-open="taskMenuOpen"
+        @profile-click="goProfile"
+        @class-click="goStudentClass"
+        @toggle-task-menu="toggleTaskMenu"
+        @open-task-click="selectOpenMenu"
+        @ended-task-click="selectEndedMenu"
+        @history-click="goHistory"
       />
 
       <StudentSidebar
-        v-if='loggedOutView || !isLoggedIn'
-        :logged-in='false'
-        :active-menu='""'
-        :task-menu-open='false'
+        v-else
+        :logged-in="false"
+        :active-menu="''"
+        :task-menu-open="false"
       />
 
-      <main class='content-area'>
-        <template v-if='!loggedOutView && isLoggedIn && currentRole === "student"'>
-          <div v-if='currentMenu === "task-open"' class='page-block'>
-            <div class='page-header'>
+      <main class="content-area">
+        <template v-if="isLoggedIn && currentRole === 'student'">
+          <div v-if="currentMenu === 'task-open'" class="page-block">
+            <div class="page-header">
               <h2>开放中的任务</h2>
             </div>
 
-            <div class='task-grid three-columns'>
-              <div
-                v-for='task in pagedOpenTasks'
-                :key='task.id'
-                class='task-card'
-              >
-                <div class='task-image-box' @click='goTaskDetail(task)'>
-                  <img :src='task.image' class='task-image' alt='任务图片' />
-                </div>
+            <div v-if="loading" class="task-empty-card">任务加载中...</div>
 
-                <div class='task-body'>
-                  <div class='task-type-badge'>{{ task.modeLabel }}</div>
-                  <div class='task-title' @click='goTaskDetail(task)'>{{ task.title }}</div>
-                  <div class='task-desc'>{{ task.desc }}</div>
-
-                  <div class='task-meta'>
-                    <div class='task-meta-item'>教师：{{ task.teacher }}</div>
-                    <div class='task-meta-item'>截止时间：{{ task.deadline }}</div>
+            <template v-else>
+              <div v-if="pagedOpenTasks.length > 0" class="task-grid three-columns">
+                <div
+                  v-for="task in pagedOpenTasks"
+                  :key="task.id"
+                  class="task-card"
+                >
+                  <div class="task-image-box" @click="goTaskDetail(task)">
+                    <img :src="task.image" class="task-image" alt="任务图片">
                   </div>
 
-                  <button class='submit-btn' @click='goTaskDetail(task)'>进入任务</button>
+                  <div class="task-body">
+                    <div class="task-type-badge">{{ task.modeLabel }}</div>
+                    <div class="task-title" @click="goTaskDetail(task)">{{ task.title }}</div>
+                    <div class="task-desc">{{ task.desc }}</div>
+
+                    <div class="task-meta">
+                      <div class="task-meta-item">教师：{{ task.teacher }}</div>
+                      <div class="task-meta-item">截止时间：{{ task.deadline }}</div>
+                    </div>
+
+                    <button class="submit-btn" @click="goTaskDetail(task)">进入任务</button>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <div v-else class="task-empty-card">当前暂无开放中的任务</div>
+            </template>
 
             <CommonPagination
-              v-model:currentPage='openCurrentPage'
-              v-model:pageSize='openPageSize'
-              :total='openTasks.length'
-              :page-size-options='[3, 6, 9]'
+              v-model:currentPage="openCurrentPage"
+              v-model:pageSize="openPageSize"
+              :total="openTasks.length"
+              :page-size-options="[3, 6, 9]"
             />
           </div>
 
-          <div v-if='currentMenu === "task-ended"' class='page-block'>
-            <div class='page-header'>
+          <div v-if="currentMenu === 'task-ended'" class="page-block">
+            <div class="page-header">
               <h2>已结束的任务</h2>
             </div>
 
-            <div class='task-grid three-columns'>
-              <div
-                v-for='task in pagedEndedTasks'
-                :key='task.id'
-                class='task-card'
-              >
-                <div class='task-image-box' @click='goTaskDetail(task)'>
-                  <img :src='task.image' class='task-image' alt='任务图片' />
-                </div>
+            <div v-if="loading" class="task-empty-card">任务加载中...</div>
 
-                <div class='task-body'>
-                  <div class='task-type-badge ended-badge'>{{ task.modeLabel }}</div>
-                  <div class='task-title' @click='goTaskDetail(task)'>{{ task.title }}</div>
-                  <div class='task-desc'>{{ task.desc }}</div>
-
-                  <div class='task-meta'>
-                    <div class='task-meta-item'>教师：{{ task.teacher }}</div>
-                    <div class='task-meta-item'>截止时间：{{ task.deadline }}</div>
+            <template v-else>
+              <div v-if="pagedEndedTasks.length > 0" class="task-grid three-columns">
+                <div
+                  v-for="task in pagedEndedTasks"
+                  :key="task.id"
+                  class="task-card"
+                >
+                  <div class="task-image-box" @click="goTaskDetail(task)">
+                    <img :src="task.image" class="task-image" alt="任务图片">
                   </div>
 
-                  <button class='submit-btn ended-btn' @click='goTaskDetail(task)'>查看</button>
+                  <div class="task-body">
+                    <div class="task-type-badge ended-badge">{{ task.modeLabel }}</div>
+                    <div class="task-title" @click="goTaskDetail(task)">{{ task.title }}</div>
+                    <div class="task-desc">{{ task.desc }}</div>
+
+                    <div class="task-meta">
+                      <div class="task-meta-item">教师：{{ task.teacher }}</div>
+                      <div class="task-meta-item">截止时间：{{ task.deadline }}</div>
+                    </div>
+
+                    <button class="submit-btn ended-btn" @click="goTaskDetail(task)">查看</button>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <div v-else class="task-empty-card">当前暂无已结束的任务</div>
+            </template>
 
             <CommonPagination
-              v-model:currentPage='endedCurrentPage'
-              v-model:pageSize='endedPageSize'
-              :total='endedTasks.length'
-              :page-size-options='[3, 6, 9]'
+              v-model:currentPage="endedCurrentPage"
+              v-model:pageSize="endedPageSize"
+              :total="endedTasks.length"
+              :page-size-options="[3, 6, 9]"
             />
           </div>
         </template>
 
-        <template v-if='loggedOutView || !isLoggedIn'>
-          <div class='page-block empty-home-block'>
-            <div class='empty-home-card'>
+        <template v-else>
+          <div class="page-block empty-home-block">
+            <div class="empty-home-card">
               <h2>主页</h2>
-              <p>当前未登录，请先登录后进入任务广场、提交历史和个人主页。</p>
+              <p>当前未登录，请先登录或注册后再进入任务广场、提交历史和个人主页。</p>
             </div>
           </div>
         </template>
@@ -132,6 +143,8 @@ import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import tictactoeImage from '../assets/tictactoe.png'
 
+const API_BASE = 'http://localhost:8080'
+
 export default {
   name: 'HomeView',
   components: {
@@ -141,151 +154,37 @@ export default {
   },
   data () {
     return {
-      isLoggedIn: true,
-      loggedOutView: false,
-      currentRole: 'student',
-      userName: '张三',
+      isLoggedIn: false,
+      currentRole: '',
+      userName: '',
       taskMenuOpen: true,
       currentMenu: 'task-open',
       openCurrentPage: 1,
       openPageSize: 3,
       endedCurrentPage: 1,
       endedPageSize: 3,
-      openTasks: [
-        {
-          id: 1,
-          title: '井字棋单人测评任务',
-          desc: '学生提交单模型后，在预设环境下独立完成测评。',
-          teacher: '王老师',
-          deadline: '2026-07-10 23:59',
-          image: tictactoeImage,
-          taskMode: 'single',
-          modeLabel: '单人模式'
-        },
-        {
-          id: 2,
-          title: '井字棋对战任务',
-          desc: '学生提交模型后可参与真人对战；若教师配置了人机模型，也可选择人机对战。',
-          teacher: '王老师',
-          deadline: '2026-07-12 23:59',
-          image: tictactoeImage,
-          taskMode: 'battle',
-          modeLabel: '对战模式',
-          hasEasyBot: true,
-          hasMediumBot: true,
-          hasHardBot: false
-        },
-        {
-          id: 3,
-          title: '井字棋团队锦标赛任务',
-          desc: '学生进入任务后可在任务详情页中创建队伍、加入队伍并查看当前淘汰赛安排。',
-          teacher: '李老师',
-          deadline: '2026-07-18 23:59',
-          image: tictactoeImage,
-          taskMode: 'tournament',
-          modeLabel: '团队锦标赛'
-        },
-        {
-          id: 4,
-          title: '离散动作基础任务',
-          desc: '用于课堂基础训练的单人模式任务。',
-          teacher: '周老师',
-          deadline: '2026-07-20 23:59',
-          image: tictactoeImage,
-          taskMode: 'single',
-          modeLabel: '单人模式'
-        },
-        {
-          id: 5,
-          title: '课堂对战练习任务',
-          desc: '学生在任务详情页提交后可进入对战流程。',
-          teacher: '刘老师',
-          deadline: '2026-07-22 23:59',
-          image: tictactoeImage,
-          taskMode: 'battle',
-          modeLabel: '对战模式',
-          hasEasyBot: true,
-          hasMediumBot: false,
-          hasHardBot: false
-        },
-        {
-          id: 6,
-          title: '阶段锦标赛任务',
-          desc: '用于课堂展示的团队锦标赛任务。',
-          teacher: '孙老师',
-          deadline: '2026-07-25 23:59',
-          image: tictactoeImage,
-          taskMode: 'tournament',
-          modeLabel: '团队锦标赛'
-        }
-      ],
-      endedTasks: [
-        {
-          id: 7,
-          title: '往期井字棋单人任务',
-          desc: '历史单人测评任务。',
-          teacher: '刘老师',
-          deadline: '2026-06-10 23:59',
-          image: tictactoeImage,
-          taskMode: 'single',
-          modeLabel: '单人模式'
-        },
-        {
-          id: 8,
-          title: '往期井字棋对战任务',
-          desc: '历史对战模式任务。',
-          teacher: '周老师',
-          deadline: '2026-06-12 23:59',
-          image: tictactoeImage,
-          taskMode: 'battle',
-          modeLabel: '对战模式',
-          hasEasyBot: true,
-          hasMediumBot: false,
-          hasHardBot: false
-        },
-        {
-          id: 9,
-          title: '往期团队锦标赛任务',
-          desc: '历史团队锦标赛任务。',
-          teacher: '李老师',
-          deadline: '2026-06-16 23:59',
-          image: tictactoeImage,
-          taskMode: 'tournament',
-          modeLabel: '团队锦标赛'
-        },
-        {
-          id: 10,
-          title: '往期课堂测评任务',
-          desc: '已结束的课堂测评任务。',
-          teacher: '王老师',
-          deadline: '2026-06-18 23:59',
-          image: tictactoeImage,
-          taskMode: 'single',
-          modeLabel: '单人模式'
-        }
-      ]
+      loading: false,
+      taskList: []
     }
   },
   created () {
-    this.syncAppState()
-  },
-  mounted () {
-    window.addEventListener('storage', this.syncAppState)
-    window.addEventListener('beforeunload', this.clearLoggedOutViewFlag)
-  },
-  beforeUnmount () {
-    window.removeEventListener('storage', this.syncAppState)
-    window.removeEventListener('beforeunload', this.clearLoggedOutViewFlag)
+    this.syncLoginState()
   },
   watch: {
     '$route.query': {
       handler () {
-        this.syncAppState()
+        this.syncLoginState()
       },
       deep: true
     }
   },
   computed: {
+    openTasks () {
+      return this.taskList.filter(task => task.isOpen)
+    },
+    endedTasks () {
+      return this.taskList.filter(task => !task.isOpen)
+    },
     pagedOpenTasks () {
       const start = (this.openCurrentPage - 1) * this.openPageSize
       const end = start + this.openPageSize
@@ -298,49 +197,155 @@ export default {
     }
   },
   methods: {
-    clearLoggedOutViewFlag () {
-      sessionStorage.removeItem('mock_logged_out_view')
+    async syncLoginState () {
+      const token = localStorage.getItem('auth_token')
+      const role = localStorage.getItem('auth_role')
+      const userName = localStorage.getItem('auth_name')
+
+      this.isLoggedIn = !!token
+      this.currentRole = role === 'TEACHER' ? 'teacher' : (token ? 'student' : '')
+      this.userName = userName || ''
+
+      if (this.isLoggedIn && this.currentRole === 'student') {
+        this.taskMenuOpen = true
+        this.currentMenu = this.$route.query.tab === 'ended' ? 'task-ended' : 'task-open'
+        await this.loadTaskList()
+      } else {
+        this.taskList = []
+      }
     },
-    syncAppState () {
-      const loggedOutFlag = sessionStorage.getItem('mock_logged_out_view')
-
-      if (loggedOutFlag === 'true') {
-        this.isLoggedIn = false
-        this.loggedOutView = true
-        this.currentRole = 'student'
-        this.userName = ''
-        this.taskMenuOpen = false
-        this.currentMenu = ''
+    async loadTaskList () {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.taskList = []
         return
       }
 
-      const storedRole = localStorage.getItem('mock_login_role')
-      const validRole = storedRole === 'teacher' ? 'teacher' : 'student'
+      this.loading = true
+      try {
+        const response = await fetch(`${API_BASE}/me/assignments?pageNum=0&pageSize=100`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
 
-      this.isLoggedIn = true
-      this.loggedOutView = false
-      this.currentRole = validRole
-      this.userName = validRole === 'teacher' ? '王老师' : '张三'
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '任务列表加载失败')
+        }
 
-      if (validRole === 'teacher') {
-        this.$router.replace('/teacher/home')
-        return
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.taskList = content.map(item => this.mapTaskItem(item))
+        this.resetPaginationIfNeeded()
+      } catch (error) {
+        this.taskList = []
+        alert(error.message || '任务列表加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    mapTaskItem (item) {
+      const now = Date.now()
+      const deadlineTime = item.deadline ? new Date(item.deadline).getTime() : NaN
+      const isOpen = Number.isNaN(deadlineTime) ? true : deadlineTime >= now
+      const evaluationMode = (item.evaluationMode || '').toUpperCase()
+
+      return {
+        id: item.id,
+        title: item.title || '未命名任务',
+        desc: this.getTaskDescription(item),
+        teacher: '任课教师',
+        deadline: this.formatDateTime(item.deadline),
+        image: tictactoeImage,
+        taskMode: this.mapTaskMode(evaluationMode),
+        modeLabel: this.mapModeLabel(evaluationMode),
+        hasEasyBot: false,
+        hasMediumBot: false,
+        hasHardBot: false,
+        isOpen
+      }
+    },
+    getTaskDescription (item) {
+      const config = this.parseTaskConfig(item)
+      if (config.overview) {
+        return config.overview
       }
 
-      this.taskMenuOpen = true
-      this.currentMenu = this.$route.query.tab === 'ended' ? 'task-ended' : 'task-open'
-      this.openCurrentPage = 1
-      this.endedCurrentPage = 1
+      const evaluationMode = (item.evaluationMode || '').toUpperCase()
+      if (evaluationMode === 'VERSUS' || evaluationMode === 'BATTLE') {
+        return '学生提交模型后可参与对战任务。'
+      }
+      if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') {
+        return '学生进入任务后可进行团队锦标赛相关操作。'
+      }
+      return '学生提交模型后，在预设环境下独立完成测评。'
+    },
+    parseTaskConfig (item) {
+      if (item.config && typeof item.config === 'object') {
+        return item.config
+      }
+      if (item.configJson) {
+        try {
+          return JSON.parse(item.configJson)
+        } catch (error) {
+          return {}
+        }
+      }
+      return {}
+    },
+    mapTaskMode (evaluationMode) {
+      if (evaluationMode === 'VERSUS' || evaluationMode === 'BATTLE') {
+        return 'battle'
+      }
+      if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') {
+        return 'tournament'
+      }
+      return 'single'
+    },
+    mapModeLabel (evaluationMode) {
+      if (evaluationMode === 'VERSUS' || evaluationMode === 'BATTLE') {
+        return '对战模式'
+      }
+      if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') {
+        return '团队锦标赛'
+      }
+      return '单人模式'
+    },
+    formatDateTime (value) {
+      if (!value) {
+        return '--'
+      }
+
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return value
+      }
+
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+
+      return `${year}-${month}-${day} ${hour}:${minute}`
+    },
+    resetPaginationIfNeeded () {
+      const maxOpenPage = Math.max(1, Math.ceil(this.openTasks.length / this.openPageSize))
+      const maxEndedPage = Math.max(1, Math.ceil(this.endedTasks.length / this.endedPageSize))
+
+      if (this.openCurrentPage > maxOpenPage) {
+        this.openCurrentPage = maxOpenPage
+      }
+      if (this.endedCurrentPage > maxEndedPage) {
+        this.endedCurrentPage = maxEndedPage
+      }
+    },
+    goHome () {
+      this.$router.push('/')
     },
     goLogin () {
-      sessionStorage.removeItem('mock_logged_out_view')
-      localStorage.setItem('mock_login_role', 'student')
-      this.currentRole = 'student'
-      this.userName = '张三'
-      this.isLoggedIn = true
-      this.loggedOutView = false
-      this.taskMenuOpen = true
-      this.currentMenu = 'task-open'
       this.$router.push('/login')
     },
     goRegister () {
@@ -348,57 +353,34 @@ export default {
     },
     handleUserClick () {
       if (this.currentRole === 'teacher') {
-        this.goTeacherHome()
-      } else {
-        this.goProfile()
-      }
-    },
-    goTeacherHome () {
-      this.$router.push('/teacher/home')
-    },
-    switchRole () {
-      sessionStorage.removeItem('mock_logged_out_view')
-      const nextRole = this.currentRole === 'teacher' ? 'student' : 'teacher'
-      localStorage.setItem('mock_login_role', nextRole)
-
-      if (nextRole === 'teacher') {
         this.$router.push('/teacher/home')
-      } else {
-        this.$router.push({ path: '/', query: { tab: 'open' } })
+      } else if (this.currentRole === 'student') {
+        this.$router.push('/student/profile')
       }
     },
     logout () {
-      sessionStorage.setItem('mock_logged_out_view', 'true')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
+      this.isLoggedIn = false
+      this.currentRole = ''
+      this.userName = ''
+      this.taskList = []
       this.$router.push('/')
     },
     toggleTaskMenu () {
       this.taskMenuOpen = !this.taskMenuOpen
-      if (!this.taskMenuOpen) {
-        return
-      }
-      if (this.currentMenu !== 'task-open' && this.currentMenu !== 'task-ended') {
-        this.currentMenu = 'task-open'
-        this.openCurrentPage = 1
-        this.$router.push({ path: '/', query: { tab: 'open' } })
-      }
     },
     selectOpenMenu () {
       this.taskMenuOpen = true
       this.currentMenu = 'task-open'
-      this.openCurrentPage = 1
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     selectEndedMenu () {
       this.taskMenuOpen = true
       this.currentMenu = 'task-ended'
-      this.endedCurrentPage = 1
       this.$router.push({ path: '/', query: { tab: 'ended' } })
-    },
-    goHomeOpenTasks () {
-      this.taskMenuOpen = true
-      this.currentMenu = 'task-open'
-      this.openCurrentPage = 1
-      this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     goProfile () {
       this.$router.push('/student/profile')
@@ -413,6 +395,7 @@ export default {
       this.$router.push({
         path: '/task-detail',
         query: {
+          assignmentId: task.id,
           title: task.title,
           taskMode: task.taskMode,
           hasEasyBot: task.hasEasyBot ? 'true' : 'false',
@@ -519,7 +502,7 @@ export default {
   font-size: 18px;
   font-weight: 700;
   color: #1f2d3d;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   cursor: pointer;
 }
 
@@ -530,9 +513,9 @@ export default {
 .task-desc {
   font-size: 14px;
   color: #606266;
-  line-height: 1.7;
-  margin-bottom: 14px;
-  min-height: 72px;
+  line-height: 1.8;
+  min-height: 52px;
+  margin-bottom: 12px;
 }
 
 .task-meta {
@@ -549,13 +532,13 @@ export default {
 
 .submit-btn {
   width: 100%;
-  height: 40px;
+  height: 38px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #1f4e8c;
   color: #ffffff;
-  font-size: 14px;
   cursor: pointer;
+  font-size: 14px;
 }
 
 .submit-btn:hover {
@@ -567,35 +550,43 @@ export default {
 }
 
 .ended-btn:hover {
-  background: #4c4f53;
+  background: #4b4f56;
+}
+
+.task-empty-card {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #dcdfe6;
+  border-radius: 10px;
+  padding: 24px;
+  color: #606266;
+  box-shadow: 0 2px 8px rgba(31, 45, 61, 0.06);
+  margin-bottom: 20px;
 }
 
 .empty-home-block {
   display: flex;
+  align-items: flex-start;
   justify-content: center;
-  align-items: center;
-  min-height: 420px;
 }
 
 .empty-home-card {
   width: 100%;
-  max-width: 560px;
   background: #ffffff;
   border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  padding: 36px;
-  text-align: center;
+  border-radius: 10px;
+  padding: 28px;
+  box-shadow: 0 2px 8px rgba(31, 45, 61, 0.06);
 }
 
 .empty-home-card h2 {
   margin: 0 0 12px;
-  font-size: 24px;
+  font-size: 22px;
   color: #1f2d3d;
 }
 
 .empty-home-card p {
   margin: 0;
-  font-size: 14px;
   color: #606266;
   line-height: 1.8;
 }

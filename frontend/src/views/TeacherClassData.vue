@@ -2,12 +2,11 @@
   <div class="page">
     <AppTopbar
       :logged-in="true"
-      user-name="王老师"
+      :user-name="displayUserName"
       current-role="teacher"
       active-nav="home"
       @platform-click="goTeacherHome"
       @user-click="goTeacherHome"
-      @switch-role="switchRole"
       @logout="logout"
     />
 
@@ -30,7 +29,7 @@
           <div class="class-list-card">
             <div class="card-header">
               <div class="card-title">班级列表</div>
-              <button class="primary-btn small-btn" @click="createClass">创建班级</button>
+              <button class="primary-btn small-btn" @click="openCreateClassDialog">创建班级</button>
             </div>
 
             <div class="class-list">
@@ -43,7 +42,7 @@
               >
                 <div class="class-name">{{ item.name }}</div>
                 <div class="class-meta">班级码：{{ item.code }}</div>
-                <div class="class-meta">人数：{{ item.students.length }}</div>
+                <div class="class-meta">人数：{{ item.studentCount }}</div>
               </div>
             </div>
           </div>
@@ -53,7 +52,7 @@
               <div>
                 <div class="card-title">班级详情</div>
                 <div class="detail-subtitle">
-                  当前班级：{{ selectedClass.name }} | 班级码：{{ selectedClass.code }} | 教师：{{ selectedClass.teacher }}
+                  当前班级：{{ selectedClass.name }} | 班级码：{{ selectedClass.code || '—' }} | 教师：{{ selectedClass.teacher || '—' }}
                 </div>
               </div>
 
@@ -71,14 +70,17 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="stu in displayedStudents" :key="stu.studentId">
-                  <td>{{ stu.studentId }}</td>
+                <tr v-if="displayedStudents.length === 0">
+                  <td colspan="3" class="empty-cell">当前班级暂无学生数据</td>
+                </tr>
+                <tr v-for="stu in displayedStudents" :key="stu.id || stu.studentId">
+                  <td>{{ stu.studentId || stu.id || "—" }}</td>
                   <td>
                     <span class="student-name-link" @click="goStudentDetail(stu)">
-                      {{ stu.name }}
+                      {{ stu.username || stu.name || "未命名用户" }}
                     </span>
                   </td>
-                  <td>{{ stu.email }}</td>
+                  <td>{{ stu.email || "—" }}</td>
                 </tr>
               </tbody>
             </table>
@@ -91,6 +93,34 @@
           </div>
         </div>
       </main>
+    </div>
+
+    <div v-if="showCreateDialog" class="dialog-mask" @click="closeCreateClassDialog">
+      <div class="dialog-box small-dialog" @click.stop>
+        <div class="dialog-header">
+          <div class="dialog-title">创建班级</div>
+          <button class="close-btn" @click="closeCreateClassDialog">关闭</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="form-item">
+            <label>班级名称</label>
+            <input
+              v-model="createClassForm.name"
+              type="text"
+              placeholder="请输入班级名称"
+              maxlength="50"
+            >
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <button class="secondary-btn" @click="closeCreateClassDialog">取消</button>
+          <button class="primary-btn" @click="createClass" :disabled="creatingClass">
+            {{ creatingClass ? '创建中...' : '创建' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-if="showDismissDialog" class="dialog-mask" @click="showDismissDialog = false">
@@ -117,6 +147,8 @@
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 
+const API_BASE = 'http://localhost:8080'
+
 export default {
   name: 'TeacherClassDataView',
   components: {
@@ -127,76 +159,174 @@ export default {
     return {
       expandAll: false,
       showDismissDialog: false,
-      classList: [
-        {
-          id: 1,
-          name: '人工智能 2201',
-          code: 'AI2201',
-          teacher: '王老师',
-          students: [
-            { studentId: '202201001', name: '张三', email: 'zhangsan@example.com' },
-            { studentId: '202201002', name: '李四', email: 'lisi@example.com' },
-            { studentId: '202201003', name: '王五', email: 'wangwu@example.com' },
-            { studentId: '202201004', name: '赵六', email: 'zhaoliu@example.com' }
-          ]
-        },
-        {
-          id: 2,
-          name: '人工智能 2202',
-          code: 'AI2202',
-          teacher: '王老师',
-          students: [
-            { studentId: '202202001', name: '陈一', email: 'chenyi@example.com' },
-            { studentId: '202202002', name: '周二', email: 'zhouer@example.com' },
-            { studentId: '202202003', name: '吴三', email: 'wusan@example.com' }
-          ]
-        }
-      ],
-      selectedClass: null
+      showCreateDialog: false,
+      creatingClass: false,
+      classList: [],
+      selectedClass: null,
+      displayUserName: localStorage.getItem('auth_name') || '教师',
+      createClassForm: {
+        name: ''
+      }
     }
   },
   computed: {
     displayedStudents () {
-      if (!this.selectedClass) return []
+      if (!this.selectedClass || !Array.isArray(this.selectedClass.students)) return []
       return this.expandAll ? this.selectedClass.students : this.selectedClass.students.slice(0, 3)
     }
   },
   created () {
-    if (this.classList.length > 0) {
-      this.selectedClass = this.classList[0]
-    }
+    this.loadClassList()
   },
   methods: {
-    createClass () {
-      const nextIndex = this.classList.length + 1
-      const newClass = {
-        id: nextIndex,
-        name: `新建班级 ${nextIndex}`,
-        code: `CLASS${2020 + nextIndex}`,
-        teacher: '王老师',
+    getAuthHeaders () {
+      const token = localStorage.getItem('auth_token')
+      return token ? { Authorization: `Bearer ${token}` } : {}
+    },
+    async loadClassList () {
+      try {
+        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=100&isDeleted=false`, {
+          method: 'GET',
+          headers: {
+            ...this.getAuthHeaders()
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0 || !result.data || !Array.isArray(result.data.content)) {
+          this.classList = []
+          this.selectedClass = null
+          return
+        }
+
+        this.classList = result.data.content.map(item => ({
+          id: item.id,
+          name: item.name || '',
+          code: item.code || '',
+          teacher: '',
+          studentCount: 0,
+          students: []
+        }))
+
+        if (this.classList.length > 0) {
+          await this.selectClass(this.classList[0])
+        } else {
+          this.selectedClass = null
+        }
+      } catch (error) {
+        this.classList = []
+        this.selectedClass = null
+      }
+    },
+    openCreateClassDialog () {
+      this.createClassForm.name = ''
+      this.showCreateDialog = true
+    },
+    closeCreateClassDialog () {
+      if (this.creatingClass) return
+      this.showCreateDialog = false
+      this.createClassForm.name = ''
+    },
+    async createClass () {
+      const className = this.createClassForm.name.trim()
+      if (!className) {
+        alert('请输入班级名称')
+        return
+      }
+
+      this.creatingClass = true
+      try {
+        const response = await fetch(`${API_BASE}/class`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...this.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            name: className,
+            code: ''
+          })
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          alert(result.message || '创建班级失败')
+          return
+        }
+
+        this.showCreateDialog = false
+        this.createClassForm.name = ''
+        await this.loadClassList()
+      } catch (error) {
+        alert('创建班级失败，请检查后端是否已启动')
+      } finally {
+        this.creatingClass = false
+      }
+    },
+    async selectClass (item) {
+      this.expandAll = false
+      const target = {
+        ...item,
         students: []
       }
-      this.classList.push(newClass)
-      this.selectedClass = newClass
-      this.expandAll = false
+      this.selectedClass = target
+      await this.loadClassStudents(target.id)
     },
-    selectClass (item) {
-      this.selectedClass = item
-      this.expandAll = false
+    async loadClassStudents (classId) {
+      try {
+        const response = await fetch(`${API_BASE}/class/${classId}/users?pageNum=0&pageSize=100&isDeleted=false`, {
+          method: 'GET',
+          headers: {
+            ...this.getAuthHeaders()
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0 || !result.data || !Array.isArray(result.data.content)) {
+          if (this.selectedClass && this.selectedClass.id === classId) {
+            this.selectedClass.students = []
+            this.selectedClass.studentCount = 0
+          }
+          this.classList = this.classList.map(item => item.id === classId ? { ...item, students: [], studentCount: 0 } : item)
+          return
+        }
+        const students = result.data.content
+        if (this.selectedClass && this.selectedClass.id === classId) {
+          this.selectedClass.students = students
+          this.selectedClass.studentCount = students.length
+        }
+        this.classList = this.classList.map(item => item.id === classId ? { ...item, students, studentCount: students.length } : item)
+      } catch (error) {
+        if (this.selectedClass && this.selectedClass.id === classId) {
+          this.selectedClass.students = []
+          this.selectedClass.studentCount = 0
+        }
+      }
     },
     toggleExpand () {
       this.expandAll = !this.expandAll
     },
-    dismissClass () {
+    async dismissClass () {
       if (!this.selectedClass) return
-      const currentId = this.selectedClass.id
-      this.classList = this.classList.filter(item => item.id !== currentId)
-      this.selectedClass = this.classList.length > 0 ? this.classList[0] : null
-      this.expandAll = false
-      this.showDismissDialog = false
+      try {
+        const response = await fetch(`${API_BASE}/class/${this.selectedClass.id}`, {
+          method: 'DELETE',
+          headers: {
+            ...this.getAuthHeaders()
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          alert(result.message || '解散班级失败')
+          return
+        }
+        this.showDismissDialog = false
+        await this.loadClassList()
+      } catch (error) {
+        alert('解散班级失败，请检查后端是否已启动')
+      }
     },
     goStudentDetail (stu) {
-      this.$router.push(`/teacher/student-detail/${stu.studentId}`)
+      const studentId = stu.id || stu.studentId
+      if (!studentId) return
+      this.$router.push(`/teacher/student-detail/${studentId}`)
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
@@ -213,14 +343,12 @@ export default {
     goExportScore () {
       this.$router.push('/teacher/export')
     },
-    switchRole () {
-      sessionStorage.removeItem('mock_logged_out_view')
-      localStorage.setItem('mock_login_role', 'student')
-      this.$router.push({ path: '/', query: { tab: 'open' } })
-    },
     logout () {
-      sessionStorage.setItem('mock_logged_out_view', 'true')
-      this.$router.push('/')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
+      this.$router.push('/login')
     }
   }
 }
@@ -234,8 +362,8 @@ export default {
 .page {
   min-height: 100vh;
   background: #f5f7fa;
-  font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif;
   color: #303133;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
 }
 
 .layout {
@@ -269,7 +397,8 @@ export default {
 .class-detail-card {
   background: #ffffff;
   border: 1px solid #dcdfe6;
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(31, 45, 61, 0.06);
   padding: 20px;
 }
 
@@ -277,8 +406,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .detail-header {
@@ -293,9 +421,8 @@ export default {
 
 .detail-subtitle {
   margin-top: 8px;
-  font-size: 14px;
-  color: #606266;
-  line-height: 1.7;
+  font-size: 13px;
+  color: #909399;
 }
 
 .class-list {
@@ -305,17 +432,22 @@ export default {
 }
 
 .class-item {
+  border: 1px solid #e5e9f0;
+  border-radius: 8px;
+  background: #fafcff;
   padding: 14px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  background: #f8fafc;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.class-item:hover,
+.class-item:hover {
+  border-color: #1f4e8c;
+  background: #f4f8fd;
+}
+
 .class-item.active {
   border-color: #1f4e8c;
-  background: #ecf5ff;
+  background: #eef5fc;
 }
 
 .class-name {
@@ -326,28 +458,33 @@ export default {
 }
 
 .class-meta {
-  font-size: 14px;
+  font-size: 13px;
   color: #606266;
-  margin-bottom: 6px;
+  line-height: 1.7;
 }
 
 .common-table {
   width: 100%;
   border-collapse: collapse;
+  background: #ffffff;
 }
 
 .common-table th,
 .common-table td {
-  padding: 14px 12px;
-  border-bottom: 1px solid #ebeef5;
-  text-align: left;
+  border: 1px solid #ebeef5;
+  padding: 12px;
+  text-align: center;
   font-size: 14px;
 }
 
 .common-table th {
-  background: #f8fafc;
-  color: #606266;
+  background: #f7f9fc;
+  color: #1f2d3d;
   font-weight: 700;
+}
+
+.empty-cell {
+  color: #909399;
 }
 
 .student-name-link {
@@ -361,24 +498,54 @@ export default {
 }
 
 .expand-row {
+  margin-top: 14px;
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
+}
+
+.text-btn {
+  background: transparent;
+  border: none;
+  color: #1f4e8c;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.form-item {
+  margin-bottom: 4px;
+}
+
+.form-item label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #303133;
+  font-weight: 600;
+}
+
+.form-item input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  padding: 0 12px;
+  font-size: 14px;
+  outline: none;
+}
+
+.form-item input:focus {
+  border-color: #1f4e8c;
 }
 
 .primary-btn,
 .secondary-btn,
 .danger-btn,
-.text-btn {
-  height: 38px;
-  border-radius: 4px;
+.close-btn {
+  height: 36px;
+  min-width: 90px;
+  border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
-}
-
-.small-btn {
-  min-width: 92px;
-  padding: 0 14px;
 }
 
 .primary-btn {
@@ -391,65 +558,65 @@ export default {
   background: #173b69;
 }
 
-.secondary-btn {
-  min-width: 92px;
-  border: 1px solid #dcdfe6;
+.primary-btn:disabled {
+  background: #90a4c3;
+  cursor: not-allowed;
+}
+
+.secondary-btn,
+.close-btn {
   background: #ffffff;
+  border: 1px solid #dcdfe6;
   color: #606266;
 }
 
-.secondary-btn:hover {
+.secondary-btn:hover,
+.close-btn:hover {
   color: #1f4e8c;
   border-color: #1f4e8c;
 }
 
 .danger-btn {
-  min-width: 92px;
   border: none;
-  background: #d9534f;
+  background: #c45656;
   color: #ffffff;
 }
 
 .danger-btn:hover {
-  background: #c9302c;
+  background: #a63f3f;
 }
 
-.text-btn {
-  min-width: 92px;
-  border: 1px solid #dcdfe6;
-  background: #ffffff;
-  color: #606266;
-  padding: 0 14px;
-}
-
-.text-btn:hover {
-  color: #1f4e8c;
-  border-color: #1f4e8c;
+.small-btn {
+  min-width: 84px;
+  height: 34px;
 }
 
 .dialog-mask {
   position: fixed;
   inset: 0;
-  background: rgba(31, 45, 61, 0.45);
+  background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 3000;
   padding: 20px;
+  z-index: 2000;
 }
 
 .dialog-box {
-  width: 460px;
+  width: 420px;
   max-width: 100%;
   background: #ffffff;
+  border-radius: 10px;
   border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(31, 45, 61, 0.18);
+}
+
+.small-dialog {
+  width: 400px;
 }
 
 .dialog-header {
-  min-height: 56px;
-  padding: 0 20px;
+  padding: 16px 18px;
   border-bottom: 1px solid #ebeef5;
   display: flex;
   align-items: center;
@@ -462,47 +629,33 @@ export default {
   color: #1f2d3d;
 }
 
-.close-btn {
-  height: 34px;
-  padding: 0 14px;
-  border: 1px solid #dcdfe6;
-  background: #ffffff;
-  color: #606266;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.close-btn:hover {
-  color: #1f4e8c;
-  border-color: #1f4e8c;
-}
-
 .dialog-body {
-  padding: 20px;
+  padding: 20px 18px;
   font-size: 14px;
-  color: #303133;
   line-height: 1.8;
+  color: #606266;
 }
 
 .dialog-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #ebeef5;
+  padding: 0 18px 18px;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1100px) {
+  .class-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
   .layout {
     flex-direction: column;
   }
 
   .content-area {
     padding: 16px;
-  }
-
-  .class-layout {
-    grid-template-columns: 1fr;
   }
 }
 </style>

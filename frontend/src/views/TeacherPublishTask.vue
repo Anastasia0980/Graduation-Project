@@ -2,7 +2,7 @@
   <div class='page'>
     <AppTopbar
       :logged-in='true'
-      user-name='王老师'
+      :user-name='teacherName'
       current-role='teacher'
       active-nav='home'
       @platform-click='goTeacherHome'
@@ -37,24 +37,16 @@
 
             <div class='form-item'>
               <label>适用班级</label>
-              <select v-model='taskForm.className'>
-                <option>人工智能 2201</option>
-                <option>人工智能 2202</option>
-                <option>软件工程 2201</option>
+              <select v-model='taskForm.classId'>
+                <option value='' disabled>请选择班级</option>
+                <option
+                  v-for='item in classOptions'
+                  :key='item.id'
+                  :value='item.id'
+                >
+                  {{ item.name }}
+                </option>
               </select>
-            </div>
-
-            <div class='form-item'>
-              <label>测评环境</label>
-              <select v-model='taskForm.environment'>
-                <option>PettingZoo 井字棋环境</option>
-                <option>PettingZoo Connect Four 环境</option>
-              </select>
-            </div>
-
-            <div class='form-item'>
-              <label>开始时间</label>
-              <input v-model='taskForm.startTime' type='datetime-local' />
             </div>
 
             <div class='form-item'>
@@ -103,15 +95,31 @@
                 <div class='difficulty-title'>简单模式人机模型</div>
                 <div class='difficulty-status'>前端静态上传</div>
               </div>
-              <div class='upload-box'>
-                <button class='upload-btn' type='button' @click='triggerFileInput("easyBotInput")'>上传简单模型</button>
-                <span class='upload-text'>{{ easyBotFileName }}</span>
-                <input
-                  ref='easyBotInput'
-                  class='hidden-file-input'
-                  type='file'
-                  @change='handleBotFileChange($event, "easy")'
-                />
+              <div class='upload-group'>
+                <div class='upload-box'>
+                  <span class='upload-label'>Config</span>
+                  <button class='upload-btn' type='button' @click='triggerFileInput("easyBotConfigInput")'>选择配置文件</button>
+                  <span class='upload-text'>{{ easyBotConfigFileName }}</span>
+                  <input
+                    ref='easyBotConfigInput'
+                    class='hidden-file-input'
+                    type='file'
+                    accept='.json'
+                    @change='handleBotFileChange($event, "easy", "config")'
+                  />
+                </div>
+                <div class='upload-box'>
+                  <span class='upload-label'>Model</span>
+                  <button class='upload-btn' type='button' @click='triggerFileInput("easyBotModelInput")'>选择模型文件</button>
+                  <span class='upload-text'>{{ easyBotModelFileName }}</span>
+                  <input
+                    ref='easyBotModelInput'
+                    class='hidden-file-input'
+                    type='file'
+                    accept='.pt,.pth'
+                    @change='handleBotFileChange($event, "easy", "model")'
+                  />
+                </div>
               </div>
             </div>
 
@@ -120,15 +128,31 @@
                 <div class='difficulty-title'>中等模式人机模型</div>
                 <div class='difficulty-status'>前端静态上传</div>
               </div>
-              <div class='upload-box'>
-                <button class='upload-btn' type='button' @click='triggerFileInput("mediumBotInput")'>上传中等模型</button>
-                <span class='upload-text'>{{ mediumBotFileName }}</span>
-                <input
-                  ref='mediumBotInput'
-                  class='hidden-file-input'
-                  type='file'
-                  @change='handleBotFileChange($event, "medium")'
-                />
+              <div class='upload-group'>
+                <div class='upload-box'>
+                  <span class='upload-label'>Config</span>
+                  <button class='upload-btn' type='button' @click='triggerFileInput("mediumBotConfigInput")'>选择配置文件</button>
+                  <span class='upload-text'>{{ mediumBotConfigFileName }}</span>
+                  <input
+                    ref='mediumBotConfigInput'
+                    class='hidden-file-input'
+                    type='file'
+                    accept='.json'
+                    @change='handleBotFileChange($event, "medium", "config")'
+                  />
+                </div>
+                <div class='upload-box'>
+                  <span class='upload-label'>Model</span>
+                  <button class='upload-btn' type='button' @click='triggerFileInput("mediumBotModelInput")'>选择模型文件</button>
+                  <span class='upload-text'>{{ mediumBotModelFileName }}</span>
+                  <input
+                    ref='mediumBotModelInput'
+                    class='hidden-file-input'
+                    type='file'
+                    accept='.pt,.pth'
+                    @change='handleBotFileChange($event, "medium", "model")'
+                  />
+                </div>
               </div>
             </div>
 
@@ -137,15 +161,31 @@
                 <div class='difficulty-title'>困难模式人机模型</div>
                 <div class='difficulty-status'>前端静态上传</div>
               </div>
-              <div class='upload-box'>
-                <button class='upload-btn' type='button' @click='triggerFileInput("hardBotInput")'>上传困难模型</button>
-                <span class='upload-text'>{{ hardBotFileName }}</span>
-                <input
-                  ref='hardBotInput'
-                  class='hidden-file-input'
-                  type='file'
-                  @change='handleBotFileChange($event, "hard")'
-                />
+              <div class='upload-group'>
+                <div class='upload-box'>
+                  <span class='upload-label'>Config</span>
+                  <button class='upload-btn' type='button' @click='triggerFileInput("hardBotConfigInput")'>选择配置文件</button>
+                  <span class='upload-text'>{{ hardBotConfigFileName }}</span>
+                  <input
+                    ref='hardBotConfigInput'
+                    class='hidden-file-input'
+                    type='file'
+                    accept='.json'
+                    @change='handleBotFileChange($event, "hard", "config")'
+                  />
+                </div>
+                <div class='upload-box'>
+                  <span class='upload-label'>Model</span>
+                  <button class='upload-btn' type='button' @click='triggerFileInput("hardBotModelInput")'>选择模型文件</button>
+                  <span class='upload-text'>{{ hardBotModelFileName }}</span>
+                  <input
+                    ref='hardBotModelInput'
+                    class='hidden-file-input'
+                    type='file'
+                    accept='.pt,.pth'
+                    @change='handleBotFileChange($event, "hard", "model")'
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -192,6 +232,36 @@
                 rows='5'
                 placeholder='请输入淘汰赛机制说明，例如晋级规则、对局轮次、决赛方式、冠军判定方式等'
               ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class='card section-space'>
+          <div class='card-title'>任务环境及模型</div>
+
+          <div class='form-grid'>
+            <div class='form-item full-width'>
+              <label>模型环境</label>
+              <select v-model='taskForm.environmentCode'>
+                <option value='tictactoe_v3'>tictactoe_v3</option>
+                <option value='connect_four_v3'>connect_four_v3</option>
+              </select>
+            </div>
+
+            <div class='form-item full-width'>
+              <label>可用算法</label>
+              <div class='algorithm-btn-group'>
+                <button
+                  v-for='item in algorithmOptions'
+                  :key='item'
+                  type='button'
+                  class='algorithm-btn'
+                  :class='{ "algorithm-btn-active": selectedAlgorithms.includes(item) }'
+                  @click='toggleAlgorithm(item)'
+                >
+                  {{ item }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -273,31 +343,14 @@
                 placeholder='请输入评测说明，例如测评环境、时间限制、提交要求、结果记录方式等'
               ></textarea>
             </div>
-
-            <div class='form-item full-width'>
-              <label>算法模板文件</label>
-
-              <div class='upload-box'>
-                <button class='upload-btn' type='button' @click='triggerFileInput("templateInput")'>选择模板文件</button>
-                <span class='upload-text'>{{ templateFileName }}</span>
-                <input
-                  ref='templateInput'
-                  class='hidden-file-input'
-                  type='file'
-                  @change='handleTemplateFileChange'
-                />
-              </div>
-
-              <div class='upload-tip'>
-                可上传算法模板文件，供学生下载参考。当前按钮仅为界面展示，上传功能暂未接入。
-              </div>
-            </div>
           </div>
         </div>
 
         <div class='bottom-action-row'>
           <button class='secondary-btn' type='button'>保存草稿</button>
-          <button class='primary-btn' type='button'>发布任务</button>
+          <button class='primary-btn' type='button' :disabled='publishing' @click='handlePublishTask'>
+            {{ publishing ? '发布中...' : '发布任务' }}
+          </button>
         </div>
       </main>
     </div>
@@ -308,6 +361,8 @@
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 
+const API_BASE = 'http://localhost:8080'
+
 export default {
   name: 'TeacherPublishTaskView',
   components: {
@@ -316,20 +371,26 @@ export default {
   },
   data () {
     return {
+      teacherName: localStorage.getItem('auth_name') || '王老师',
+      publishing: false,
       taskMode: 'single',
       teamMin: '1',
       teamMax: '3',
       submitStrategy: 'once',
       taskIconFileName: '当前未选择文件',
-      templateFileName: '当前未选择文件',
-      easyBotFileName: '当前未选择文件',
-      mediumBotFileName: '当前未选择文件',
-      hardBotFileName: '当前未选择文件',
+      easyBotConfigFileName: '当前未选择文件',
+      easyBotModelFileName: '当前未选择文件',
+      mediumBotConfigFileName: '当前未选择文件',
+      mediumBotModelFileName: '当前未选择文件',
+      hardBotConfigFileName: '当前未选择文件',
+      hardBotModelFileName: '当前未选择文件',
+      classOptions: [],
+      algorithmOptions: ['DDPG', 'DQN', 'Qlearning'],
+      selectedAlgorithms: [],
       taskForm: {
         name: '',
-        className: '人工智能 2201',
-        environment: 'PettingZoo 井字棋环境',
-        startTime: '',
+        classId: '',
+        environmentCode: 'tictactoe_v3',
         deadline: '',
         intro: '',
         rule: '',
@@ -341,7 +402,43 @@ export default {
       }
     }
   },
+  created () {
+    this.loadClassOptions()
+  },
   methods: {
+    async loadClassOptions () {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=100`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          return
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.classOptions = content.map(item => ({
+          id: item.id,
+          name: item.name
+        }))
+
+        if (!this.taskForm.classId && this.classOptions.length > 0) {
+          this.taskForm.classId = this.classOptions[0].id
+        }
+      } catch (error) {
+        this.classOptions = []
+      }
+    },
     triggerFileInput (refName) {
       const input = this.$refs[refName]
       if (input) {
@@ -352,20 +449,166 @@ export default {
       const file = event.target.files && event.target.files[0]
       this.taskIconFileName = file ? file.name : '当前未选择文件'
     },
-    handleTemplateFileChange (event) {
-      const file = event.target.files && event.target.files[0]
-      this.templateFileName = file ? file.name : '当前未选择文件'
-    },
-    handleBotFileChange (event, level) {
+    handleBotFileChange (event, level, type) {
       const file = event.target.files && event.target.files[0]
       const fileName = file ? file.name : '当前未选择文件'
 
       if (level === 'easy') {
-        this.easyBotFileName = fileName
+        if (type === 'config') {
+          this.easyBotConfigFileName = fileName
+        } else {
+          this.easyBotModelFileName = fileName
+        }
       } else if (level === 'medium') {
-        this.mediumBotFileName = fileName
+        if (type === 'config') {
+          this.mediumBotConfigFileName = fileName
+        } else {
+          this.mediumBotModelFileName = fileName
+        }
       } else if (level === 'hard') {
-        this.hardBotFileName = fileName
+        if (type === 'config') {
+          this.hardBotConfigFileName = fileName
+        } else {
+          this.hardBotModelFileName = fileName
+        }
+      }
+    },
+    async uploadSystemBotFiles (assignmentId, token) {
+      const uploadOne = async (difficulty, configRef, modelRef) => {
+        const configInput = this.$refs[configRef]
+        const modelInput = this.$refs[modelRef]
+        const configFile = configInput && configInput.files ? configInput.files[0] : null
+        const modelFile = modelInput && modelInput.files ? modelInput.files[0] : null
+
+        if (!configFile && !modelFile) {
+          return
+        }
+
+        if (!configFile || !modelFile) {
+          throw new Error(`${difficulty}难度人机模型需同时上传config和model文件`)
+        }
+
+        const formData = new FormData()
+        formData.append('config', configFile)
+        formData.append('model', modelFile)
+
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/system-bots/${difficulty}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        })
+
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || `${difficulty}难度人机模型上传失败`)
+        }
+      }
+
+      await uploadOne('easy', 'easyBotConfigInput', 'easyBotModelInput')
+      await uploadOne('medium', 'mediumBotConfigInput', 'mediumBotModelInput')
+      await uploadOne('hard', 'hardBotConfigInput', 'hardBotModelInput')
+    },
+    toggleAlgorithm (name) {
+      const index = this.selectedAlgorithms.indexOf(name)
+      if (index > -1) {
+        this.selectedAlgorithms.splice(index, 1)
+      } else {
+        this.selectedAlgorithms.push(name)
+      }
+    },
+    getEvaluationModeValue () {
+      if (this.taskMode === 'battle') {
+        return 'VERSUS'
+      }
+      if (this.taskMode === 'tournament') {
+        return 'TEAM'
+      }
+      return 'SINGLE'
+    },
+    buildConfigPayload () {
+      const rulesText = this.taskMode === 'tournament' && this.taskForm.tournamentRule
+        ? `${this.taskForm.rule}\n\n淘汰赛说明：\n${this.taskForm.tournamentRule}`
+        : this.taskForm.rule
+
+      return {
+        overview: this.taskForm.intro,
+        rules: rulesText,
+        observationSpace: this.taskForm.observation,
+        actionSpace: this.taskForm.actionSpace,
+        rewardFunction: this.taskForm.reward,
+        evaluationFunction: this.taskForm.evaluation
+      }
+    },
+    validatePublishForm () {
+      if (!this.taskForm.name.trim()) {
+        alert('请输入任务名称')
+        return false
+      }
+      if (!this.taskForm.classId) {
+        alert('请选择适用班级')
+        return false
+      }
+      if (!this.taskForm.deadline) {
+        alert('请选择截止时间')
+        return false
+      }
+      if (this.selectedAlgorithms.length === 0) {
+        alert('请至少选择一个可用算法')
+        return false
+      }
+      return true
+    },
+    async handlePublishTask () {
+      if (!this.validatePublishForm()) {
+        return
+      }
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        alert('登录信息已失效，请重新登录')
+        return
+      }
+
+      const payload = {
+        title: this.taskForm.name.trim(),
+        evaluationMode: this.getEvaluationModeValue(),
+        agentName: this.selectedAlgorithms.join(','),
+        environment: this.taskForm.environmentCode,
+        deadline: this.taskForm.deadline,
+        config: this.buildConfigPayload()
+      }
+
+      this.publishing = true
+      try {
+        const response = await fetch(`${API_BASE}/class/${this.taskForm.classId}/assignments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        })
+
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          alert(result.message || '发布任务失败')
+          return
+        }
+
+        const assignmentId = result.data && result.data.id ? result.data.id : result.data
+        if (this.taskMode === 'battle' && assignmentId) {
+          await this.uploadSystemBotFiles(assignmentId, token)
+        }
+
+        alert('任务发布成功')
+        this.$router.push('/teacher/tasks')
+      } catch (error) {
+        alert('发布任务失败，请检查后端是否已启动')
+      } finally {
+        this.publishing = false
       }
     },
     goTeacherHome () {
@@ -541,11 +784,24 @@ export default {
   color: #909399;
 }
 
+.upload-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .upload-box {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.upload-label {
+  width: 48px;
+  font-size: 14px;
+  color: #606266;
+  font-weight: 600;
 }
 
 .upload-btn {
@@ -583,6 +839,36 @@ export default {
   margin-top: 12px;
 }
 
+.algorithm-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.algorithm-btn {
+  min-width: 98px;
+  height: 38px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 4px;
+  background: #303133;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.algorithm-btn:hover {
+  background: #1f2d3d;
+}
+
+.algorithm-btn-active {
+  background: #1f4e8c;
+}
+
+.algorithm-btn-active:hover {
+  background: #173b69;
+}
+
 .bottom-action-row {
   margin-top: 20px;
   display: flex;
@@ -608,6 +894,11 @@ export default {
 
 .primary-btn:hover {
   background: #173b69;
+}
+
+.primary-btn:disabled {
+  background: #90a4c3;
+  cursor: not-allowed;
 }
 
 .secondary-btn {
