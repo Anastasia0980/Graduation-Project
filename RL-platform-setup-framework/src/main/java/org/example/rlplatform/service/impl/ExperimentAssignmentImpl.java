@@ -129,4 +129,15 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         }
         return assignment;
     }
+
+    @Override
+    public void softDelete(Integer assignmentId) {
+        ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
+        if (assignment == null) {
+            throw new RuntimeException("实验不存在或已删除");
+        }
+        assignment.setIsDeleted(true);
+        assignment.setUpdateTime(LocalDateTime.now());
+        experimentAssignmentRepository.save(assignment);
+    }
 }

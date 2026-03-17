@@ -83,7 +83,7 @@
 
         <div class="dialog-body">
           <div>确定要删除任务“{{ currentTask ? currentTask.name : '' }}”吗？</div>
-          <div class="dialog-tip">当前后端暂未提供删除任务接口，因此此按钮暂不执行真实删除。</div>
+          <div class="dialog-tip">删除后学生端将无法再看到该任务，但已有提交记录不会被删除。</div>
         </div>
 
         <div class="dialog-footer">
@@ -96,6 +96,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
@@ -135,7 +136,7 @@ export default {
     async loadTaskList () {
       const token = localStorage.getItem('auth_token')
       if (!token) {
-        alert('登录信息已失效，请重新登录')
+        ElMessage.error('登录信息已失效，请重新登录')
         return
       }
 
@@ -161,7 +162,7 @@ export default {
         this.taskList = content.map(item => this.mapTaskItem(item))
       } catch (error) {
         this.taskList = []
-        alert(error.message || '任务列表加载失败')
+        ElMessage.error(error.message || '任务列表加载失败')
       } finally {
         this.loading = false
       }
@@ -250,10 +251,44 @@ export default {
       this.currentTask = item
       this.showDeleteDialog = true
     },
-    confirmDelete () {
+    async confirmDelete () {
+      if (!this.currentTask || !this.currentTask.id) {
+        this.showDeleteDialog = false
+        return
+      }
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.showDeleteDialog = false
+        ElMessage.error('登录信息已失效，请重新登录')
+        return
+      }
+
+      const assignmentId = this.currentTask.id
       this.showDeleteDialog = false
-      this.currentTask = null
-      alert('当前后端暂未提供删除任务接口，此按钮暂不执行真实删除。')
+
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          ElMessage.error(result.message || '删除任务失败')
+          return
+        }
+
+        // 从本地列表中移除该任务，避免重新请求
+        this.taskList = this.taskList.filter(item => item.id !== assignmentId)
+        ElMessage.success('删除任务成功')
+      } catch (error) {
+        ElMessage.error(error.message || '删除任务失败，请检查后端是否已启动')
+      } finally {
+        this.currentTask = null
+      }
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')

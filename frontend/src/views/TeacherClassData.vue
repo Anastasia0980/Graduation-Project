@@ -144,6 +144,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 
@@ -229,7 +230,7 @@ export default {
     async createClass () {
       const className = this.createClassForm.name.trim()
       if (!className) {
-        alert('请输入班级名称')
+        ElMessage.warning('请输入班级名称')
         return
       }
 
@@ -248,15 +249,16 @@ export default {
         })
         const result = await response.json()
         if (!response.ok || result.code !== 0) {
-          alert(result.message || '创建班级失败')
+          ElMessage.error(result.message || '创建班级失败')
           return
         }
 
         this.showCreateDialog = false
         this.createClassForm.name = ''
         await this.loadClassList()
+        ElMessage.success('创建班级成功')
       } catch (error) {
-        alert('创建班级失败，请检查后端是否已启动')
+        ElMessage.error('创建班级失败，请检查后端是否已启动')
       } finally {
         this.creatingClass = false
       }
@@ -314,13 +316,14 @@ export default {
         })
         const result = await response.json()
         if (!response.ok || result.code !== 0) {
-          alert(result.message || '解散班级失败')
+          ElMessage.error(result.message || '解散班级失败')
           return
         }
         this.showDismissDialog = false
         await this.loadClassList()
+        ElMessage.success('解散班级成功')
       } catch (error) {
-        alert('解散班级失败，请检查后端是否已启动')
+        ElMessage.error('解散班级失败，请检查后端是否已启动')
       }
     },
     goStudentDetail (stu) {

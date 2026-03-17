@@ -128,6 +128,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
@@ -207,7 +208,7 @@ export default {
         }))
       } catch (error) {
         this.historyList = []
-        alert(error.message || '提交历史加载失败')
+        ElMessage.error(error.message || '提交历史加载失败')
       } finally {
         this.loading = false
       }

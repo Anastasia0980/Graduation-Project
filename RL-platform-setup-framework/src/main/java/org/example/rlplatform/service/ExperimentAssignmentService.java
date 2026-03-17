@@ -19,4 +19,6 @@ public interface ExperimentAssignmentService {
     Page<ExperimentAssignment> listAssignmentsByClass(Integer classId, Integer pageNum, Integer pageSize);
 
     ExperimentAssignment getById(Integer assignmentId);
+
+    void softDelete(Integer assignmentId);
 }

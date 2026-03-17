@@ -120,6 +120,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
@@ -199,7 +200,7 @@ export default {
         }))
       } catch (error) {
         this.submissionList = []
-        alert(error.message || '提交记录加载失败')
+        ElMessage.error(error.message || '提交记录加载失败')
       } finally {
         this.loading = false
       }
@@ -209,7 +210,7 @@ export default {
     },
     async openVideo (item) {
       if (!item.evaluationResultId) {
-        alert('暂无可播放录像')
+        ElMessage.warning('暂无可播放录像')
         return
       }
 
@@ -236,7 +237,7 @@ export default {
         }
         this.videoVisible = true
       } catch (error) {
-        alert(error.message || '视频加载失败')
+        ElMessage.error(error.message || '视频加载失败')
       }
     },
     closeVideo () {

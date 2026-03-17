@@ -41,6 +41,8 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
+
 const API_BASE = 'http://localhost:8080'
 
 export default {
@@ -57,7 +59,7 @@ export default {
   methods: {
     async handleLogin () {
       if (!this.loginForm.account || !this.loginForm.password) {
-        alert('请填写完整登录信息')
+        ElMessage.error('请填写完整登录信息')
         return
       }
 
@@ -78,7 +80,7 @@ export default {
         const result = await response.json()
 
         if (!response.ok || result.code !== 0 || !result.data) {
-          alert(result.message || '登录失败')
+          ElMessage.error(result.message || '登录失败')
           return
         }
 
@@ -95,7 +97,7 @@ export default {
         const userResult = await userResponse.json()
 
         if (!userResponse.ok || userResult.code !== 0 || !userResult.data) {
-          alert(userResult.message || '获取用户信息失败')
+          ElMessage.error(userResult.message || '获取用户信息失败')
           localStorage.removeItem('auth_token')
           return
         }
@@ -111,7 +113,7 @@ export default {
           this.$router.push('/')
         }
       } catch (error) {
-        alert('登录请求失败，请检查后端是否已启动')
+        ElMessage.error('登录请求失败，请检查后端是否已启动')
       } finally {
         this.loading = false
       }

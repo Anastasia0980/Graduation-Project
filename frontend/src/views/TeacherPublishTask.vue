@@ -358,6 +358,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 
@@ -543,19 +544,19 @@ export default {
     },
     validatePublishForm () {
       if (!this.taskForm.name.trim()) {
-        alert('请输入任务名称')
+        ElMessage.warning('请输入任务名称')
         return false
       }
       if (!this.taskForm.classId) {
-        alert('请选择适用班级')
+        ElMessage.warning('请选择适用班级')
         return false
       }
       if (!this.taskForm.deadline) {
-        alert('请选择截止时间')
+        ElMessage.warning('请选择截止时间')
         return false
       }
       if (this.selectedAlgorithms.length === 0) {
-        alert('请至少选择一个可用算法')
+        ElMessage.warning('请至少选择一个可用算法')
         return false
       }
       return true
@@ -567,7 +568,7 @@ export default {
 
       const token = localStorage.getItem('auth_token')
       if (!token) {
-        alert('登录信息已失效，请重新登录')
+        ElMessage.error('登录信息已失效，请重新登录')
         return
       }
 
@@ -594,7 +595,7 @@ export default {
         const result = await response.json()
 
         if (!response.ok || result.code !== 0) {
-          alert(result.message || '发布任务失败')
+          ElMessage.error(result.message || '发布任务失败')
           return
         }
 
@@ -603,10 +604,10 @@ export default {
           await this.uploadSystemBotFiles(assignmentId, token)
         }
 
-        alert('任务发布成功')
+        ElMessage.success('任务发布成功')
         this.$router.push('/teacher/tasks')
       } catch (error) {
-        alert('发布任务失败，请检查后端是否已启动')
+        ElMessage.error('发布任务失败，请检查后端是否已启动')
       } finally {
         this.publishing = false
       }

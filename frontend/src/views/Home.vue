@@ -138,6 +138,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
@@ -241,7 +242,7 @@ export default {
         this.resetPaginationIfNeeded()
       } catch (error) {
         this.taskList = []
-        alert(error.message || '任务列表加载失败')
+        ElMessage.error(error.message || '任务列表加载失败')
       } finally {
         this.loading = false
       }

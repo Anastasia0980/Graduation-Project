@@ -138,6 +138,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 
@@ -246,7 +247,7 @@ export default {
     },
     async joinClass () {
       if (!this.joinCode.trim()) {
-        alert('请输入班级码')
+        ElMessage.warning('请输入班级码')
         return
       }
 
@@ -266,15 +267,16 @@ export default {
         const result = await response.json()
 
         if (!response.ok || result.code !== 0) {
-          alert(result.message || '加入班级失败')
+          ElMessage.error(result.message || '加入班级失败')
           return
         }
 
         await this.loadCurrentClassInfo()
         this.showSuccessDialog = true
+        ElMessage.success('加入班级成功')
         this.joinCode = ''
       } catch (error) {
-        alert('加入班级失败，请检查后端是否已启动')
+        ElMessage.error('加入班级失败，请检查后端是否已启动')
       } finally {
         this.loading = false
       }
@@ -290,12 +292,13 @@ export default {
         const result = await response.json()
 
         if (!response.ok || result.code !== 0) {
-          alert(result.message || '退出班级失败')
+          ElMessage.error(result.message || '退出班级失败')
           return
         }
 
         this.showLeaveDialog = false
         this.joinedClass = false
+        ElMessage.success('已退出班级')
         this.classInfo = {
           id: null,
           name: '',
@@ -305,7 +308,7 @@ export default {
           students: []
         }
       } catch (error) {
-        alert('退出班级失败，请检查后端是否已启动')
+        ElMessage.error('退出班级失败，请检查后端是否已启动')
       }
     },
     closeSuccessDialog () {

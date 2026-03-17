@@ -502,6 +502,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import tictactoeImage from '../assets/tictactoe.png'
 
@@ -646,6 +647,7 @@ export default {
     async loadTaskDetail (assignmentId) {
       const token = localStorage.getItem('auth_token')
       if (!token) {
+        ElMessage.error('当前未登录或登录已过期，请重新登录')
         return
       }
 
@@ -673,7 +675,7 @@ export default {
 
         this.fillTaskDetail(currentTask)
       } catch (error) {
-        alert(error.message || '任务详情加载失败')
+        ElMessage.error(error.message || '任务详情加载失败')
       } finally {
         this.loadingPage = false
       }
@@ -981,7 +983,7 @@ export default {
     },
     joinTeam () {
       if (!this.joinTeamCode.trim()) {
-        alert('请输入队伍码')
+        ElMessage.warning('请输入队伍码')
         return
       }
       this.teamInfo = {

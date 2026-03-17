@@ -89,6 +89,13 @@ public class ExperimentAssignmentController {
         return Result.success();
     }
 
+    @DeleteMapping("assignments/{assignmentId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<Void> softDelete(@PathVariable Integer assignmentId) {
+        experimentAssignmentService.softDelete(assignmentId);
+        return Result.success();
+    }
+
     public void checkCooldown(Integer studentId, Long assignmentId, long cooldownSeconds) {
         String key = "eval:cooldown:" + studentId + ":" + assignmentId;
         Boolean success = stringRedisTemplate.opsForValue()

@@ -59,6 +59,8 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
+
 const API_BASE = 'http://localhost:8080'
 
 export default {
@@ -79,12 +81,12 @@ export default {
       const { name, email, password, confirmPassword } = this.registerForm
 
       if (!name || !email || !password || !confirmPassword) {
-        alert('请填写完整注册信息')
+        ElMessage.warning('请填写完整注册信息')
         return
       }
 
       if (password !== confirmPassword) {
-        alert('两次输入的密码不一致')
+        ElMessage.warning('两次输入的密码不一致')
         return
       }
 
@@ -106,14 +108,14 @@ export default {
         const result = await response.json()
 
         if (!response.ok || result.code !== 0) {
-          alert(result.message || '注册失败')
+          ElMessage.error(result.message || '注册失败')
           return
         }
 
-        alert('注册成功')
+        ElMessage.success('注册成功，请使用邮箱登录')
         this.$router.push('/login')
       } catch (error) {
-        alert('注册请求失败，请检查后端是否已启动')
+        ElMessage.error('注册请求失败，请检查后端是否已启动')
       } finally {
         this.loading = false
       }
