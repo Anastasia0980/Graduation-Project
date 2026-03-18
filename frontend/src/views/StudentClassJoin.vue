@@ -85,17 +85,17 @@
             <table class='common-table'>
               <thead>
                 <tr>
-                  <th>学号</th>
+                  <th>邮箱</th>
                   <th>姓名</th>
                   <th>身份</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if='classInfo.students.length === 0'>
-                  <td colspan='3' class='empty-cell'>当前后端暂未提供学生端班级成员列表接口</td>
+                  <td colspan='3' class='empty-cell'>当前暂无班级成员数据</td>
                 </tr>
                 <tr v-for='item in classInfo.students' :key='item.studentId'>
-                  <td>{{ item.studentId }}</td>
+                  <td>{{ item.email }}</td>
                   <td>{{ item.name }}</td>
                   <td>{{ item.role }}</td>
                 </tr>
@@ -202,8 +202,36 @@ export default {
         this.joinedClass = true
         this.classInfo.name = className || ''
         await this.fillClassInfoByName(className)
+        await this.loadMyClassMembers()
       } catch (error) {
         this.joinedClass = false
+      }
+    },
+    async loadMyClassMembers () {
+      try {
+        const response = await fetch(`${API_BASE}/class/me/users?pageNum=0&pageSize=100&isDeleted=false`, {
+          method: 'GET',
+          headers: {
+            ...this.getAuthHeaders()
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0 || !result.data || !Array.isArray(result.data.content)) {
+          this.classInfo.students = []
+          this.classInfo.studentCount = 0
+          return
+        }
+
+        const list = result.data.content
+        this.classInfo.students = list.map(u => ({
+          email: u.email,
+          name: u.username || u.name || '—',
+          role: u.role || 'STUDENT'
+        }))
+        this.classInfo.studentCount = this.classInfo.students.length
+      } catch (error) {
+        this.classInfo.students = []
+        this.classInfo.studentCount = 0
       }
     },
     async fillClassInfoByName (className) {

@@ -5,10 +5,13 @@ import org.example.rlplatform.entity.StudentClass;
 import org.example.rlplatform.entity.User;
 import org.example.rlplatform.service.StudentClassService;
 import org.example.rlplatform.service.UserService;
+import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/class")
@@ -90,6 +93,20 @@ public class StudentClassController {
             @RequestParam(required = false, defaultValue = "false") Boolean isDeleted
     ){
         return Result.success(userService.listByCondition(pageNum, pageSize, null, null, id, isDeleted));
+    }
+
+    @GetMapping("me/users")
+    @PreAuthorize("hasRole('STUDENT')")
+    public Result<Page<User>> listStuUser(
+        @RequestParam(defaultValue = "0") Integer pageNum,
+        @RequestParam(defaultValue = "10") Integer pageSize,
+        @RequestParam(required = false, defaultValue = "false") Boolean isDeleted
+    ){
+        Map<String, Object> claims = ThreadLocalUtil.get();
+        Integer userId = (Integer) claims.get("id");
+        User user = userService.findByIdAndIsDeletedFalse(userId);
+        Integer classId = user.getStudentClass().getId();
+        return Result.success(userService.listByCondition(pageNum, pageSize, null, null, classId, isDeleted));
     }
 
 }
