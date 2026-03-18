@@ -105,6 +105,11 @@ const routes = [
     component: TeacherExportScore
   },
   {
+    path: '/teacher/ranking',
+    name: 'teacherRanking',
+    component: Ranking
+  },
+  {
     path: '/teacher/student-detail/:studentId',
     name: 'TeacherStudentDetail',
     component: () => import('../views/TeacherStudentDetail.vue')

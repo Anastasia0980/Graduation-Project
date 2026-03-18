@@ -4,7 +4,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/rl_platform
     username: root
-    password: qtq031113
+    password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -23,7 +23,7 @@ logging:
 evaluation:
   python: "C:/Users/qtq/anaconda3/envs/mojito/python.exe"
   script: "scripts/evaluate.py"
-  workspace: "E:/2025-2026/GP/LunarLander-RL-Comparison"
+  workspace: "E:/RL_Result"
 
 #logging:
 #  level:
@@ -31,7 +31,7 @@ evaluation:
 #      springframework: DEBUG
 
 battle:
-  python: "C:/Users/qtq/anaconda3/envs/rl/python.exe"
+  python: "E:/Anaconda/envs/rl/python.exe"
   script: "scripts/battle_evaluator.py"
 
 system:
