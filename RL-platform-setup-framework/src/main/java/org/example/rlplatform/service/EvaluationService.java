@@ -13,7 +13,7 @@ public interface EvaluationService {
 
     void runEvaluationAsync(long evaluationId);
 
-    void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config);
+    void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config, String baselineDifficulty, String baselineId);
 
     Page<Evaluation> list(Integer pageNum, Integer pageSize, Integer assignmentId, Integer studentId, String status);
 }

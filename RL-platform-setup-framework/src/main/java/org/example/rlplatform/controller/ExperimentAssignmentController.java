@@ -4,7 +4,9 @@ import org.example.rlplatform.entity.Evaluation;
 import org.example.rlplatform.entity.ExperimentAssignment;
 import org.example.rlplatform.entity.Result;
 import org.example.rlplatform.entity.User;
+import org.example.rlplatform.entity.BaselineOption;
 import org.example.rlplatform.service.EvaluationService;
+import org.example.rlplatform.service.BaselineService;
 import org.example.rlplatform.service.ExperimentAssignmentService;
 import org.example.rlplatform.service.UserService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
@@ -33,6 +35,9 @@ public class ExperimentAssignmentController {
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private BaselineService baselineService;
 
     @PostMapping("class/{classId}/assignments")
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
@@ -80,12 +85,14 @@ public class ExperimentAssignmentController {
     public Result<Void> createEvaluation(
         @PathVariable Integer assignmentId, 
         @RequestParam("model") MultipartFile model,
-        @RequestParam("config") MultipartFile config
+        @RequestParam("config") MultipartFile config,
+        @RequestParam(value = "baselineDifficulty", required = false) String baselineDifficulty,
+        @RequestParam(value = "baselineId", required = false) String baselineId
     ) {
         Map<String, Object> claims = ThreadLocalUtil.get();
         Integer studentId = (Integer) claims.get("id");
         checkCooldown(studentId, assignmentId.longValue(), 10L);
-        evaluationService.runEvaluationByConfig(assignmentId, model, config);
+        evaluationService.runEvaluationByConfig(assignmentId, model, config, baselineDifficulty, baselineId);
         return Result.success();
     }
 
@@ -93,6 +100,91 @@ public class ExperimentAssignmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
     public Result<Void> softDelete(@PathVariable Integer assignmentId) {
         experimentAssignmentService.softDelete(assignmentId);
+        return Result.success();
+    }
+
+    /**
+     * 获取某个任务的 baseline catalog（基于任务环境与磁盘中的 baseline 文件）
+     */
+    @GetMapping("assignments/{assignmentId}/baseline-catalog")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<Map<String, List<BaselineOption>>> baselineCatalog(@PathVariable Integer assignmentId) {
+        ExperimentAssignment assignment = experimentAssignmentService.getById(assignmentId);
+        if (assignment == null) {
+            return Result.error("实验任务不存在或已删除");
+        }
+
+        String environment = assignment.getEnvironment();
+        Map<String, List<BaselineOption>> catalog = baselineService.getBaselineCatalogByEnvironment(environment);
+        return Result.success(catalog);
+    }
+
+    /**
+     * 按环境获取 baseline catalog（发布页无需 assignmentId，也可以直接拿可选项）
+     */
+    @GetMapping("baselines/catalog")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<Map<String, List<BaselineOption>>> baselineCatalogByEnvironment(
+        @RequestParam("environment") String environment
+    ) {
+        Map<String, List<BaselineOption>> catalog = baselineService.getBaselineCatalogByEnvironment(environment);
+        return Result.success(catalog);
+    }
+
+    /**
+     * 上传 baseline.pth 到固定基目录，并写入 baseline 表（只影响 baseline 资源，不影响任务已选配置）
+     * 上传完成后前端可重新拉取 catalog，并执行“加入/删除=取消选择”语义。
+     */
+    @PostMapping("assignments/{assignmentId}/baseline-upload")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<BaselineOption> uploadBaseline(
+        @PathVariable Integer assignmentId,
+        @RequestParam("difficulty") String difficulty,
+        @RequestParam("algorithm") String algorithm,
+        @RequestParam("model") MultipartFile model
+    ) {
+        ExperimentAssignment assignment = experimentAssignmentService.getById(assignmentId);
+        if (assignment == null) {
+            return Result.error("实验任务不存在或已删除");
+        }
+        try {
+            BaselineOption option = baselineService.uploadBaseline(assignment.getEnvironment(), difficulty, algorithm, model);
+            return Result.success(option);
+        } catch (Exception e) {
+            return Result.error(e.getMessage() != null ? e.getMessage() : "baseline 上传失败");
+        }
+    }
+
+    /**
+     * 上传 baseline.pth（不依赖 assignmentId，发布页可用）
+     */
+    @PostMapping("baselines/upload")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<BaselineOption> uploadBaselineByEnvironment(
+        @RequestParam("environment") String environment,
+        @RequestParam("difficulty") String difficulty,
+        @RequestParam("algorithm") String algorithm,
+        @RequestParam("model") MultipartFile model
+    ) {
+        try {
+            BaselineOption option = baselineService.uploadBaseline(environment, difficulty, algorithm, model);
+            return Result.success(option);
+        } catch (Exception e) {
+            return Result.error(e.getMessage() != null ? e.getMessage() : "baseline 上传失败");
+        }
+    }
+
+    /**
+     * baseline 软删除：仅将 baseline 表记录置为 isDeleted=true（不删除文件）
+     */
+    @DeleteMapping("baselines/soft-delete")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<Void> softDeleteBaseline(
+        @RequestParam("environment") String environment,
+        @RequestParam("difficulty") String difficulty,
+        @RequestParam("algorithm") String algorithm
+    ) {
+        baselineService.softDeleteBaseline(environment, difficulty, algorithm);
         return Result.success();
     }
 

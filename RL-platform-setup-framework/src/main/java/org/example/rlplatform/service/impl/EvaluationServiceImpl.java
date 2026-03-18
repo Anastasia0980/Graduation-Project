@@ -8,6 +8,8 @@ import org.example.rlplatform.service.ModelFileService;
 import org.example.rlplatform.service.EvaluationService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Collections;
 
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.web.multipart.MultipartFile;
@@ -37,6 +40,12 @@ public class EvaluationServiceImpl implements EvaluationService {
 
     @Autowired
     private ExperimentAssignmentRepository experimentAssignmentRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Value("${evaluation.baselineRoot:}")
+    private String baselineRoot;
 
     @Override
     public void createEvaluation(Evaluation evaluation) {
@@ -71,7 +80,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     @Override
-    public void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config) {
+    public void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config, String baselineDifficulty, String baselineId) {
         Evaluation evaluation = null;
         try {
             Map<String, Object> claims = ThreadLocalUtil.get();
@@ -100,6 +109,55 @@ public class EvaluationServiceImpl implements EvaluationService {
 
             ModelFile modelFile = modelFileService.uploadModelWithConfig(model, config, studentId);
 
+            // 从任务配置中解析 baselineOptions
+            ExperimentConfig taskConfig = null;
+            if (assignment.getConfigJson() != null && !assignment.getConfigJson().isBlank()) {
+                try {
+                    taskConfig = objectMapper.readValue(assignment.getConfigJson(), ExperimentConfig.class);
+                } catch (Exception ignored) {
+                    taskConfig = null;
+                }
+            }
+            Map<String, List<BaselineOption>> baselineOptions = taskConfig != null
+                    ? taskConfig.getBaselineOptions()
+                    : null;
+
+            String diff = (baselineDifficulty == null || baselineDifficulty.isBlank())
+                    ? "easy"
+                    : baselineDifficulty.trim().toLowerCase();
+
+            List<BaselineOption> candidates = (baselineOptions != null)
+                    ? baselineOptions.getOrDefault(diff, Collections.emptyList())
+                    : Collections.emptyList();
+
+            if (candidates.isEmpty()) {
+                throw new IllegalStateException("任务未配置 baseline 选项（difficulty=" + diff + "）");
+            }
+
+            BaselineOption chosen = null;
+            if (baselineId != null && !baselineId.isBlank()) {
+                for (BaselineOption opt : candidates) {
+                    if (opt != null && baselineId.equals(opt.getId())) {
+                        chosen = opt;
+                        break;
+                    }
+                }
+                if (chosen == null) {
+                    throw new IllegalArgumentException("baseline 选项不合法或未开放");
+                }
+            } else {
+                chosen = candidates.get(0);
+            }
+
+            if (chosen.getModelPath() == null || chosen.getModelPath().isBlank()) {
+                throw new IllegalStateException("baseline 选项未配置 modelPath");
+            }
+
+            String normalizedModelPath = chosen.getModelPath().replace("\\", "/");
+            String baselineModelPath = (baselineRoot != null && !baselineRoot.isBlank())
+                    ? baselineRoot.replace("\\", "/").replaceAll("/+$", "") + "/" + normalizedModelPath.replaceAll("^/+", "")
+                    : normalizedModelPath;
+
             evaluation = new Evaluation();
             evaluation.setStudentId(studentId);
             evaluation.setAgentName(assignment.getAgentName());
@@ -107,6 +165,9 @@ public class EvaluationServiceImpl implements EvaluationService {
             evaluation.setModelId(modelFile.getId());
             evaluation.setAssignmentId(assignmentId);
             evaluation.setEpisodes(episodes);
+            evaluation.setBaselineDifficulty(diff);
+            evaluation.setBaselineId(chosen.getId());
+            evaluation.setBaselineModelPath(baselineModelPath);
             evaluation.setStatus(EvaluationStatus.PENDING);
             evaluation.setCreateTime(now());
             evaluation.setUpdateTime(now());

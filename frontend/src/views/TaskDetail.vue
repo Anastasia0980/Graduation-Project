@@ -294,6 +294,38 @@
         <div class='dialog-body'>
           <div class='dialog-tip submit-mode-tip'>当前提交方式：{{ submitModeText }}</div>
 
+          <div v-if='currentSubmitMode === "single"' class='form-item'>
+            <label>Baseline（难度 / 算法）</label>
+            <div class='baseline-grid'>
+              <div class='baseline-row'>
+                <span class='baseline-label'>难度</span>
+                <select v-model='baselineDifficulty' @change='baselineId = ""'>
+                  <option value='easy'>easy</option>
+                  <option value='medium'>medium</option>
+                  <option value='hard'>hard</option>
+                </select>
+              </div>
+
+              <div class='baseline-row'>
+                <span class='baseline-label'>算法</span>
+                <select v-model='baselineId'>
+                  <option v-if='baselineOptionsForDifficulty.length === 0' value='' disabled>该难度暂无可用 baseline</option>
+                  <option
+                    v-for='opt in baselineOptionsForDifficulty'
+                    :key='opt.id || opt.label'
+                    :value='opt.id'
+                  >
+                    {{ opt.label || opt.algorithm || opt.id }}
+                  </option>
+                </select>
+              </div>
+
+              <div class='baseline-tip'>
+                说明：所选baseline将与你的模型进行比较，并最终按照avg_reward决定胜负。
+              </div>
+            </div>
+          </div>
+
           <div class='form-item'>
             <label>Config</label>
             <div class='file-picker-row'>
@@ -552,6 +584,13 @@ export default {
         config: null,
         model: null
       },
+      baselineDifficulty: 'easy',
+      baselineId: '',
+      baselineOptions: {
+        easy: [],
+        medium: [],
+        hard: []
+      },
       taskList: [],
       rankingList: [
         { rank: 1, name: '李四', score: 1280 },
@@ -600,6 +639,11 @@ export default {
       }
       return '单人测评'
     },
+    baselineOptionsForDifficulty () {
+      const key = this.baselineDifficulty || 'easy'
+      const options = this.baselineOptions && this.baselineOptions[key]
+      return Array.isArray(options) ? options : []
+    },
     submitFeedbackClass () {
       return this.submitMessage.startsWith('提交失败') || this.submitMessage.startsWith('请')
         ? 'error-box'
@@ -618,6 +662,10 @@ export default {
         this.initTaskInfo()
       },
       deep: true
+    },
+    baselineDifficulty () {
+      const first = this.baselineOptionsForDifficulty[0]
+      this.baselineId = first && first.id ? first.id : ''
     }
   },
   methods: {
@@ -735,6 +783,18 @@ export default {
       this.rewardText = config.rewardFunction || '当前暂无奖励说明。'
       this.evaluationText = config.evaluationFunction || '当前暂无评测说明。'
       this.algorithmTags = this.parseAgentNames(task.agentName)
+
+      // single 模式 baseline 选项（由任务配置控制）
+      const baselineOptions = config && config.baselineOptions ? config.baselineOptions : null
+      this.baselineOptions = {
+        easy: Array.isArray(baselineOptions && baselineOptions.easy) ? baselineOptions.easy : [],
+        medium: Array.isArray(baselineOptions && baselineOptions.medium) ? baselineOptions.medium : [],
+        hard: Array.isArray(baselineOptions && baselineOptions.hard) ? baselineOptions.hard : []
+      }
+      if (!this.baselineId) {
+        const first = this.baselineOptionsForDifficulty[0]
+        this.baselineId = first && first.id ? first.id : ''
+      }
     },
     parseTaskConfig (task) {
       if (task.config && typeof task.config === 'object') {
@@ -905,6 +965,14 @@ export default {
 
       if (this.currentBotDifficulty) {
         form.append('difficulty', this.currentBotDifficulty)
+      }
+
+      // single 模式 baseline（不再从 config.json 读取）
+      if (this.currentSubmitMode === 'single') {
+        form.append('baselineDifficulty', this.baselineDifficulty || 'easy')
+        if (this.baselineId) {
+          form.append('baselineId', this.baselineId)
+        }
       }
 
       this.loadingSubmit = true
@@ -1687,6 +1755,46 @@ function titleSafe (value, fallback) {
   margin-bottom: 16px;
   color: #1f4e8c;
   font-size: 14px;
+}
+
+.baseline-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.baseline-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.baseline-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 600;
+}
+
+.baseline-row select {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #303133;
+  font-size: 14px;
+}
+
+.baseline-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.7;
 }
 
 .action-btn-group {

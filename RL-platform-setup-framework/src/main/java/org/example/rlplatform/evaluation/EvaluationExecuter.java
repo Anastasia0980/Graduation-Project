@@ -61,7 +61,6 @@ public class EvaluationExecuter {
 
         Path baselineModelPath = null;
         String agentType = null;
-        String baseline_algorithm = null;
         try {
             JsonNode configRoot = objectMapper.readTree(Paths.get(configPath).toFile());
             agentType = configRoot.path("algorithm").asText(null);
@@ -72,18 +71,14 @@ public class EvaluationExecuter {
                 return;
             }
 
-            baseline_algorithm = configRoot.path("baseline_algorithm").asText(null);
-            if (baseline_algorithm == null || baseline_algorithm.isBlank()) {
+            String baselinePath = evaluation.getBaselineModelPath();
+            if (baselinePath == null || baselinePath.isBlank()) {
                 evaluation.setStatus(EvaluationStatus.FAILED);
-                evaluation.setErrorMessage("baseline_algorithm not found in config: " + configPath);
+                evaluation.setErrorMessage("baseline model path not set for evaluation id: " + evaluation.getId());
                 saveEvaluationResult(evaluation, null, null);
                 return;
             }
-
-            // {environment}\{agent}\baseline.pth，例如 LunarLander\dqn\baseline.pth
-            baselineModelPath = Paths.get(evaluation.getEnvironment(), baseline_algorithm.toLowerCase(), "baseline.pth");
-
-            // System.out.println("baseline model path: " + baselineModelPath.toString());
+            baselineModelPath = Paths.get(baselinePath);
 
         } catch (Exception e) {
             evaluation.setStatus(EvaluationStatus.FAILED);

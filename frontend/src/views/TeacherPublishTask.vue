@@ -247,11 +247,12 @@
               <select v-model='taskForm.environmentCode'>
                 <option value='tictactoe_v3'>tictactoe_v3</option>
                 <option value='connect_four_v3'>connect_four_v3</option>
+                <option value='LunarLander-v3'>LunarLander-v3</option>
               </select>
             </div>
 
             <div class='form-item full-width'>
-              <label>可用算法</label>
+              <label>学生可选模型</label>
               <div class='algorithm-btn-group'>
                 <button
                   v-for='item in algorithmOptions'
@@ -263,6 +264,171 @@
                 >
                   {{ item }}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if='taskMode === "single"' class='card section-space'>
+          <div class='card-title'>Baseline 配置</div>
+
+          <div class='form-grid'>
+            <div class='form-item full-width'>
+              <label>简单难度</label>
+              <div class='baseline-diff-block'>
+                <div class='baseline-diff-subtitle'>已选</div>
+                <div v-if='(baselineSelectedOptionsByDifficulty.easy || []).length === 0' class='baseline-empty'>未选择</div>
+                <div v-else class='baseline-selected-list'>
+                  <div
+                    v-for='opt in baselineSelectedOptionsByDifficulty.easy'
+                    :key='opt.id'
+                    class='baseline-item'
+                  >
+                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
+                    <button type='button' class='baseline-x-btn' @click='removeBaselineFromSelection("easy", opt.id)'>X</button>
+                  </div>
+                </div>
+
+                <div class='baseline-diff-subtitle'>可选</div>
+                <div v-if='baselineAvailableOptionsByDifficulty.easy.length === 0' class='baseline-empty'>暂无可选</div>
+                <div v-else class='baseline-available-list'>
+                  <div
+                    v-for='opt in baselineAvailableOptionsByDifficulty.easy'
+                    :key='opt.id'
+                    class='baseline-item baseline-item-available'
+                  >
+                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
+                    <div class='baseline-action-buttons'>
+                      <button type='button' class='baseline-add-btn' @click='addBaselineToSelection("easy", opt.id)'>加入</button>
+                      <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog("easy", opt)'>X</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class='baseline-upload-box'>
+                  <div class='baseline-row'>
+                    <span class='baseline-upload-label'>algorithm：</span>
+                    <input v-model='baselineUpload.easy.algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
+                  </div>
+                  <div class='baseline-row'>
+                    <input
+                      type='file'
+                      accept='.pth'
+                      class='baseline-file-input'
+                      @change='handleBaselineFileChange($event, "easy")'
+                    />
+                    <span class='baseline-file-name'>{{ baselineUpload.easy.fileName }}</span>
+                    <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel("easy")'>
+                      上传并加入
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class='form-item full-width'>
+              <label>中等难度</label>
+              <div class='baseline-diff-block'>
+                <div class='baseline-diff-subtitle'>已选</div>
+                <div v-if='(baselineSelectedOptionsByDifficulty.medium || []).length === 0' class='baseline-empty'>未选择</div>
+                <div v-else class='baseline-selected-list'>
+                  <div
+                    v-for='opt in baselineSelectedOptionsByDifficulty.medium'
+                    :key='opt.id'
+                    class='baseline-item'
+                  >
+                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
+                    <button type='button' class='baseline-x-btn' @click='removeBaselineFromSelection("medium", opt.id)'>X</button>
+                  </div>
+                </div>
+
+                <div class='baseline-diff-subtitle'>可选</div>
+                <div v-if='baselineAvailableOptionsByDifficulty.medium.length === 0' class='baseline-empty'>暂无可选</div>
+                <div v-else class='baseline-available-list'>
+                  <div
+                    v-for='opt in baselineAvailableOptionsByDifficulty.medium'
+                    :key='opt.id'
+                    class='baseline-item baseline-item-available'
+                  >
+                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
+                    <div class='baseline-action-buttons'>
+                      <button type='button' class='baseline-add-btn' @click='addBaselineToSelection("medium", opt.id)'>加入</button>
+                      <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog("medium", opt)'>X</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class='baseline-upload-box'>
+                  <div class='baseline-row'>
+                    <span class='baseline-upload-label'>algorithm：</span>
+                    <input v-model='baselineUpload.medium.algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
+                  </div>
+                  <div class='baseline-row'>
+                    <input
+                      type='file'
+                      accept='.pth'
+                      class='baseline-file-input'
+                      @change='handleBaselineFileChange($event, "medium")'
+                    />
+                    <span class='baseline-file-name'>{{ baselineUpload.medium.fileName }}</span>
+                    <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel("medium")'>
+                      上传并加入
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class='form-item full-width'>
+              <label>困难难度</label>
+              <div class='baseline-diff-block'>
+                <div class='baseline-diff-subtitle'>已选</div>
+                <div v-if='(baselineSelectedOptionsByDifficulty.hard || []).length === 0' class='baseline-empty'>未选择</div>
+                <div v-else class='baseline-selected-list'>
+                  <div
+                    v-for='opt in baselineSelectedOptionsByDifficulty.hard'
+                    :key='opt.id'
+                    class='baseline-item'
+                  >
+                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
+                    <button type='button' class='baseline-x-btn' @click='removeBaselineFromSelection("hard", opt.id)'>X</button>
+                  </div>
+                </div>
+
+                <div class='baseline-diff-subtitle'>可选</div>
+                <div v-if='baselineAvailableOptionsByDifficulty.hard.length === 0' class='baseline-empty'>暂无可选</div>
+                <div v-else class='baseline-available-list'>
+                  <div
+                    v-for='opt in baselineAvailableOptionsByDifficulty.hard'
+                    :key='opt.id'
+                    class='baseline-item baseline-item-available'
+                  >
+                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
+                    <div class='baseline-action-buttons'>
+                      <button type='button' class='baseline-add-btn' @click='addBaselineToSelection("hard", opt.id)'>加入</button>
+                      <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog("hard", opt)'>X</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class='baseline-upload-box'>
+                  <div class='baseline-row'>
+                    <span class='baseline-upload-label'>algorithm：</span>
+                    <input v-model='baselineUpload.hard.algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
+                  </div>
+                  <div class='baseline-row'>
+                    <input
+                      type='file'
+                      accept='.pth'
+                      class='baseline-file-input'
+                      @change='handleBaselineFileChange($event, "hard")'
+                    />
+                    <span class='baseline-file-name'>{{ baselineUpload.hard.fileName }}</span>
+                    <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel("hard")'>
+                      上传并加入
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -360,7 +526,7 @@
 </template>
 
 <script>
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 
@@ -390,6 +556,24 @@ export default {
       classOptions: [],
       algorithmOptions: ['DDPG', 'DQN', 'Qlearning'],
       selectedAlgorithms: [],
+      // baseline catalog（来自后端 /baselines/catalog）
+      baselineCatalog: {
+        easy: [],
+        medium: [],
+        hard: []
+      },
+      // baseline 选中项（存 baselineOption.id）
+      baselineSelectedIds: {
+        easy: [],
+        medium: [],
+        hard: []
+      },
+      // baseline 上传输入（一次上传一个 difficulty+algorithm）
+      baselineUpload: {
+        easy: { algorithm: '', file: null, fileName: '当前未选择文件' },
+        medium: { algorithm: '', file: null, fileName: '当前未选择文件' },
+        hard: { algorithm: '', file: null, fileName: '当前未选择文件' }
+      },
       taskForm: {
         name: '',
         classId: '',
@@ -407,6 +591,48 @@ export default {
   },
   created () {
     this.loadClassOptions()
+  },
+  watch: {
+    'taskForm.environmentCode': {
+      immediate: true,
+      handler () {
+        const token = localStorage.getItem('auth_token')
+        if (!token) return
+
+        // 切换环境后 baseline 选项应重新拉取，同时清空已选项
+        this.baselineSelectedIds.easy = []
+        this.baselineSelectedIds.medium = []
+        this.baselineSelectedIds.hard = []
+        this.loadBaselineCatalog(token)
+      }
+    }
+  },
+  computed: {
+    baselineSelectedOptionsByDifficulty () {
+      const buildSelected = (diff) => {
+        const ids = this.baselineSelectedIds?.[diff] || []
+        return ids
+          .map(id => this.getBaselineOptionById(diff, id))
+          .filter(Boolean)
+      }
+      return {
+        easy: buildSelected('easy'),
+        medium: buildSelected('medium'),
+        hard: buildSelected('hard')
+      }
+    },
+    baselineAvailableOptionsByDifficulty () {
+      const buildAvailable = (diff) => {
+        const catalogList = this.baselineCatalog?.[diff] || []
+        const selected = this.baselineSelectedIds?.[diff] || []
+        return catalogList.filter(opt => opt && !selected.includes(opt.id))
+      }
+      return {
+        easy: buildAvailable('easy'),
+        medium: buildAvailable('medium'),
+        hard: buildAvailable('hard')
+      }
+    }
   },
   methods: {
     async loadClassOptions () {
@@ -521,6 +747,176 @@ export default {
         this.selectedAlgorithms.push(name)
       }
     },
+    async loadBaselineCatalog (token) {
+      try {
+        const environment = this.taskForm.environmentCode
+        const response = await fetch(`${API_BASE}/baselines/catalog?environment=${encodeURIComponent(environment)}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          ElMessage.warning(result.message || 'Baseline catalog 加载失败')
+          return
+        }
+
+        const catalog = result.data || {}
+        this.baselineCatalog = {
+          easy: Array.isArray(catalog.easy) ? catalog.easy : [],
+          medium: Array.isArray(catalog.medium) ? catalog.medium : [],
+          hard: Array.isArray(catalog.hard) ? catalog.hard : []
+        }
+      } catch (error) {
+        ElMessage.warning(error.message || 'Baseline catalog 加载失败')
+      }
+    },
+    addBaselineToSelection (difficulty, baselineId) {
+      const list = this.baselineSelectedIds[difficulty] || []
+      if (!list.includes(baselineId)) {
+        this.baselineSelectedIds[difficulty] = [...list, baselineId]
+      }
+    },
+    removeBaselineFromSelection (difficulty, baselineId) {
+      const list = this.baselineSelectedIds[difficulty] || []
+      this.baselineSelectedIds[difficulty] = list.filter(id => id !== baselineId)
+    },
+    getBaselineOptionById (difficulty, baselineId) {
+      const catalogList = this.baselineCatalog?.[difficulty] || []
+      const fromCatalog = catalogList.find(opt => opt && opt.id === baselineId)
+      if (fromCatalog) return fromCatalog
+
+      // 兜底：当 catalog 暂未加载或找不到该 id 时，通过 id 推断展示 label/modelPath
+      const parts = String(baselineId || '').split('-')
+      const algoKey = parts[1] || ''
+      const env = this.taskForm.environmentCode || 'tictactoe_v3'
+      return {
+        id: baselineId,
+        label: algoKey ? String(algoKey).toUpperCase() : baselineId,
+        algorithm: algoKey,
+        modelPath: algoKey ? `${env}/${difficulty}/${algoKey}/baseline.pth` : ''
+      }
+    },
+    handleBaselineFileChange (event, difficulty) {
+      const file = event.target.files && event.target.files[0]
+      if (!file) return
+      this.baselineUpload[difficulty].file = file
+      this.baselineUpload[difficulty].fileName = file.name
+    },
+    async uploadBaselineModel (difficulty) {
+      const upload = this.baselineUpload[difficulty] || {}
+      const algorithm = String(upload.algorithm || '').trim()
+      const file = upload.file
+
+      if (!algorithm) {
+        ElMessage.warning(`请输入${difficulty}算法名`)
+        return
+      }
+      if (!file) {
+        ElMessage.warning(`请选择${difficulty}的 baseline.pth 文件`)
+        return
+      }
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        ElMessage.error('登录信息已失效，请重新登录')
+        return
+      }
+
+      try {
+        const formData = new FormData()
+        formData.append('environment', this.taskForm.environmentCode || 'tictactoe_v3')
+        formData.append('difficulty', difficulty)
+        formData.append('algorithm', algorithm)
+        formData.append('model', file)
+
+        const response = await fetch(`${API_BASE}/baselines/upload`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        })
+
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || 'baseline 上传失败')
+        }
+
+        ElMessage.success('baseline 上传成功')
+
+        await this.loadBaselineCatalog(token)
+
+        const baselineId = `${difficulty}-${algorithm.toLowerCase()}`
+        this.addBaselineToSelection(difficulty, baselineId)
+
+        this.baselineUpload[difficulty].file = null
+        this.baselineUpload[difficulty].fileName = '当前未选择文件'
+      } catch (error) {
+        ElMessage.error(error.message || 'baseline 上传失败，请检查后端是否已启动')
+      }
+    },
+    async softDeleteBaselineFromCatalog (difficulty, opt) {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        ElMessage.error('登录信息已失效，请重新登录')
+        return
+      }
+
+      const baselineId = opt && opt.id ? opt.id : ''
+      const algorithm = opt && (opt.algorithm || opt.label)
+        ? String(opt.algorithm || opt.label)
+        : (baselineId ? String(baselineId).split('-')[1] : '')
+
+      if (!algorithm) {
+        ElMessage.warning('baseline 标识缺失，无法删除')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          '确认将该 baseline 资源删除吗？\n删除后将从可选列表中消失。',
+          '提示',
+          {
+            type: 'warning',
+            confirmButtonText: '确认删除',
+            cancelButtonText: '取消'
+          }
+        )
+      } catch (e) {
+        return
+      }
+
+      const params = new URLSearchParams({
+        environment: this.taskForm.environmentCode || '',
+        difficulty,
+        algorithm
+      })
+
+      try {
+        const response = await fetch(`${API_BASE}/baselines/soft-delete?${params.toString()}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || 'baseline 删除失败')
+        }
+
+        ElMessage.success('baseline 已删除')
+        if (baselineId) {
+          this.removeBaselineFromSelection(difficulty, baselineId)
+        }
+        await this.loadBaselineCatalog(token)
+      } catch (error) {
+        ElMessage.error(error.message || 'baseline 删除失败，请检查后端是否已启动')
+      }
+    },
     getEvaluationModeValue () {
       if (this.taskMode === 'battle') {
         return 'VERSUS'
@@ -535,13 +931,37 @@ export default {
         ? `${this.taskForm.rule}\n\n淘汰赛说明：\n${this.taskForm.tournamentRule}`
         : this.taskForm.rule
 
+      const baselineOptions = {}
+      const env = this.taskForm.environmentCode || 'tictactoe_v3'
+      ;['easy', 'medium', 'hard'].forEach(diff => {
+        const selectedIds = this.baselineSelectedIds[diff] || []
+        const catalogList = this.baselineCatalog[diff] || []
+
+        baselineOptions[diff] = selectedIds.map(id => {
+          const fromCatalog = catalogList.find(opt => opt && opt.id === id)
+          if (fromCatalog) return fromCatalog
+
+          // 兜底：当 catalog 尚未加载/找不到该 id 时，通过 id 推断 modelPath
+          const parts = String(id || '').split('-')
+          const algoKey = parts[1] || ''
+
+          return {
+            id,
+            label: algoKey ? String(algoKey).toUpperCase() : id,
+            algorithm: algoKey,
+            modelPath: `${env}/${diff}/${algoKey}/baseline.pth`
+          }
+        })
+      })
+
       return {
         overview: this.taskForm.intro,
         rules: rulesText,
         observationSpace: this.taskForm.observation,
         actionSpace: this.taskForm.actionSpace,
         rewardFunction: this.taskForm.reward,
-        evaluationFunction: this.taskForm.evaluation
+        evaluationFunction: this.taskForm.evaluation,
+        baselineOptions
       }
     },
     validatePublishForm () {
@@ -558,8 +978,17 @@ export default {
         return false
       }
       if (this.selectedAlgorithms.length === 0) {
-        ElMessage.warning('请至少选择一个可用算法')
+        ElMessage.warning('请至少选择一个学生可选模型')
         return false
+      }
+      if (this.taskMode === 'single') {
+        const totalBaselineSelected = ['easy', 'medium', 'hard'].reduce((sum, diff) => {
+          return sum + ((this.baselineSelectedIds[diff] || []).length)
+        }, 0)
+        if (totalBaselineSelected === 0) {
+          ElMessage.warning('请至少选择一个 baseline')
+          return false
+        }
       }
       return true
     },
@@ -876,6 +1305,158 @@ export default {
 
 .algorithm-btn-active:hover {
   background: #173b69;
+}
+
+.baseline-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.baseline-chip {
+  min-width: 80px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid #dcdfe6;
+  background: #ffffff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.baseline-chip-active {
+  border-color: #1f4e8c;
+  background: #ecf5ff;
+  color: #1f4e8c;
+  font-weight: 600;
+}
+
+.baseline-diff-block {
+  margin-top: 8px;
+}
+
+.baseline-diff-subtitle {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.baseline-empty {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #909399;
+}
+
+.baseline-selected-list,
+.baseline-available-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.baseline-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #ffffff;
+  min-height: 20px;
+}
+
+.baseline-item-available {
+  background: #fafafa;
+}
+
+.baseline-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.baseline-x-btn {
+  border: none;
+  background: #f56c6c;
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 26px;
+  width: 26px;
+  font-size: 12px;
+}
+
+.baseline-add-btn {
+  border: none;
+  background: #1f4e8c;
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.baseline-upload-box {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #eeeeee;
+}
+
+.baseline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.baseline-upload-label {
+  width: 72px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.baseline-algo-input {
+  flex: 1;
+  height: 36px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 0 10px;
+  font-size: 14px;
+  outline: none;
+}
+
+.baseline-file-input {
+  flex: 1;
+}
+
+.baseline-file-name {
+  font-size: 13px;
+  color: #606266;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.baseline-upload-btn {
+  border: none;
+  background: #303133;
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.baseline-upload-btn:hover {
+  background: #1f4e8c;
 }
 
 .bottom-action-row {

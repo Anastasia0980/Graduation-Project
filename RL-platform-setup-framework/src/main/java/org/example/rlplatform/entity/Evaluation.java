@@ -32,6 +32,15 @@ public class Evaluation {
     @Column(nullable = false)
     private Integer episodes;
 
+    @Column(name = "baseline_difficulty")
+    private String baselineDifficulty;
+
+    @Column(name = "baseline_id")
+    private String baselineId;
+
+    @Column(name = "baseline_model_path", columnDefinition = "TEXT")
+    private String baselineModelPath;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EvaluationStatus status = EvaluationStatus.PENDING;
