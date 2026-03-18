@@ -15,6 +15,7 @@
       <TeacherSidebar
         active-menu="task-hall"
         @teacher-home-click="goTeacherHome"
+        @history-click="goHistory"
         @publish-click="goPublishTask"
         @manage-click="goTaskManage"
         @class-data-click="goClassData"
@@ -257,6 +258,9 @@ export default {
     },
     goTaskHall () {
       this.$router.push('/teacher/hall')
+    },
+    goHistory () {
+      this.$router.push('/teacher/history')
     },
     switchRole () {
       sessionStorage.removeItem('mock_logged_out_view')

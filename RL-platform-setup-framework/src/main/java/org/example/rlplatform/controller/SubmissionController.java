@@ -16,10 +16,10 @@ public class SubmissionController {
     private SubmissionService submissionService;
 
     /**
-     * 当前登录学生查看自己的所有提交
+     * 当前登录用户查看自己的所有提交
      */
     @GetMapping("/me/submissions")
-    @PreAuthorize("hasRole('STUDENT')")
+    @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER', 'ADMIN')")
     public Result<List<SubmissionHistoryVO>> listMySubmissions() {
         return Result.success(submissionService.listMySubmissions());
     }

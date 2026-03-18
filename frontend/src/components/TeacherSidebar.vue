@@ -20,6 +20,14 @@
 
     <div
       class='menu-item'
+      :class='{ active: activeMenu === "submission-history" }'
+      @click="$emit('history-click')"
+    >
+      提交历史
+    </div>
+
+    <div
+      class='menu-item'
       :class='{ active: activeMenu === "publish-task" }'
       @click="$emit('publish-click')"
     >
@@ -64,6 +72,7 @@ export default {
   emits: [
     'teacher-home-click',
     'task-hall-click',
+    'history-click',
     'publish-click',
     'manage-click',
     'class-data-click',

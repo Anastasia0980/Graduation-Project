@@ -13,6 +13,7 @@ import TeacherTaskManage from '../views/TeacherTaskManage.vue'
 import TeacherClassData from '../views/TeacherClassData.vue'
 import TeacherExportScore from '../views/TeacherExportScore.vue'
 import TeacherTaskHall from '../views/TeacherTaskHall.vue'
+import TeacherHistory from '../views/TeacherHistory.vue'
 
 import StudentClassJoin from '../views/StudentClassJoin.vue'
 import StudentTournament from '../views/StudentTournament.vue'
@@ -77,6 +78,11 @@ const routes = [
     path: '/teacher/hall',
     name: 'teacherHall',
     component: TeacherTaskHall
+  },
+  {
+    path: '/teacher/history',
+    name: 'teacherHistory',
+    component: TeacherHistory
   },
   {
     path: '/teacher/publish',

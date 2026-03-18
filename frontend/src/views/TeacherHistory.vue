@@ -1,78 +1,74 @@
 <template>
-  <div class="page">
+  <div class='page'>
     <AppTopbar
-      :logged-in="true"
-      :user-name="displayUserName"
-      current-role="teacher"
-      active-nav="home"
-      @platform-click="goTeacherHome"
-      @user-click="goTeacherHome"
-      @switch-role="switchRole"
-      @logout="logout"
+      :logged-in='true'
+      :user-name='displayUserName'
+      current-role='teacher'
+      active-nav='home'
+      @platform-click='goTeacherHome'
+      @user-click='goTeacherHome'
+      @switch-role='switchRole'
+      @logout='logout'
     />
 
-    <div class="layout">
+    <div class='layout'>
       <TeacherSidebar
-        active-menu="task-manage"
-        @teacher-home-click="goTeacherHome"
-        @task-hall-click="goTaskHall"
-        @history-click="goHistory"
-        @publish-click="goPublishTask"
-        @manage-click="goTaskManage"
-        @class-data-click="goClassData"
-        @export-click="goExportScore"
+        active-menu='submission-history'
+        @teacher-home-click='goTeacherHome'
+        @task-hall-click='goTaskHall'
+        @publish-click='goPublishTask'
+        @manage-click='goTaskManage'
+        @class-data-click='goClassData'
+        @export-click='goExportScore'
+        @history-click='goHistory'
       />
 
-      <main class="content-area">
-        <div class="page-header">
-          <div class="header-left">
-            <button class="back-btn" @click="goBack">返回</button>
-            <h2>学生提交情况</h2>
-          </div>
+      <main class='content-area'>
+        <div class='page-header'>
+          <h2>提交历史</h2>
         </div>
 
-        <div class="card">
-          <table class="common-table">
+        <div class='table-card'>
+          <table class='history-table'>
             <thead>
               <tr>
-                <th>学生姓名</th>
                 <th>任务名称</th>
                 <th>提交模型</th>
                 <th>提交时间</th>
                 <th>测评状态</th>
-                <th>胜负关系</th>
+                <th>对手</th>
+                <th>结果</th>
                 <th>录像</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-if="loading">
-                <td colspan="7" class="table-empty-cell">提交记录加载中...</td>
+              <tr v-if='loading'>
+                <td colspan='7' class='empty-cell'>加载中...</td>
               </tr>
-              <tr v-else-if="pagedSubmissionList.length === 0">
-                <td colspan="7" class="table-empty-cell">当前暂无提交记录</td>
+
+              <tr v-else-if='pagedHistoryList.length === 0'>
+                <td colspan='7' class='empty-cell'>当前暂无提交记录</td>
               </tr>
-              <tr v-else v-for="item in pagedSubmissionList" :key="item.id">
-                <td>
-                  <span class="student-link" @click="goStudentDetail(item.studentId)">
-                    {{ item.studentName }}
-                  </span>
-                </td>
+
+              <tr v-else v-for='item in pagedHistoryList' :key='item.evaluationId'>
                 <td>{{ item.taskName }}</td>
                 <td>{{ item.modelName }}</td>
                 <td>{{ item.submitTime }}</td>
                 <td>{{ item.status }}</td>
+                <td>{{ item.opponent }}</td>
                 <td>{{ item.result }}</td>
                 <td>
                   <button
-                    v-if="item.hasVideo"
-                    class="table-btn"
-                    @click="openVideo(item)"
+                    v-if='item.hasVideo'
+                    class='table-btn'
+                    @click='openVideo(item)'
                   >
                     录像回放
                   </button>
+
                   <button
                     v-else
-                    class="table-btn disabled-btn"
+                    class='table-btn disabled-btn'
                     disabled
                   >
                     暂无
@@ -83,36 +79,44 @@
           </table>
 
           <CommonPagination
-            v-model:currentPage="currentPage"
-            v-model:pageSize="pageSize"
-            :total="submissionList.length"
-            :page-size-options="[5, 10, 20]"
+            v-model:currentPage='historyPage'
+            v-model:pageSize='historyPageSize'
+            :total='historyList.length'
+            :page-size-options='[5, 10, 20]'
           />
         </div>
       </main>
     </div>
 
-    <div v-if="videoVisible" class="video-mask" @click="closeVideo">
-      <div class="video-dialog" @click.stop>
-        <div class="video-dialog-header">
-          <div class="video-dialog-title">录像回放</div>
-          <button class="close-btn" @click="closeVideo">关闭</button>
+    <div v-if='videoVisible' class='video-mask' @click='closeVideo'>
+      <div class='video-dialog' @click.stop>
+        <div class='video-dialog-header'>
+          <div class='video-dialog-title'>录像回放</div>
+          <button class='close-btn' @click='closeVideo'>关闭</button>
         </div>
 
-        <div class="video-dialog-body">
-          <div class="video-meta">
-            <div class="video-task-name">{{ currentVideo.taskName }}</div>
-            <div class="video-model-name">模型文件：{{ currentVideo.modelName }}</div>
+        <div class='video-dialog-body'>
+          <div class='video-meta'>
+            <div class='video-task-name'>{{ currentVideo.taskName }}</div>
+            <div class='video-model-name'>模型文件：{{ currentVideo.modelName }}</div>
+          </div>
+
+          <div v-if='videoLoading' class='video-loading-box'>
+            视频加载中...
+          </div>
+
+          <div v-else-if='videoError' class='video-error-box'>
+            {{ videoError }}
           </div>
 
           <video
-            v-if="videoVisible"
-            ref="videoPlayer"
-            class="video-player"
+            v-else-if='videoVisible && currentVideo.videoUrl'
+            ref='videoPlayer'
+            class='video-player'
             controls
-            preload="metadata"
+            preload='metadata'
           >
-            <source :src="currentVideo.videoUrl" type="video/mp4">
+            <source :src='currentVideo.videoUrl' type='video/mp4' />
             当前浏览器不支持视频播放。
           </video>
         </div>
@@ -130,7 +134,7 @@ import CommonPagination from '../components/CommonPagination.vue'
 const API_BASE = 'http://localhost:8080'
 
 export default {
-  name: 'TeacherTaskSubmissionsView',
+  name: 'TeacherHistoryView',
   components: {
     AppTopbar,
     TeacherSidebar,
@@ -138,28 +142,33 @@ export default {
   },
   data () {
     return {
-      displayUserName: localStorage.getItem('auth_name') || '教师',
-      currentPage: 1,
-      pageSize: 5,
       loading: false,
       videoVisible: false,
+      videoLoading: false,
+      videoError: '',
       currentVideo: {
         taskName: '',
         modelName: '',
-        videoUrl: ''
+        videoUrl: '',
+        sourceApiUrl: ''
       },
-      submissionList: []
+      historyPage: 1,
+      historyPageSize: 5,
+      historyList: []
     }
   },
   computed: {
-    pagedSubmissionList () {
-      const start = (this.currentPage - 1) * this.pageSize
-      const end = start + this.pageSize
-      return this.submissionList.slice(start, end)
+    displayUserName () {
+      return localStorage.getItem('auth_name') || '教师'
+    },
+    pagedHistoryList () {
+      const start = (this.historyPage - 1) * this.historyPageSize
+      const end = start + this.historyPageSize
+      return this.historyList.slice(start, end)
     }
   },
   created () {
-    this.loadSubmissionList()
+    this.loadHistoryList()
   },
   methods: {
     getAuthHeaders () {
@@ -168,58 +177,74 @@ export default {
         Authorization: `Bearer ${token}`
       }
     },
-    async loadSubmissionList () {
-      const taskId = this.$route.params.taskId
-      if (!taskId) {
-        this.submissionList = []
+    async loadHistoryList () {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        ElMessage.error('登录信息已失效，请重新登录')
+        this.$router.push('/login')
         return
       }
 
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/assignments/${taskId}/submissions`, {
+        const response = await fetch(`${API_BASE}/me/submissions`, {
           method: 'GET',
           headers: this.getAuthHeaders()
         })
         const result = await response.json()
+
         if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '提交记录加载失败')
+          throw new Error(result.message || '提交历史加载失败')
         }
 
         const list = Array.isArray(result.data) ? result.data : []
-        this.submissionList = list.map(item => ({
-          id: item.evaluationId,
+        this.historyList = list.map(item => ({
           evaluationId: item.evaluationId,
-          evaluationResultId: item.evaluationResultId,
-          studentId: item.studentId,
-          studentName: item.studentName || '未知学生',
           taskName: item.taskTitle || '未知任务',
           modelName: item.modelName || '--',
           submitTime: item.submitTime || '--',
           status: item.status || '--',
+          opponent: item.opponentName || '无',
           result: item.resultText || '-',
-          hasVideo: !!item.hasVideo
+          hasVideo: !!item.hasVideo && !!item.evaluationResultId,
+          sourceApiUrl: item.evaluationResultId
+            ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/video`
+            : ''
         }))
       } catch (error) {
-        this.submissionList = []
-        ElMessage.error(error.message || '提交记录加载失败')
+        this.historyList = []
+        ElMessage.error(error.message || '提交历史加载失败')
       } finally {
         this.loading = false
       }
     },
-    goStudentDetail (studentId) {
-      this.$router.push(`/teacher/student-detail/${studentId}`)
-    },
     async openVideo (item) {
-      if (!item.evaluationResultId) {
-        ElMessage.warning('暂无可播放录像')
-        return
+      this.closeVideoObjectUrlOnly()
+
+      this.currentVideo = {
+        taskName: item.taskName,
+        modelName: item.modelName,
+        videoUrl: '',
+        sourceApiUrl: item.sourceApiUrl
       }
+      this.videoError = ''
+      this.videoLoading = true
+      this.videoVisible = true
 
       try {
-        const response = await fetch(`${API_BASE}/evaluation-results/${item.evaluationResultId}/video`, {
+        const token = localStorage.getItem('auth_token')
+        if (!token) {
+          this.videoError = '当前未登录或登录已过期，请重新登录'
+          ElMessage.error(this.videoError)
+          this.$router.push('/login')
+          return
+        }
+
+        const response = await fetch(item.sourceApiUrl, {
           method: 'GET',
-          headers: this.getAuthHeaders()
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         })
 
         if (!response.ok) {
@@ -232,14 +257,16 @@ export default {
         }
 
         const objectUrl = URL.createObjectURL(blob)
-        this.currentVideo = {
-          taskName: item.taskName,
-          modelName: item.modelName,
-          videoUrl: objectUrl
-        }
-        this.videoVisible = true
+        this.currentVideo.videoUrl = objectUrl
       } catch (error) {
-        ElMessage.error(error.message || '视频加载失败')
+        this.videoError = error.message || '视频加载失败'
+      } finally {
+        this.videoLoading = false
+      }
+    },
+    closeVideoObjectUrlOnly () {
+      if (this.currentVideo.videoUrl) {
+        URL.revokeObjectURL(this.currentVideo.videoUrl)
       }
     },
     closeVideo () {
@@ -248,18 +275,18 @@ export default {
         player.pause()
         player.currentTime = 0
       }
-      if (this.currentVideo.videoUrl && this.currentVideo.videoUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(this.currentVideo.videoUrl)
-      }
+
+      this.closeVideoObjectUrlOnly()
+
       this.currentVideo = {
         taskName: '',
         modelName: '',
-        videoUrl: ''
+        videoUrl: '',
+        sourceApiUrl: ''
       }
+      this.videoError = ''
+      this.videoLoading = false
       this.videoVisible = false
-    },
-    goBack () {
-      this.$router.push('/teacher/tasks')
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
@@ -289,6 +316,10 @@ export default {
     },
     logout () {
       sessionStorage.setItem('mock_logged_out_view', 'true')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
       this.$router.push('/')
     }
   }
@@ -319,75 +350,50 @@ export default {
 
 .page-header {
   margin-bottom: 18px;
-  margin-bottom: 18px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .page-header h2 {
   margin: 0;
   font-size: 22px;
+  font-weight: 700;
   color: #1f2d3d;
 }
 
-.back-btn {
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid #dcdfe6;
+.table-card {
   background: #ffffff;
-  color: #606266;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.card {
-  background: #fff;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
-  padding: 20px;
+  overflow: hidden;
 }
 
-.common-table {
+.history-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.common-table th,
-.common-table td {
+.history-table th,
+.history-table td {
   padding: 14px 12px;
   border-bottom: 1px solid #ebeef5;
   text-align: left;
   font-size: 14px;
 }
 
-.common-table th {
+.history-table th {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
 }
 
-.table-empty-cell {
-  text-align: center;
+.empty-cell {
+  text-align: center !important;
   color: #909399;
 }
 
-.student-link {
-  color: #1f4e8c;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.student-link:hover {
-  text-decoration: underline;
-}
-
 .table-btn {
+  min-width: 84px;
   height: 34px;
-  min-width: 86px;
+  padding: 0 12px;
   border: none;
   border-radius: 4px;
   background: #1f4e8c;
@@ -403,6 +409,10 @@ export default {
 .disabled-btn {
   background: #c0c4cc;
   cursor: not-allowed;
+}
+
+.disabled-btn:hover {
+  background: #c0c4cc;
 }
 
 .video-mask {
@@ -426,7 +436,7 @@ export default {
 }
 
 .video-dialog-header {
-  height: 56px;
+  min-height: 56px;
   padding: 0 20px;
   border-bottom: 1px solid #ebeef5;
   display: flex;
@@ -450,16 +460,21 @@ export default {
   cursor: pointer;
 }
 
+.close-btn:hover {
+  color: #1f4e8c;
+  border-color: #1f4e8c;
+}
+
 .video-dialog-body {
   padding: 20px;
 }
 
 .video-meta {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .video-task-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: #1f2d3d;
   margin-bottom: 8px;
@@ -474,7 +489,26 @@ export default {
   width: 100%;
   max-height: 520px;
   background: #000000;
-  border-radius: 6px;
+  border-radius: 8px;
+}
+
+.video-loading-box,
+.video-error-box {
+  width: 100%;
+  min-height: 220px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #606266;
+  background: #fafafa;
+}
+
+.video-error-box {
+  color: #c45656;
+  background: #fff6f6;
+  border-color: #f3c2c2;
 }
 
 @media (max-width: 900px) {
@@ -486,12 +520,12 @@ export default {
     padding: 16px;
   }
 
-  .card {
+  .table-card {
     overflow-x: auto;
   }
 
-  .common-table {
-    min-width: 980px;
+  .history-table {
+    min-width: 760px;
   }
 }
 </style>

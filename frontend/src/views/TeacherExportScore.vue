@@ -16,6 +16,7 @@
         active-menu='export-score'
         @teacher-home-click='goTeacherHome'
         @task-hall-click='goTaskHall'
+        @history-click='goHistory'
         @publish-click='goPublishTask'
         @manage-click='goTaskManage'
         @class-data-click='goClassData'
@@ -118,6 +119,9 @@ export default {
     },
     goTaskHall () {
       this.$router.push('/teacher/hall')
+    },
+    goHistory () {
+      this.$router.push('/teacher/history')
     },
     goPublishTask () {
       this.$router.push('/teacher/publish')
