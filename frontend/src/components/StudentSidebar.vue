@@ -52,6 +52,14 @@
       >
         提交历史
       </div>
+
+      <div
+        class='menu-item ranking-menu-item'
+        :class='{ active: activeMenu === "ranking" }'
+        @click='goRanking'
+      >
+        排行榜
+      </div>
     </template>
 
     <template v-else>
@@ -84,7 +92,12 @@ export default {
     'open-task-click',
     'ended-task-click',
     'history-click'
-  ]
+  ],
+  methods: {
+    goRanking () {
+      this.$router.push('/student/ranking')
+    }
+  }
 }
 </script>
 
@@ -98,6 +111,8 @@ export default {
   background: #ffffff;
   border-right: 1px solid #dcdfe6;
   padding: 20px 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-title {
@@ -132,6 +147,10 @@ export default {
 
 .menu-item-parent {
   justify-content: space-between;
+}
+
+.ranking-menu-item {
+  margin-top: 0;
 }
 
 .arrow {
@@ -169,6 +188,10 @@ export default {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid #dcdfe6;
+  }
+
+  .ranking-menu-item {
+    margin-top: 0;
   }
 }
 </style>

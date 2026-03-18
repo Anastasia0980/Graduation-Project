@@ -57,6 +57,14 @@
     >
       导出成绩
     </div>
+
+    <div
+      class='menu-item ranking-menu-item'
+      :class='{ active: activeMenu === "ranking" }'
+      @click='goRanking'
+    >
+      排行榜
+    </div>
   </aside>
 </template>
 
@@ -77,7 +85,12 @@ export default {
     'manage-click',
     'class-data-click',
     'export-click'
-  ]
+  ],
+  methods: {
+    goRanking () {
+      this.$router.push('/teacher/ranking')
+    }
+  }
 }
 </script>
 
@@ -91,6 +104,8 @@ export default {
   background: #ffffff;
   border-right: 1px solid #dcdfe6;
   padding: 20px 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-title {
@@ -123,11 +138,19 @@ export default {
   font-weight: 600;
 }
 
+.ranking-menu-item {
+  margin-top: 0;
+}
+
 @media (max-width: 900px) {
   .sidebar {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid #dcdfe6;
+  }
+
+  .ranking-menu-item {
+    margin-top: 0;
   }
 }
 </style>
