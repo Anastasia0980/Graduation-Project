@@ -14,6 +14,7 @@
       <TeacherSidebar
         active-menu="class-data"
         @teacher-home-click="goTeacherHome"
+        @task-hall-click="goTaskHall"
         @publish-click="goPublishTask"
         @manage-click="goTaskManage"
         @class-data-click="goClassData"
@@ -333,6 +334,9 @@ export default {
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
+    },
+    goTaskHall () {
+      this.$router.push('/teacher/hall')
     },
     goPublishTask () {
       this.$router.push('/teacher/publish')

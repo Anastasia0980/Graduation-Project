@@ -651,9 +651,14 @@ export default {
         return
       }
 
+      const role = (localStorage.getItem('auth_role') || '').toUpperCase()
+      const listUrl = role === 'TEACHER'
+        ? `${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`
+        : `${API_BASE}/me/assignments?pageNum=0&pageSize=100`
+
       this.loadingPage = true
       try {
-        const response = await fetch(`${API_BASE}/me/assignments?pageNum=0&pageSize=100`, {
+        const response = await fetch(listUrl, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`

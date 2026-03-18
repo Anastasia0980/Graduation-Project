@@ -12,6 +12,14 @@
 
     <div
       class='menu-item'
+      :class='{ active: activeMenu === "task-hall" }'
+      @click="$emit('task-hall-click')"
+    >
+      任务大厅
+    </div>
+
+    <div
+      class='menu-item'
       :class='{ active: activeMenu === "publish-task" }'
       @click="$emit('publish-click')"
     >
@@ -55,6 +63,7 @@ export default {
   },
   emits: [
     'teacher-home-click',
+    'task-hall-click',
     'publish-click',
     'manage-click',
     'class-data-click',
