@@ -57,4 +57,19 @@ public class EvaluationResultServiceImpl implements EvaluationResultService {
         }
         return new FileSystemResource(file);
     }
+
+    @Override
+    public Resource getLog(Long id) {
+        EvaluationResult er = getById(id);
+        if (er.getResultDir() == null || er.getResultDir().isBlank()) {
+            throw new IllegalArgumentException("no result_dir for evaluation result id: " + id);
+        }
+        String base = (workspace != null && !workspace.isBlank()) ? workspace : Paths.get(System.getProperty("user.dir")).toString();
+        Path logPath = Paths.get(base, er.getResultDir() + ".log");
+        File file = logPath.toFile();
+        if (!file.exists() || !file.isFile()) {
+            throw new IllegalArgumentException("log file not found: " + logPath);
+        }
+        return new FileSystemResource(file);
+    }
 }

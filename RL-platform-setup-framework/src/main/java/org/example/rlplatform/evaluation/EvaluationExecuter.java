@@ -14,8 +14,10 @@ import org.springframework.stereotype.Component;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.TimeUnit;
 
 
@@ -192,6 +194,13 @@ public class EvaluationExecuter {
             if (root != null && root.has("winner")) {
                 er.setWinner(root.path("winner").asInt());
             }
+            String logContent = null;
+            if (jsonLine != null && !jsonLine.isBlank()) {
+                logContent = jsonLine;
+            } else if (root != null) {
+                logContent = root.toString();
+            }
+            writeResultLog(er.getResultDir(), logContent);
             evaluationResultRepository.save(er);
         } catch (Exception e) {
             evaluation.setStatus(EvaluationStatus.FAILED);
@@ -199,6 +208,28 @@ public class EvaluationExecuter {
                 evaluation.setErrorMessage("Save result failed: " + e.getMessage());
             }
         }
+    }
+
+    private void writeResultLog(String resultDir, String content) throws Exception {
+        if (resultDir == null || resultDir.isBlank() || content == null) {
+            return;
+        }
+        String base = (workspaceConfig != null && !workspaceConfig.isBlank())
+                ? workspaceConfig
+                : Paths.get(System.getProperty("user.dir")).toString();
+        Path logPath = Paths.get(base, resultDir + ".log");
+        Path parent = logPath.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(
+                logPath,
+                content + System.lineSeparator(),
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+        );
     }
 
     /** 从脚本输出中提取 JSON 行 */

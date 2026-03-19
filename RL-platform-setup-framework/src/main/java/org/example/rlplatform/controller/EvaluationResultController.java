@@ -5,6 +5,7 @@ import org.example.rlplatform.entity.Result;
 import org.example.rlplatform.service.EvaluationResultService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -43,6 +44,16 @@ public class EvaluationResultController {
         Resource resource = evaluationResultService.getVideo(id);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("video/mp4"))
+                .body(resource);
+    }
+
+    @GetMapping(value = "/{id}/log")
+    public ResponseEntity<Resource> getLog(@PathVariable Long id) {
+        Resource resource = evaluationResultService.getLog(id);
+        String filename = "evaluation-" + id + ".log";
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_PLAIN)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .body(resource);
     }
 

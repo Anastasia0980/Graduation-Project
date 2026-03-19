@@ -78,7 +78,20 @@
                   </button>
                 </td>
                 <td>
-                  <button class='disabled-btn' disabled>下载</button>
+                  <button
+                    v-if='item.hasLog'
+                    class='table-btn'
+                    @click='downloadLog(item)'
+                  >
+                    下载
+                  </button>
+                  <button
+                    v-else
+                    class='disabled-btn'
+                    disabled
+                  >
+                    下载
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -105,6 +118,9 @@
           <div class='video-meta'>
             <div class='video-task-name'>{{ currentVideo.taskName }}</div>
             <div class='video-model-name'>模型文件：{{ currentVideo.modelName }}</div>
+            <div v-if='currentVideo.taskMode.includes("单人")' class='video-hint'>
+              视频左侧为 student，右侧 baseline
+            </div>
           </div>
 
           <div v-if='videoLoading' class='video-loading-box'>
@@ -155,6 +171,7 @@ export default {
       currentVideo: {
         taskName: '',
         modelName: '',
+        taskMode: '',
         videoUrl: '',
         sourceApiUrl: ''
       },
@@ -200,14 +217,19 @@ export default {
         this.historyList = list.map(item => ({
           evaluationId: item.evaluationId,
           taskName: item.taskTitle || '未知任务',
+          taskMode: item.taskMode || '',
           modelName: item.modelName || '--',
           submitTime: item.submitTime || '--',
           status: item.status || '--',
           opponent: item.opponentName || '无',
           result: item.resultText || '-',
           hasVideo: !!item.hasVideo && !!item.evaluationResultId,
+          hasLog: !!item.hasLog && !!item.evaluationResultId,
           sourceApiUrl: item.evaluationResultId
             ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/video`
+            : '',
+          logApiUrl: item.evaluationResultId
+            ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/log`
             : ''
         }))
       } catch (error) {
@@ -254,6 +276,7 @@ export default {
       this.currentVideo = {
         taskName: item.taskName,
         modelName: item.modelName,
+        taskMode: item.taskMode || '',
         videoUrl: '',
         sourceApiUrl: item.sourceApiUrl
       }
@@ -291,6 +314,46 @@ export default {
         this.videoLoading = false
       }
     },
+    async downloadLog (item) {
+      try {
+        const token = localStorage.getItem('auth_token')
+        if (!token) {
+          ElMessage.error('当前未登录或登录已过期，请重新登录')
+          this.$router.push('/login')
+          return
+        }
+        if (!item.logApiUrl) {
+          ElMessage.warning('该记录暂无日志文件')
+          return
+        }
+
+        const response = await fetch(item.logApiUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        if (!response.ok) {
+          throw new Error(`日志下载失败（${response.status}）`)
+        }
+
+        const blob = await response.blob()
+        if (!blob || blob.size === 0) {
+          throw new Error('日志文件为空')
+        }
+
+        const objectUrl = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = objectUrl
+        link.download = `evaluation-${item.evaluationId || 'log'}.log`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(objectUrl)
+      } catch (error) {
+        ElMessage.error(error.message || '日志下载失败')
+      }
+    },
     closeVideoObjectUrlOnly () {
       if (this.currentVideo.videoUrl) {
         URL.revokeObjectURL(this.currentVideo.videoUrl)
@@ -308,6 +371,7 @@ export default {
       this.currentVideo = {
         taskName: '',
         modelName: '',
+        taskMode: '',
         videoUrl: '',
         sourceApiUrl: ''
       }
@@ -384,19 +448,14 @@ export default {
 }
 
 .table-btn {
-  min-width: 84px;
   height: 34px;
-  padding: 0 12px;
+  padding: 0 14px;
   border: none;
   border-radius: 4px;
   background: #1f4e8c;
   color: #ffffff;
   font-size: 13px;
   cursor: pointer;
-}
-
-.table-btn:hover {
-  background: #173b69;
 }
 
 .view-btn,
@@ -483,6 +542,12 @@ export default {
 .video-model-name {
   font-size: 14px;
   color: #606266;
+}
+
+.video-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #909399;
 }
 
 .video-player {

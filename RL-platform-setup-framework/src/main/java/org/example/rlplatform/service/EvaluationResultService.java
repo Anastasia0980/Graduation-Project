@@ -17,4 +17,7 @@ public interface EvaluationResultService {
 
     /** 返回该评测结果目录下第一个视频文件（video_0.mp4），供前端直接播放；无 resultDir 或文件不存在时抛异常 */
     Resource getVideo(Long id);
+
+    /** 返回该评测结果目录对应日志文件（.log） */
+    Resource getLog(Long id);
 }

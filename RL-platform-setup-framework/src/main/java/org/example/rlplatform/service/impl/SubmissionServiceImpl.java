@@ -10,8 +10,12 @@ import org.example.rlplatform.service.SubmissionService;
 import org.example.rlplatform.service.UserService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.example.rlplatform.vo.SubmissionHistoryVO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -25,6 +29,9 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final ModelFileRepository modelFileRepository;
     private final UserService userService;
     private final BattleParticipantRepository battleParticipantRepository;
+
+    @Value("${evaluation.workspace:}")
+    private String workspace;
 
     private static final DateTimeFormatter DATETIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -169,10 +176,12 @@ public class SubmissionServiceImpl implements SubmissionService {
             if (result != null) {
                 vo.setEvaluationResultId(result.getId());
                 vo.setHasVideo(result.getResultDir() != null && !result.getResultDir().isBlank());
+                vo.setHasLog(hasLogFile(result.getResultDir()));
                 vo.setResultText(buildResultText(evaluation, result, participant, currentStudentId));
             } else {
                 vo.setEvaluationResultId(null);
                 vo.setHasVideo(false);
+                vo.setHasLog(false);
                 vo.setResultText("-");
             }
 
@@ -180,6 +189,17 @@ public class SubmissionServiceImpl implements SubmissionService {
         }
 
         return voList;
+    }
+
+    private boolean hasLogFile(String resultDir) {
+        if (resultDir == null || resultDir.isBlank()) {
+            return false;
+        }
+        String base = (workspace != null && !workspace.isBlank())
+                ? workspace
+                : Paths.get(System.getProperty("user.dir")).toString();
+        Path logPath = Paths.get(base, resultDir + ".log");
+        return Files.exists(logPath) && Files.isRegularFile(logPath);
     }
 
     private String mapTaskMode(EvaluationMode mode) {
@@ -239,6 +259,10 @@ public class SubmissionServiceImpl implements SubmissionService {
         ExperimentAssignment as = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
         if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE) {
             return evaluation.getBaselineId();
+        }
+
+        if (participant == null) {
+            return "无";
         }
 
         if ("BOT".equalsIgnoreCase(participant.getOpponentType())) {
