@@ -163,7 +163,7 @@ public class SubmissionServiceImpl implements SubmissionService {
             }
 
             vo.setStatus(mapStatus(evaluation.getStatus()));
-            vo.setOpponentName(buildOpponentName(participant, currentStudentId));
+            vo.setOpponentName(buildOpponentName(evaluation, participant, currentStudentId));
 
             EvaluationResult result = resultMap.get(evaluation.getId());
             if (result != null) {
@@ -235,9 +235,10 @@ public class SubmissionServiceImpl implements SubmissionService {
         return "--";
     }
 
-    private String buildOpponentName(BattleParticipant participant, Integer currentStudentId) {
-        if (participant == null) {
-            return "无";
+    private String buildOpponentName(Evaluation evaluation, BattleParticipant participant, Integer currentStudentId) {
+        ExperimentAssignment as = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
+        if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE) {
+            return evaluation.getBaselineId();
         }
 
         if ("BOT".equalsIgnoreCase(participant.getOpponentType())) {
@@ -267,21 +268,31 @@ public class SubmissionServiceImpl implements SubmissionService {
     }
 
     private String buildResultText(Evaluation evaluation, EvaluationResult result, BattleParticipant participant, Integer currentStudentId) {
+        ExperimentAssignment as = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
+        
         if (evaluation.getStatus() == EvaluationStatus.PENDING || evaluation.getStatus() == EvaluationStatus.RUNNING) {
             return "-";
         }
 
         if (evaluation.getStatus() == EvaluationStatus.FAILED ||
                 (result != null && result.getResult() != null && result.getResult() == 1)) {
-            return "失败";
+            return "-";
         }
 
-        if (participant == null) {
-            return "已完成";
+        if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE && result.getWinner() == 1) {
+            return "获胜";
+        }
+
+        if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE && result.getWinner() == 0) {
+            return "落败";
+        }
+
+        if (participant == null && result.getWinner() == null) {
+            return "-";
         }
 
         if (result == null || result.getWinner() == null) {
-            return "已完成";
+            return "-";
         }
 
         if (result.getWinner() == 0) {
@@ -289,17 +300,17 @@ public class SubmissionServiceImpl implements SubmissionService {
         }
 
         if (currentStudentId == null) {
-            return "已出结果";
+            return "-";
         }
 
         if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == currentStudentId) {
-            return result.getWinner() == 1 ? "获胜" : "失败";
+            return result.getWinner() == 1 ? "获胜" : "落败";
         }
 
         if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == currentStudentId) {
-            return result.getWinner() == 2 ? "获胜" : "失败";
+            return result.getWinner() == 2 ? "获胜" : "落败";
         }
 
-        return "已出结果";
+        return "-";
     }
 }

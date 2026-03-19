@@ -553,7 +553,7 @@ export default {
       taskTitle: '井字棋任务',
       taskMode: 'single',
       modeLabelText: '单人模式',
-      taskSubtitle: 'PettingZoo 环境下的强化学习测评任务',
+      taskSubtitle: '强化学习测评任务',
       taskStatusText: '开放中',
       environmentText: 'tictactoe_v3',
       deadlineText: '--',
@@ -831,7 +831,7 @@ export default {
     applyTaskModeInfo (taskMode) {
       if (taskMode === 'single') {
         this.modeLabelText = '单人模式'
-        this.taskSubtitle = 'PettingZoo 环境下的单模型独立测评任务'
+        this.taskSubtitle = '单模型独立测评任务'
       } else if (taskMode === 'battle') {
         this.modeLabelText = '对战模式'
         this.taskSubtitle = '学生点击提交后可继续选择真人对战或人机对战'
@@ -967,7 +967,7 @@ export default {
         form.append('difficulty', this.currentBotDifficulty)
       }
 
-      // single 模式 baseline（不再从 config.json 读取）
+      // single 模式 baseline
       if (this.currentSubmitMode === 'single') {
         form.append('baselineDifficulty', this.baselineDifficulty || 'easy')
         if (this.baselineId) {
@@ -1015,6 +1015,10 @@ export default {
         } else if (payload.id) {
           this.evaluationId = payload.id
         }
+
+        this.showSubmitDialog = false
+        const role = (localStorage.getItem('auth_role') || '').toUpperCase()
+        this.$router.push(role === 'TEACHER' ? '/teacher/history' : '/student/history')
       } catch (e) {
         this.submitMessage = `提交失败：${e.message}`
       } finally {

@@ -554,7 +554,7 @@ export default {
       hardBotConfigFileName: '当前未选择文件',
       hardBotModelFileName: '当前未选择文件',
       classOptions: [],
-      algorithmOptions: ['DDPG', 'DQN', 'Qlearning'],
+      algorithmOptions: ['DDPG', 'DQN', 'Qlearning', 'PPO'],
       selectedAlgorithms: [],
       // baseline catalog（来自后端 /baselines/catalog）
       baselineCatalog: {

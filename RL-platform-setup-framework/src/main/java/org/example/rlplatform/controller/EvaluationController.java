@@ -2,6 +2,7 @@ package org.example.rlplatform.controller;
 
 import org.example.rlplatform.entity.Evaluation;
 import org.example.rlplatform.entity.Result;
+import org.example.rlplatform.evaluation.EvaluationRunner;
 import org.example.rlplatform.service.EvaluationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -13,6 +14,9 @@ public class EvaluationController {
 
     @Autowired
     private EvaluationService evaluationService;
+
+    @Autowired
+    private EvaluationRunner evaluationRunner;
 
     /**
      * 仅供测试，Evaluation创建现需通过AssignmentController的createEvaluation方法完成
@@ -33,7 +37,7 @@ public class EvaluationController {
      */
     @PostMapping("/{id}/run")
     public Result<Void> runEvaluation(@PathVariable Long id) {
-        evaluationService.runEvaluationAsync(id);
+        evaluationRunner.runAsync(id);
         return Result.success();
     }
 

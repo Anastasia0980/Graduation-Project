@@ -4,6 +4,7 @@ import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
 import org.example.rlplatform.entity.*;
 import org.example.rlplatform.Repository.EvaluationRepository;
 import org.example.rlplatform.evaluation.EvaluationExecuter;
+import org.example.rlplatform.evaluation.EvaluationRunner;
 import org.example.rlplatform.service.ModelFileService;
 import org.example.rlplatform.service.EvaluationService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
@@ -13,7 +14,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -44,6 +44,9 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private EvaluationRunner evaluationRunner;
+
     @Value("${evaluation.baselineRoot:}")
     private String baselineRoot;
 
@@ -57,26 +60,6 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     public Evaluation getEvaluationById(long id) {
         return evaluationRepository.findById(id).orElseThrow(RuntimeException::new);
-    }
-
-    @Override
-    public void runEvaluation(Long evaluationId) {
-        Evaluation evaluation = getEvaluationById(evaluationId);
-        // if (evaluation.getStatus() == EvaluationStatus.RUNNING) {
-        //     throw new RuntimeException("Evaluation is already running");
-        // } else if (evaluation.getStatus() == EvaluationStatus.FINISHED) {
-        //     throw new RuntimeException("Evaluation is already finished");
-        // }
-        evaluation.setErrorMessage(null);
-        evaluation.setStatus(EvaluationStatus.RUNNING);
-        evaluation.setUpdateTime(now());
-        evaluationRepository.save(evaluation);
-
-        evaluationExecuter.execute(evaluation);
-
-        evaluation.setUpdateTime(now());
-        evaluationRepository.save(evaluation);
-
     }
 
     @Override
@@ -173,7 +156,7 @@ public class EvaluationServiceImpl implements EvaluationService {
             evaluation.setUpdateTime(now());
             evaluationRepository.save(evaluation);
 
-            runEvaluationAsync(evaluation.getId());
+            evaluationRunner.runAsync(evaluation.getId());
 
         } catch (Exception e) {
             if (evaluation != null) {
@@ -195,12 +178,6 @@ public class EvaluationServiceImpl implements EvaluationService {
 //        evaluationRepository.save(evaluation);
 //
 //    }
-
-    @Override
-    @Async("evaluationExecutor")
-    public void runEvaluationAsync(long evaluationId) {
-        runEvaluation(evaluationId);
-    }
 
     @Override
     public Page<Evaluation> list(Integer pageNum, Integer pageSize, Integer assignmentId, Integer studentId, String status) {

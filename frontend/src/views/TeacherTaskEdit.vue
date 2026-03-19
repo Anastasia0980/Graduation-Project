@@ -579,7 +579,7 @@ export default {
 
       classOptions: [],
       classMap: {},
-      algorithmOptions: ['DDPG', 'DQN', 'Qlearning'],
+      algorithmOptions: ['DDPG', 'DQN', 'Qlearning', 'PPO'],
       selectedAlgorithms: [],
       // baseline catalog（来自后端 /assignments/{id}/baseline-catalog）
       baselineCatalog: {

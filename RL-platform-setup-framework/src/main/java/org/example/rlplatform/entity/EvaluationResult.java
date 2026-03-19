@@ -18,7 +18,7 @@ public class EvaluationResult {
     private Integer result; // 0-成功  1-失败
 
     @Column
-    private Integer winner;
+    private Integer winner; //当particpant=null时（即单人模式下与baseline比较时），winner=1表示学生获胜，winner=0表示学生落败
 
     @Column(name = "detailed_results", columnDefinition = "JSON")
     private String detailedResults;

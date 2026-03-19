@@ -33,3 +33,11 @@ evaluation:
   python: ""
   script: ""
   workspace: ""
+  baselineRoot: ""
+
+battle:
+  python: ""
+  script: ""
+
+system:
+  bot-root: ""

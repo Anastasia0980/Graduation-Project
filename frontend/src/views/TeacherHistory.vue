@@ -39,6 +39,7 @@
                 <th>对手</th>
                 <th>结果</th>
                 <th>录像</th>
+                <th>日志</th>
               </tr>
             </thead>
             <tbody>
@@ -73,6 +74,9 @@
                   >
                     暂无
                   </button>
+                </td>
+                <td>
+                  <button class='disabled-btn' disabled>下载</button>
                 </td>
               </tr>
             </tbody>
@@ -406,13 +410,20 @@ export default {
   background: #173b69;
 }
 
+.view-btn,
+.close-btn,
 .disabled-btn {
-  background: #c0c4cc;
-  cursor: not-allowed;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
-.disabled-btn:hover {
-  background: #c0c4cc;
+.disabled-btn {
+  border: 1px solid #dcdfe6;
+  background: #f5f7fa;
+  color: #bfc4cd;
+  cursor: not-allowed;
 }
 
 .video-mask {
