@@ -18,7 +18,6 @@
         :task-menu-open='false'
         @profile-click='goProfile'
         @class-click='goStudentClass'
-        @tournament-click='goTournament'
         @toggle-task-menu='goHomeOpenTasks'
         @open-task-click='goHomeOpenTasks'
         @ended-task-click='goHomeEndedTasks'
@@ -40,16 +39,19 @@
                 <th>测评状态</th>
                 <th>对手</th>
                 <th>结果</th>
+                <th>详细结果</th>
+                <th>日志</th>
                 <th>录像</th>
+                <th>下载</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if='loading'>
-                <td colspan='7' class='empty-cell'>加载中...</td>
+                <td colspan='10' class='empty-cell'>加载中...</td>
               </tr>
 
               <tr v-else-if='pagedHistoryList.length === 0'>
-                <td colspan='7' class='empty-cell'>当前暂无提交记录</td>
+                <td colspan='10' class='empty-cell'>当前暂无提交记录</td>
               </tr>
 
               <tr v-else v-for='item in pagedHistoryList' :key='item.evaluationId'>
@@ -59,6 +61,24 @@
                 <td>{{ item.status }}</td>
                 <td>{{ item.opponent }}</td>
                 <td>{{ item.result }}</td>
+                <td class='detail-cell'>{{ item.detailedResult }}</td>
+                <td>
+                  <button
+                    v-if='item.hasLog'
+                    class='table-btn'
+                    @click='downloadLog(item)'
+                  >
+                    下载日志
+                  </button>
+
+                  <button
+                    v-else
+                    class='table-btn disabled-btn'
+                    disabled
+                  >
+                    暂无
+                  </button>
+                </td>
                 <td>
                   <button
                     v-if='item.hasVideo'
@@ -66,6 +86,23 @@
                     @click='openVideo(item)'
                   >
                     录像回放
+                  </button>
+
+                  <button
+                    v-else
+                    class='table-btn disabled-btn'
+                    disabled
+                  >
+                    暂无
+                  </button>
+                </td>
+                <td>
+                  <button
+                    v-if='item.canDownloadModel'
+                    class='table-btn'
+                    @click='downloadModel(item)'
+                  >
+                    下载模型
                   </button>
 
                   <button
@@ -195,15 +232,25 @@ export default {
         const list = Array.isArray(result.data) ? result.data : []
         this.historyList = list.map(item => ({
           evaluationId: item.evaluationId,
+          evaluationResultId: item.evaluationResultId,
           taskName: item.taskTitle || '未知任务',
           modelName: item.modelName || '--',
           submitTime: item.submitTime || '--',
           status: item.status || '--',
           opponent: item.opponentName || '无',
           result: item.resultText || '-',
+          detailedResult: item.detailedResult || '-',
+          hasLog: !!item.evaluationResultId,
           hasVideo: !!item.hasVideo && !!item.evaluationResultId,
+          canDownloadModel: !!item.evaluationId,
           sourceApiUrl: item.evaluationResultId
             ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/video`
+            : '',
+          logApiUrl: item.evaluationResultId
+            ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/log`
+            : '',
+          modelDownloadUrl: item.evaluationId
+            ? `${API_BASE}/evaluation-results/evaluation/${item.evaluationId}/model-package`
             : ''
         }))
       } catch (error) {
@@ -224,9 +271,6 @@ export default {
     },
     goStudentClass () {
       this.$router.push('/student/class')
-    },
-    goTournament () {
-      this.$router.push('/student/tournament')
     },
     goHistory () {
       this.$router.push('/student/history')
@@ -286,6 +330,53 @@ export default {
       } finally {
         this.videoLoading = false
       }
+    },
+    async downloadLog (item) {
+      try {
+        await this.fetchAndDownload(item.logApiUrl, `${item.taskName || 'evaluation'}_log.txt`)
+        ElMessage.success('日志下载成功')
+      } catch (error) {
+        ElMessage.error(error.message || '日志下载失败')
+      }
+    },
+    async downloadModel (item) {
+      try {
+        await this.fetchAndDownload(item.modelDownloadUrl, `${item.taskName || 'evaluation'}_model.zip`)
+        ElMessage.success('模型下载成功')
+      } catch (error) {
+        ElMessage.error(error.message || '模型下载失败')
+      }
+    },
+    async fetchAndDownload (url, filename) {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        throw new Error('当前未登录或登录已过期')
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`下载失败（${response.status}）`)
+      }
+
+      const blob = await response.blob()
+      if (!blob || blob.size === 0) {
+        throw new Error('下载文件为空')
+      }
+
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(objectUrl)
     },
     closeVideoObjectUrlOnly () {
       if (this.currentVideo.videoUrl) {
@@ -366,6 +457,7 @@ export default {
   border-bottom: 1px solid #ebeef5;
   text-align: left;
   font-size: 14px;
+  vertical-align: middle;
 }
 
 .history-table th {
@@ -377,6 +469,13 @@ export default {
 .empty-cell {
   text-align: center !important;
   color: #909399;
+}
+
+.detail-cell {
+  min-width: 220px;
+  white-space: normal;
+  line-height: 1.6;
+  color: #606266;
 }
 
 .table-btn {
@@ -514,7 +613,7 @@ export default {
   }
 
   .history-table {
-    min-width: 760px;
+    min-width: 1320px;
   }
 }
 </style>

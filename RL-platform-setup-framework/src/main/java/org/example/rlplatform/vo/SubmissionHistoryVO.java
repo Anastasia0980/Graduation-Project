@@ -25,7 +25,11 @@ public class SubmissionHistoryVO {
 
     private String opponentName;
 
+    private Integer opponentStudentId;
+
     private String resultText;
+
+    private String detailedResult;
 
     private Long evaluationResultId;
 

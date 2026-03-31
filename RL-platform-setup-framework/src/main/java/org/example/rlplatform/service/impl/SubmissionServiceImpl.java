@@ -1,5 +1,7 @@
 package org.example.rlplatform.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.rlplatform.Repository.BattleParticipantRepository;
 import org.example.rlplatform.Repository.EvaluationRepository;
 import org.example.rlplatform.Repository.EvaluationResultRepository;
@@ -25,6 +27,8 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final ModelFileRepository modelFileRepository;
     private final UserService userService;
     private final BattleParticipantRepository battleParticipantRepository;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final DateTimeFormatter DATETIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -154,7 +158,9 @@ public class SubmissionServiceImpl implements SubmissionService {
             }
 
             BattleParticipant participant = participantMap.get(evaluation.getId());
-            vo.setModelName(buildModelName(evaluation, modelFile, participant, currentStudentId));
+            Integer perspectiveStudentId = currentStudentId != null ? currentStudentId : evaluation.getStudentId();
+
+            vo.setModelName(buildModelName(evaluation, modelFile, participant, perspectiveStudentId));
 
             if (evaluation.getCreateTime() != null) {
                 vo.setSubmitTime(evaluation.getCreateTime().format(DATETIME_FORMATTER));
@@ -163,17 +169,20 @@ public class SubmissionServiceImpl implements SubmissionService {
             }
 
             vo.setStatus(mapStatus(evaluation.getStatus()));
-            vo.setOpponentName(buildOpponentName(participant, currentStudentId));
+            vo.setOpponentName(buildOpponentName(participant, perspectiveStudentId));
+            vo.setOpponentStudentId(buildOpponentStudentId(participant, perspectiveStudentId));
 
             EvaluationResult result = resultMap.get(evaluation.getId());
             if (result != null) {
                 vo.setEvaluationResultId(result.getId());
                 vo.setHasVideo(result.getResultDir() != null && !result.getResultDir().isBlank());
-                vo.setResultText(buildResultText(evaluation, result, participant, currentStudentId));
+                vo.setResultText(buildResultText(evaluation, result, participant, perspectiveStudentId));
+                vo.setDetailedResult(buildDetailedResult(evaluation, result, participant, perspectiveStudentId));
             } else {
                 vo.setEvaluationResultId(null);
                 vo.setHasVideo(false);
                 vo.setResultText("-");
+                vo.setDetailedResult("-");
             }
 
             voList.add(vo);
@@ -201,7 +210,7 @@ public class SubmissionServiceImpl implements SubmissionService {
         };
     }
 
-    private String buildModelName(Evaluation evaluation, ModelFile modelFile, BattleParticipant participant, Integer currentStudentId) {
+    private String buildModelName(Evaluation evaluation, ModelFile modelFile, BattleParticipant participant, Integer perspectiveStudentId) {
         if (modelFile != null && modelFile.getFileName() != null && !modelFile.getFileName().isBlank()) {
             return modelFile.getFileName();
         }
@@ -210,14 +219,14 @@ public class SubmissionServiceImpl implements SubmissionService {
             return "--";
         }
 
-        if (currentStudentId != null) {
-            if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == currentStudentId) {
+        if (perspectiveStudentId != null) {
+            if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == perspectiveStudentId) {
                 return participant.getStudent1ModelName() == null || participant.getStudent1ModelName().isBlank()
                         ? "model.pt"
                         : participant.getStudent1ModelName();
             }
 
-            if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == currentStudentId) {
+            if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == perspectiveStudentId) {
                 return participant.getStudent2ModelName() == null || participant.getStudent2ModelName().isBlank()
                         ? "model.pt"
                         : participant.getStudent2ModelName();
@@ -235,7 +244,7 @@ public class SubmissionServiceImpl implements SubmissionService {
         return "--";
     }
 
-    private String buildOpponentName(BattleParticipant participant, Integer currentStudentId) {
+    private String buildOpponentName(BattleParticipant participant, Integer perspectiveStudentId) {
         if (participant == null) {
             return "无";
         }
@@ -245,17 +254,17 @@ public class SubmissionServiceImpl implements SubmissionService {
         }
 
         if ("HUMAN".equalsIgnoreCase(participant.getOpponentType())) {
-            if (currentStudentId == null) {
+            if (perspectiveStudentId == null) {
                 return "真人对手";
             }
 
-            if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == currentStudentId) {
+            if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == perspectiveStudentId) {
                 if (participant.getStudent2Id() == null) return "真人对手";
                 User other = userService.findByIdAndIsDeletedFalse(participant.getStudent2Id().intValue());
                 return other != null ? other.getUsername() : "真人对手";
             }
 
-            if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == currentStudentId) {
+            if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == perspectiveStudentId) {
                 User other = userService.findByIdAndIsDeletedFalse(participant.getStudent1Id().intValue());
                 return other != null ? other.getUsername() : "真人对手";
             }
@@ -266,7 +275,31 @@ public class SubmissionServiceImpl implements SubmissionService {
         return "无";
     }
 
-    private String buildResultText(Evaluation evaluation, EvaluationResult result, BattleParticipant participant, Integer currentStudentId) {
+    private Integer buildOpponentStudentId(BattleParticipant participant, Integer perspectiveStudentId) {
+        if (participant == null) {
+            return null;
+        }
+
+        if (!"HUMAN".equalsIgnoreCase(participant.getOpponentType())) {
+            return null;
+        }
+
+        if (perspectiveStudentId == null) {
+            return null;
+        }
+
+        if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == perspectiveStudentId) {
+            return participant.getStudent2Id() == null ? null : participant.getStudent2Id().intValue();
+        }
+
+        if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == perspectiveStudentId) {
+            return participant.getStudent1Id() == null ? null : participant.getStudent1Id().intValue();
+        }
+
+        return null;
+    }
+
+    private String buildResultText(Evaluation evaluation, EvaluationResult result, BattleParticipant participant, Integer perspectiveStudentId) {
         if (evaluation.getStatus() == EvaluationStatus.PENDING || evaluation.getStatus() == EvaluationStatus.RUNNING) {
             return "-";
         }
@@ -288,18 +321,87 @@ public class SubmissionServiceImpl implements SubmissionService {
             return "平局";
         }
 
-        if (currentStudentId == null) {
+        if (perspectiveStudentId == null) {
             return "已出结果";
         }
 
-        if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == currentStudentId) {
+        if (participant.getStudent1Id() != null && participant.getStudent1Id().intValue() == perspectiveStudentId) {
             return result.getWinner() == 1 ? "获胜" : "失败";
         }
 
-        if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == currentStudentId) {
+        if (participant.getStudent2Id() != null && participant.getStudent2Id().intValue() == perspectiveStudentId) {
             return result.getWinner() == 2 ? "获胜" : "失败";
         }
 
         return "已出结果";
+    }
+
+    private String buildDetailedResult(Evaluation evaluation, EvaluationResult result, BattleParticipant participant, Integer perspectiveStudentId) {
+        if (evaluation.getStatus() == EvaluationStatus.PENDING || evaluation.getStatus() == EvaluationStatus.RUNNING) {
+            return "-";
+        }
+
+        if (evaluation.getStatus() == EvaluationStatus.FAILED ||
+                (result != null && result.getResult() != null && result.getResult() == 1)) {
+            if (evaluation.getErrorMessage() != null && !evaluation.getErrorMessage().isBlank()) {
+                return "测评失败：" + evaluation.getErrorMessage();
+            }
+            return "测评失败";
+        }
+
+        JsonNode root = parseJson(result == null ? null : result.getDetailedResults());
+        if (root == null) {
+            return "已完成";
+        }
+
+        if (participant == null) {
+            int rounds = 0;
+            if (root.has("student_rewards") && root.path("student_rewards").isArray()) {
+                rounds = root.path("student_rewards").size();
+            }
+            if (rounds <= 0 && evaluation.getEpisodes() != null) {
+                rounds = evaluation.getEpisodes();
+            }
+
+            double studentAvgReward = root.path("student_avg_reward").asDouble(0.0);
+
+            boolean hasBaseline = root.has("baseline_rewards")
+                    && root.path("baseline_rewards").isArray()
+                    && root.path("baseline_rewards").size() > 0;
+
+            if (hasBaseline) {
+                double baselineAvgReward = root.path("baseline_avg_reward").asDouble(0.0);
+                return String.format("共%d轮，平均奖励 %.2f；基线平均奖励 %.2f", rounds, studentAvgReward, baselineAvgReward);
+            }
+
+            return String.format("共%d轮，平均奖励 %.2f", rounds, studentAvgReward);
+        }
+
+        int games = root.path("games").asInt(evaluation.getEpisodes() == null ? 0 : evaluation.getEpisodes());
+        int win1 = root.path("win1").asInt(0);
+        int win2 = root.path("win2").asInt(0);
+        int draw = root.path("draw").asInt(0);
+
+        int myWin = win1;
+        int myLose = win2;
+
+        if (perspectiveStudentId != null && participant.getStudent2Id() != null
+                && participant.getStudent2Id().intValue() == perspectiveStudentId) {
+            myWin = win2;
+            myLose = win1;
+        }
+
+        return String.format("%d轮：%d胜%d负%d平", games, myWin, myLose, draw);
+    }
+
+    private JsonNode parseJson(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(text);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

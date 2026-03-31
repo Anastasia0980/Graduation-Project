@@ -63,6 +63,10 @@ export default {
         return
       }
 
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
       this.loading = true
       try {
         const params = new URLSearchParams()

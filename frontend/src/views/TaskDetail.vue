@@ -2,7 +2,7 @@
   <div class='detail-page'>
     <AppTopbar
       :logged-in='true'
-      user-name='张三'
+      :user-name='displayUserName'
       current-role='student'
       active-nav='home'
       @platform-click='goHomeOpenTasks'
@@ -101,14 +101,20 @@
 
           <template v-else-if='taskMode === "battle"'>
             <div class='side-desc'>
-              当前任务为对战模式。点击下方按钮后，可继续选择“真人对战”或“人机对战”。
+              当前任务为对战模式。请先上传自己的对战模型，上传成功后可在“已提交模型”中选择自己的模型，再选择其他同学已上传的模型发起异步挑战。
             </div>
             <button
               class='primary-btn submit-action-btn'
               :class='{ "ended-submit-btn": isTaskEnded }'
               @click='handleBattleEntryClick'
             >
-              选择对战方式
+              上传或选择对战方式
+            </button>
+            <button
+              class='secondary-btn submit-action-btn side-secondary'
+              @click='openMyBattleModelsDialog'
+            >
+              查看已提交模型
             </button>
 
             <div class='mini-bot-info'>
@@ -195,8 +201,8 @@
               <div class='ranking-score'>{{ item.score }}</div>
             </div>
           </div>
-          <button class='secondary-btn show-all-btn' @click='showRankingDialog = true'>
-            展开所有
+          <button class='secondary-btn show-all-btn' @click='handleRankingAction'>
+            {{ taskMode === 'battle' ? '查看详情' : '展开所有' }}
           </button>
         </div>
       </aside>
@@ -212,8 +218,9 @@
         <div class='dialog-body'>
           <div class='battle-option'>
             <div class='battle-option-title'>真人对战</div>
-            <div class='battle-option-desc'>学生与其他学生进行对战，提交后进入匹配流程。</div>
-            <button class='primary-btn option-btn' @click='openSubmitDialog("human")'>真人对战</button>
+            <div class='battle-option-desc'>先上传当前版本模型并保存到“已提交模型”，后续可随时返回选择自己的模型，再指定其他同学的模型发起挑战。</div>
+            <button class='primary-btn option-btn' @click='openSubmitDialog("human")'>上传真人对战模型</button>
+            <button class='secondary-btn option-btn side-secondary' @click='openMyBattleModelsDialog'>选择已提交模型</button>
           </div>
 
           <div class='battle-option'>
@@ -361,6 +368,89 @@
           <button class='primary-btn footer-btn' :disabled='loadingSubmit' @click='submit'>
             {{ loadingSubmit ? '提交中...' : '提交' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if='showMyBattleModelsDialog' class='dialog-mask' @click='closeMyBattleModelsDialog'>
+      <div class='dialog-box large-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>已提交模型</div>
+          <button class='close-btn' @click='closeMyBattleModelsDialog'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          <div class='task-dialog-top'>
+            <div class='dialog-tip'>当前展示你在该任务下已上传的对战模型。选择其中一个模型后，可继续选择其他同学的模型发起挑战。</div>
+            <button class='secondary-inline-btn' :disabled='myBattleModelsLoading' @click='loadMyBattleModels'>
+              {{ myBattleModelsLoading ? '刷新中...' : '刷新列表' }}
+            </button>
+          </div>
+
+          <div v-if='myBattleModelsMessage' class='feedback-box' :class='myBattleModelsFeedbackClass'>
+            {{ myBattleModelsMessage }}
+          </div>
+
+          <div v-if='myBattleModels.length > 0' class='battle-model-list'>
+            <div
+              v-for='item in myBattleModels'
+              :key='item.submissionId'
+              class='battle-model-item'
+            >
+              <div class='battle-model-main'>
+                <div class='battle-model-name'>{{ item.modelName || 'model.pt' }}</div>
+                <div class='battle-model-meta'>
+                  <span>提交时间：{{ item.submitTime || '--' }}</span>
+                  <span>战绩：{{ item.winCount }}胜 {{ item.loseCount }}负 {{ item.drawCount }}平</span>
+                </div>
+              </div>
+              <div class='battle-model-actions'>
+                <button class='primary-btn small-action-btn' @click='openOpponentDialog(item)'>发起挑战</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class='empty-state'>当前暂无已提交模型，请先上传模型。</div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if='showOpponentDialog' class='dialog-mask' @click='closeOpponentDialog'>
+      <div class='dialog-box large-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>选择对手模型</div>
+          <button class='close-btn' @click='closeOpponentDialog'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          <div class='dialog-tip opponent-selected-tip'>
+            当前出战模型：{{ selectedMyBattleModel ? selectedMyBattleModel.modelName : '--' }}
+          </div>
+
+          <div v-if='opponentModelsMessage' class='feedback-box' :class='opponentModelsFeedbackClass'>
+            {{ opponentModelsMessage }}
+          </div>
+
+          <div v-if='opponentModels.length > 0' class='battle-model-list'>
+            <div
+              v-for='item in opponentModels'
+              :key='item.submissionId'
+              class='battle-model-item'
+            >
+              <div class='battle-model-main'>
+                <div class='battle-model-name'>{{ item.studentName }} - {{ item.modelName || 'model.pt' }}</div>
+                <div class='battle-model-meta'>
+                  <span>提交时间：{{ item.submitTime || '--' }}</span>
+                  <span>战绩：{{ item.winCount }}胜 {{ item.loseCount }}负 {{ item.drawCount }}平</span>
+                </div>
+              </div>
+              <div class='battle-model-actions'>
+                <button class='primary-btn small-action-btn' :disabled='challengeLoading' @click='challengeOpponent(item)'>
+                  {{ challengeLoading ? '发起中...' : '挑战' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class='empty-state'>当前暂无可挑战的其他同学模型。</div>
         </div>
       </div>
     </div>
@@ -542,9 +632,13 @@ export default {
       showSubmitDialog: false,
       showTaskListDialog: false,
       showRankingDialog: false,
+      showMyBattleModelsDialog: false,
+      showOpponentDialog: false,
       currentSubmitMode: 'single',
       currentBotDifficulty: '',
       queryLoading: false,
+      myBattleModelsLoading: false,
+      challengeLoading: false,
       submitMessage: '',
       queryMessage: '',
       evaluationId: null,
@@ -553,6 +647,9 @@ export default {
         model: null
       },
       taskList: [],
+      myBattleModels: [],
+      opponentModels: [],
+      selectedMyBattleModel: null,
       rankingList: [
         { rank: 1, name: '李四', score: 1280 },
         { rank: 2, name: '张三', score: 1205 },
@@ -561,6 +658,16 @@ export default {
         { rank: 5, name: '陈七', score: 1020 },
         { rank: 6, name: '孙八', score: 980 }
       ],
+      staticRankingList: [
+        { rank: 1, name: '李四', score: 1280 },
+        { rank: 2, name: '张三', score: 1205 },
+        { rank: 3, name: '王五', score: 1150 },
+        { rank: 4, name: '赵六', score: 1088 },
+        { rank: 5, name: '陈七', score: 1020 },
+        { rank: 6, name: '孙八', score: 980 }
+      ],
+      myBattleModelsMessage: '',
+      opponentModelsMessage: '',
       showCreateTeamDialog: false,
       showJoinTeamDialog: false,
       showLeaveTeamDialog: false,
@@ -607,6 +714,17 @@ export default {
     },
     queryFeedbackClass () {
       return this.queryMessage.startsWith('查询失败') ? 'error-box' : 'success-box'
+    },
+    myBattleModelsFeedbackClass () {
+      return this.myBattleModelsMessage.startsWith('加载失败') ? 'error-box' : 'success-box'
+    },
+    opponentModelsFeedbackClass () {
+      return this.opponentModelsMessage.startsWith('发起失败') || this.opponentModelsMessage.startsWith('加载失败')
+        ? 'error-box'
+        : 'success-box'
+    },
+    displayUserName () {
+      return localStorage.getItem('auth_name') || ''
     }
   },
   created () {
@@ -633,12 +751,18 @@ export default {
       if (assignmentId) {
         await this.loadTaskDetail(assignmentId)
         if (this.taskMode === 'battle') {
-          await this.loadBotStatus(assignmentId)
+          await Promise.all([
+            this.loadBotStatus(assignmentId),
+            this.loadBattleRanking(assignmentId)
+          ])
+        } else {
+          this.rankingList = this.staticRankingList.slice()
         }
       } else {
         this.hasEasyBot = this.$route.query.hasEasyBot === 'true'
         this.hasMediumBot = this.$route.query.hasMediumBot === 'true'
         this.hasHardBot = this.$route.query.hasHardBot === 'true'
+        this.rankingList = this.staticRankingList.slice()
       }
     },
     getAssignmentId () {
@@ -715,6 +839,40 @@ export default {
         this.hasHardBot = false
       }
     },
+    async loadBattleRanking (assignmentId) {
+      const token = localStorage.getItem('auth_token') || ''
+      if (!token || !assignmentId) {
+        this.rankingList = []
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/leaderboard?pageNum=0&pageSize=20`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '排行榜加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.rankingList = content.map(item => ({
+          rank: item.rank,
+          name: item.nickname || '未知学生',
+          score: item.ladderScore ?? item.bestScore ?? 0,
+          studentId: item.studentId,
+          record: `${item.winCount || 0}胜${item.loseCount || 0}负${item.drawCount || 0}平`,
+          matchCount: item.matchCount || 0
+        }))
+      } catch (error) {
+        this.rankingList = []
+      }
+    },
     fillTaskDetail (task) {
       const config = this.parseTaskConfig(task)
       const taskMode = this.mapTaskMode(task.evaluationMode)
@@ -774,11 +932,29 @@ export default {
         this.taskSubtitle = 'PettingZoo 环境下的单模型独立测评任务'
       } else if (taskMode === 'battle') {
         this.modeLabelText = '对战模式'
-        this.taskSubtitle = '学生点击提交后可继续选择真人对战或人机对战'
+        this.taskSubtitle = '学生先上传模型保存，再从已提交模型中选择自己的模型并指定对手发起挑战'
       } else {
         this.modeLabelText = '团队锦标赛'
         this.taskSubtitle = '学生在当前任务详情页中完成组队、退队与查看对战安排等操作'
       }
+    },
+    handleRankingAction () {
+      if (this.taskMode === 'battle') {
+        this.viewFullRanking()
+        return
+      }
+      this.showRankingDialog = true
+    },
+    viewFullRanking () {
+      const role = (localStorage.getItem('auth_role') || '').toUpperCase()
+      const rankingPath = role === 'TEACHER' ? '/teacher/ranking' : '/student/ranking'
+      this.$router.push({
+        path: rankingPath,
+        query: {
+          taskId: this.getAssignmentId(),
+          mode: 'versus'
+        }
+      })
     },
     formatDateTime (value) {
       if (!value) {
@@ -916,7 +1092,7 @@ export default {
 
         let submitUrl = ''
         if (this.currentSubmitMode === 'human') {
-          submitUrl = `${API_BASE}/battle/submit/${assignmentId}`
+          submitUrl = `${API_BASE}/battle/models/${assignmentId}`
         } else if (this.currentSubmitMode.startsWith('bot-')) {
           submitUrl = `${API_BASE}/battle/bot-submit/${assignmentId}`
         } else if (this.currentSubmitMode === 'single') {
@@ -947,10 +1123,140 @@ export default {
         } else if (payload.id) {
           this.evaluationId = payload.id
         }
+
+        if (this.currentSubmitMode === 'human') {
+          await this.loadMyBattleModels()
+        }
       } catch (e) {
         this.submitMessage = `提交失败：${e.message}`
       } finally {
         this.loadingSubmit = false
+      }
+    },
+    async openMyBattleModelsDialog () {
+      if (this.isTaskEnded) {
+        this.showEndedDialog = true
+        return
+      }
+      await this.loadMyBattleModels()
+      this.showBattleDialog = false
+      this.showMyBattleModelsDialog = true
+    },
+    closeMyBattleModelsDialog () {
+      this.showMyBattleModelsDialog = false
+    },
+    async loadMyBattleModels () {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.myBattleModelsMessage = '加载失败：当前未登录或登录已过期，请重新登录'
+        this.myBattleModels = []
+        return
+      }
+
+      this.myBattleModelsLoading = true
+      this.myBattleModelsMessage = ''
+      try {
+        const assignmentId = this.getAssignmentId()
+        const resp = await fetch(`${API_BASE}/battle/models/${assignmentId}/mine`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const res = await resp.json()
+        if (!resp.ok || res.code !== 0) {
+          throw new Error(res.message || '加载失败')
+        }
+        this.myBattleModels = Array.isArray(res.data) ? res.data : []
+        this.myBattleModelsMessage = this.myBattleModels.length > 0 ? '模型列表加载成功' : ''
+      } catch (e) {
+        this.myBattleModels = []
+        this.myBattleModelsMessage = `加载失败：${e.message}`
+      } finally {
+        this.myBattleModelsLoading = false
+      }
+    },
+    async openOpponentDialog (item) {
+      this.selectedMyBattleModel = item
+      this.showOpponentDialog = true
+      await this.loadOpponentModels(item.submissionId)
+    },
+    closeOpponentDialog () {
+      this.showOpponentDialog = false
+      this.opponentModels = []
+      this.opponentModelsMessage = ''
+      this.challengeLoading = false
+    },
+    async loadOpponentModels (mySubmissionId) {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.opponentModelsMessage = '加载失败：当前未登录或登录已过期，请重新登录'
+        this.opponentModels = []
+        return
+      }
+
+      this.opponentModelsMessage = ''
+      try {
+        const assignmentId = this.getAssignmentId()
+        const resp = await fetch(`${API_BASE}/battle/models/${assignmentId}/opponents?mySubmissionId=${mySubmissionId}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const res = await resp.json()
+        if (!resp.ok || res.code !== 0) {
+          throw new Error(res.message || '加载失败')
+        }
+        this.opponentModels = Array.isArray(res.data) ? res.data : []
+      } catch (e) {
+        this.opponentModels = []
+        this.opponentModelsMessage = `加载失败：${e.message}`
+      }
+    },
+    async challengeOpponent (item) {
+      if (!this.selectedMyBattleModel || !this.selectedMyBattleModel.submissionId) {
+        this.opponentModelsMessage = '发起失败：请先选择自己的模型'
+        return
+      }
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.opponentModelsMessage = '发起失败：当前未登录或登录已过期，请重新登录'
+        return
+      }
+
+      this.challengeLoading = true
+      this.opponentModelsMessage = ''
+      try {
+        const assignmentId = this.getAssignmentId()
+        const form = new FormData()
+        form.append('mySubmissionId', this.selectedMyBattleModel.submissionId)
+        form.append('opponentSubmissionId', item.submissionId)
+
+        const resp = await fetch(`${API_BASE}/battle/challenge/${assignmentId}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: form
+        })
+        const res = await resp.json()
+        if (!resp.ok || res.code !== 0) {
+          throw new Error(res.message || '发起挑战失败')
+        }
+        const payload = res.data || {}
+        this.opponentModelsMessage = payload.message || '挑战已发起'
+        if (payload.evaluationId) {
+          this.evaluationId = payload.evaluationId
+        }
+        ElMessage.success(this.opponentModelsMessage)
+        this.showOpponentDialog = false
+        this.showMyBattleModelsDialog = false
+      } catch (e) {
+        this.opponentModelsMessage = `发起失败：${e.message}`
+      } finally {
+        this.challengeLoading = false
       }
     },
     async loadTasks () {
@@ -1039,8 +1345,12 @@ export default {
       this.$router.push('/teacher/home')
     },
     logout () {
-      sessionStorage.setItem('mock_logged_out_view', 'true')
-      this.$router.push('/')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
+      sessionStorage.removeItem('mock_logged_out_view')
+      this.$router.replace('/')
     }
   }
 }
@@ -1841,4 +2151,57 @@ function titleSafe (value, fallback) {
     grid-template-columns: 1fr;
   }
 }
+
+.battle-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.battle-model-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #fafbfd;
+}
+
+.battle-model-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.battle-model-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2d3d;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.battle-model-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.battle-model-actions {
+  flex-shrink: 0;
+}
+
+.small-action-btn {
+  min-width: 92px;
+  height: 34px;
+  padding: 0 14px;
+}
+
+.opponent-selected-tip {
+  margin-bottom: 14px;
+}
+
 </style>

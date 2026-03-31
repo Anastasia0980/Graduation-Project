@@ -12,5 +12,26 @@ public class LeaderBoard {
     private Integer rank;
     private Integer studentId;
     private String nickname;
+
+    /**
+     * 兼容旧字段；这里与 ladderScore 保持一致
+     */
     private double bestScore;
+
+    /**
+     * 对战模式排行榜：天梯分
+     */
+    private Integer ladderScore;
+
+    /**
+     * 战绩：x胜y负z平（按一次挑战=一场统计）
+     */
+    private Integer winCount;
+    private Integer loseCount;
+    private Integer drawCount;
+
+    /**
+     * 对战场次（按一次挑战记一场，不是30局中的局数）
+     */
+    private Integer matchCount;
 }

@@ -2,7 +2,7 @@
   <div class='page'>
     <AppTopbar
       :logged-in='true'
-      user-name='张三'
+      :user-name='displayUserName'
       current-role='student'
       active-nav='home'
       @platform-click='goHomeOpenTasks'
@@ -86,6 +86,11 @@ export default {
   components: {
     AppTopbar
   },
+  computed: {
+    displayUserName () {
+      return localStorage.getItem('auth_name') || ''
+    }
+  },
   methods: {
     goBack () {
       this.$router.back()
@@ -102,8 +107,12 @@ export default {
       this.$router.push('/teacher/home')
     },
     logout () {
-      sessionStorage.setItem('mock_logged_out_view', 'true')
-      this.$router.push('/')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
+      sessionStorage.removeItem('mock_logged_out_view')
+      this.$router.replace('/')
     }
   }
 }

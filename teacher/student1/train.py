@@ -44,10 +44,6 @@ for episode in range(episodes):
 
         env.step(action)
 
-        # ⚠ AEC API：不能直接 next_obs = env.last()
-        # 因为现在轮到下一个agent
-        # 这里简单处理：不做 bootstrap（简化版DQN）
-
         target = torch.tensor([reward], dtype=torch.float32).to(agent.device)
 
         q_values = agent.q_net(state)

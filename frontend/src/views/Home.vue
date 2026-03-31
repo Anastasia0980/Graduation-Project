@@ -257,7 +257,7 @@ export default {
         id: item.id,
         title: item.title || '未命名任务',
         desc: this.getTaskDescription(item),
-        teacher: '任课教师',
+        teacher: item.teacherName || item.teacherUsername || item.teacher || '--',
         deadline: this.formatDateTime(item.deadline),
         image: tictactoeImage,
         taskMode: this.mapTaskMode(evaluationMode),
@@ -344,7 +344,7 @@ export default {
       }
     },
     goHome () {
-      this.$router.push('/')
+      this.$router.replace('/')
     },
     goLogin () {
       this.$router.push('/login')

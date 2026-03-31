@@ -10,6 +10,7 @@ import Ranking from '../views/Ranking.vue'
 import TeacherHome from '../views/TeacherHome.vue'
 import TeacherPublishTask from '../views/TeacherPublishTask.vue'
 import TeacherTaskManage from '../views/TeacherTaskManage.vue'
+import TeacherTaskOverview from '../views/TeacherTaskOverview.vue'
 import TeacherClassData from '../views/TeacherClassData.vue'
 import TeacherExportScore from '../views/TeacherExportScore.vue'
 import TeacherTaskHall from '../views/TeacherTaskHall.vue'
@@ -17,6 +18,8 @@ import TeacherHistory from '../views/TeacherHistory.vue'
 
 import StudentClassJoin from '../views/StudentClassJoin.vue'
 import StudentTournament from '../views/StudentTournament.vue'
+import StudentResourceDownload from '../views/StudentResourceDownload.vue'
+import TeacherEnvironmentManage from '../views/TeacherEnvironmentManage.vue'
 
 const routes = [
   {
@@ -68,6 +71,11 @@ const routes = [
     name: 'studentTournament',
     component: StudentTournament
   },
+  {
+    path: '/student/resources',
+    name: 'studentResources',
+    component: StudentResourceDownload
+  },
 
   {
     path: '/teacher/home',
@@ -95,6 +103,11 @@ const routes = [
     component: TeacherTaskManage
   },
   {
+    path: '/teacher/overview',
+    name: 'teacherOverview',
+    component: TeacherTaskOverview
+  },
+  {
     path: '/teacher/classes',
     name: 'teacherClasses',
     component: TeacherClassData
@@ -108,6 +121,11 @@ const routes = [
     path: '/teacher/ranking',
     name: 'teacherRanking',
     component: Ranking
+  },
+  {
+    path: '/teacher/environment',
+    name: 'teacherEnvironment',
+    component: TeacherEnvironmentManage
   },
   {
     path: '/teacher/student-detail/:studentId',

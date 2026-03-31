@@ -13,4 +13,6 @@ public interface BattleParticipantRepository extends JpaRepository<BattlePartici
     List<BattleParticipant> findByEvaluationIdIn(List<Long> evaluationIds);
 
     List<BattleParticipant> findByStudent1IdOrStudent2IdOrderByIdDesc(Long student1Id, Long student2Id);
+
+    List<BattleParticipant> findByStudent1SubmissionIdOrStudent2SubmissionIdOrderByIdDesc(Long student1SubmissionId, Long student2SubmissionId);
 }

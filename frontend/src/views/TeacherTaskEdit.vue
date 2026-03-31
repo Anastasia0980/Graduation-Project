@@ -17,8 +17,7 @@
         @teacher-home-click='goTeacherHome'
         @task-hall-click='goTaskHall'
         @history-click='goHistory'
-        @publish-click='goPublishTask'
-        @manage-click='goTaskManage'
+                @manage-click='goTaskManage'
         @class-data-click='goClassData'
         @export-click='goExportScore'
       />
@@ -272,6 +271,14 @@
                   >
                     {{ item }}
                   </button>
+
+                  <button
+                    type='button'
+                    class='algorithm-add-btn'
+                    @click='openAlgorithmDialog'
+                  >
+                    + 添加算法
+                  </button>
                 </div>
               </div>
             </div>
@@ -367,6 +374,31 @@
       </main>
     </div>
   </div>
+    <div v-if='algorithmDialogVisible' class='dialog-mask' @click='closeAlgorithmDialog'>
+      <div class='dialog-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>添加算法标签</div>
+        </div>
+
+        <div class='dialog-body'>
+          <div class='dialog-label'>请输入算法名</div>
+          <input
+            v-model='customAlgorithmName'
+            class='dialog-input'
+            type='text'
+            maxlength='30'
+            placeholder='请输入算法名'
+            @keyup.enter='confirmAddAlgorithm'
+          />
+        </div>
+
+        <div class='dialog-footer'>
+          <button type='button' class='secondary-btn dialog-btn' @click='closeAlgorithmDialog'>取消</button>
+          <button type='button' class='primary-btn dialog-btn' @click='confirmAddAlgorithm'>确定</button>
+        </div>
+      </div>
+    </div>
+
 </template>
 
 <script>
@@ -384,7 +416,7 @@ export default {
   },
   data () {
     return {
-      teacherName: localStorage.getItem('auth_name') || '王老师',
+      teacherName: localStorage.getItem('auth_name') || '教师',
       taskId: '',
       loading: false,
       saving: false,
@@ -413,8 +445,10 @@ export default {
 
       classOptions: [],
       classMap: {},
-      algorithmOptions: ['DDPG', 'DQN', 'Qlearning'],
+      algorithmOptions: ['DDPG', 'DQN', 'QLearning'],
       selectedAlgorithms: [],
+      algorithmDialogVisible: false,
+      customAlgorithmName: '',
       taskForm: {
         name: '',
         classId: '',
@@ -572,6 +606,7 @@ export default {
 
       this.taskMode = this.parseTaskMode(task.evaluationMode)
       this.selectedAlgorithms = this.parseAgentNames(task.agentName)
+      this.algorithmOptions = this.mergeAlgorithmOptions(config, this.selectedAlgorithms)
       this.taskForm = {
         name: task.title || '',
         classId,
@@ -621,6 +656,25 @@ export default {
         .map(item => item.trim())
         .filter(item => item)
     },
+    mergeAlgorithmOptions (config, selectedAlgorithms) {
+      const baseOptions = ['DDPG', 'DQN', 'QLearning']
+      const configOptions = Array.isArray(config.algorithmOptions) ? config.algorithmOptions : []
+      const merged = [...baseOptions]
+
+      configOptions.forEach(item => {
+        if (item && !merged.includes(item)) {
+          merged.push(item)
+        }
+      })
+
+      selectedAlgorithms.forEach(item => {
+        if (item && !merged.includes(item)) {
+          merged.push(item)
+        }
+      })
+
+      return merged
+    },
     formatForDatetimeLocal (value) {
       if (!value) {
         return ''
@@ -669,6 +723,33 @@ export default {
         this.hardBotModelFileName = file.name
       }
     },
+    openAlgorithmDialog () {
+      this.customAlgorithmName = ''
+      this.algorithmDialogVisible = true
+    },
+    closeAlgorithmDialog () {
+      this.algorithmDialogVisible = false
+      this.customAlgorithmName = ''
+    },
+    confirmAddAlgorithm () {
+      const name = this.customAlgorithmName ? this.customAlgorithmName.trim() : ''
+      if (!name) {
+        ElMessage.warning('请输入算法名')
+        return
+      }
+
+      const exists = this.algorithmOptions.some(item => item.toLowerCase() === name.toLowerCase())
+      if (!exists) {
+        this.algorithmOptions.push(name)
+      }
+
+      const actualName = this.algorithmOptions.find(item => item.toLowerCase() === name.toLowerCase()) || name
+      if (!this.selectedAlgorithms.includes(actualName)) {
+        this.selectedAlgorithms.push(actualName)
+      }
+
+      this.closeAlgorithmDialog()
+    },
     toggleAlgorithm (name) {
       const index = this.selectedAlgorithms.indexOf(name)
       if (index > -1) {
@@ -697,7 +778,8 @@ export default {
         observationSpace: this.taskForm.observation,
         actionSpace: this.taskForm.actionSpace,
         rewardFunction: this.taskForm.reward,
-        evaluationFunction: this.taskForm.evaluation
+        evaluationFunction: this.taskForm.evaluation,
+        algorithmOptions: this.algorithmOptions
       }
     },
     validateTaskForm () {
@@ -1119,6 +1201,90 @@ export default {
 .secondary-btn:hover {
   color: #1f4e8c;
   border-color: #1f4e8c;
+}
+
+.algorithm-add-btn {
+  min-width: 124px;
+  height: 38px;
+  padding: 0 20px;
+  border: 1px solid #1f4e8c;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1f4e8c;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.algorithm-add-btn:hover {
+  background: #ecf5ff;
+}
+
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 3000;
+}
+
+.dialog-box {
+  width: 420px;
+  max-width: 100%;
+  background: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16);
+}
+
+.dialog-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.dialog-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.dialog-body {
+  padding: 20px;
+}
+
+.dialog-label {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #606266;
+  font-weight: 600;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  outline: none;
+  font-size: 14px;
+  color: #303133;
+  background: #ffffff;
+}
+
+.dialog-input:focus {
+  border-color: #1f4e8c;
+}
+
+.dialog-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.dialog-btn {
+  min-width: 90px;
 }
 
 @media (max-width: 900px) {

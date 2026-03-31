@@ -6,6 +6,7 @@ import java.util.List;
 
 @Data
 public class ExperimentConfig {
+    private List<String> algorithmOptions;
     private String overview;
     private String rules;
     private String observationSpace;

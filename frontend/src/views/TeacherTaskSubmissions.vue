@@ -13,14 +13,7 @@
 
     <div class="layout">
       <TeacherSidebar
-        active-menu="task-manage"
-        @teacher-home-click="goTeacherHome"
-        @task-hall-click="goTaskHall"
-        @history-click="goHistory"
-        @publish-click="goPublishTask"
-        @manage-click="goTaskManage"
-        @class-data-click="goClassData"
-        @export-click="goExportScore"
+        :active-menu="sidebarActiveMenu"
       />
 
       <main class="content-area">
@@ -31,37 +24,81 @@
           </div>
         </div>
 
-        <div class="card">
-          <table class="common-table">
+        <div class="table-card">
+          <table class="history-table">
             <thead>
               <tr>
-                <th>学生姓名</th>
+                <th>学生</th>
                 <th>任务名称</th>
                 <th>提交模型</th>
                 <th>提交时间</th>
                 <th>测评状态</th>
-                <th>胜负关系</th>
+                <th>对手</th>
+                <th>结果</th>
+                <th>详细结果</th>
+                <th>日志</th>
                 <th>录像</th>
+                <th>下载</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="loading">
-                <td colspan="7" class="table-empty-cell">提交记录加载中...</td>
+                <td colspan="11" class="empty-cell">加载中...</td>
               </tr>
+
               <tr v-else-if="pagedSubmissionList.length === 0">
-                <td colspan="7" class="table-empty-cell">当前暂无提交记录</td>
+                <td colspan="11" class="empty-cell">当前暂无提交记录</td>
               </tr>
-              <tr v-else v-for="item in pagedSubmissionList" :key="item.id">
+
+              <tr v-else v-for="item in pagedSubmissionList" :key="item.evaluationId">
                 <td>
-                  <span class="student-link" @click="goStudentDetail(item.studentId)">
+                  <span
+                    v-if="item.studentId"
+                    class="student-link"
+                    @click="goStudentDetail(item.studentId)"
+                  >
                     {{ item.studentName }}
                   </span>
+                  <span v-else>{{ item.studentName }}</span>
                 </td>
+
                 <td>{{ item.taskName }}</td>
                 <td>{{ item.modelName }}</td>
                 <td>{{ item.submitTime }}</td>
                 <td>{{ item.status }}</td>
+
+                <td>
+                  <span
+                    v-if="item.opponentStudentId"
+                    class="student-link"
+                    @click="goStudentDetail(item.opponentStudentId)"
+                  >
+                    {{ item.opponent }}
+                  </span>
+                  <span v-else>{{ item.opponent }}</span>
+                </td>
+
                 <td>{{ item.result }}</td>
+                <td class="detail-cell">{{ item.detailedResult }}</td>
+
+                <td>
+                  <button
+                    v-if="item.hasLog"
+                    class="table-btn"
+                    @click="downloadLog(item)"
+                  >
+                    下载日志
+                  </button>
+
+                  <button
+                    v-else
+                    class="table-btn disabled-btn"
+                    disabled
+                  >
+                    暂无
+                  </button>
+                </td>
+
                 <td>
                   <button
                     v-if="item.hasVideo"
@@ -70,6 +107,25 @@
                   >
                     录像回放
                   </button>
+
+                  <button
+                    v-else
+                    class="table-btn disabled-btn"
+                    disabled
+                  >
+                    暂无
+                  </button>
+                </td>
+
+                <td>
+                  <button
+                    v-if="item.canDownloadModel"
+                    class="table-btn"
+                    @click="downloadModel(item)"
+                  >
+                    下载模型
+                  </button>
+
                   <button
                     v-else
                     class="table-btn disabled-btn"
@@ -105,8 +161,16 @@
             <div class="video-model-name">模型文件：{{ currentVideo.modelName }}</div>
           </div>
 
+          <div v-if="videoLoading" class="video-loading-box">
+            视频加载中...
+          </div>
+
+          <div v-else-if="videoError" class="video-error-box">
+            {{ videoError }}
+          </div>
+
           <video
-            v-if="videoVisible"
+            v-else-if="videoVisible && currentVideo.videoUrl"
             ref="videoPlayer"
             class="video-player"
             controls
@@ -138,20 +202,34 @@ export default {
   },
   data () {
     return {
-      displayUserName: localStorage.getItem('auth_name') || '教师',
+      loading: false,
       currentPage: 1,
       pageSize: 5,
-      loading: false,
+      submissionList: [],
       videoVisible: false,
+      videoLoading: false,
+      videoError: '',
       currentVideo: {
         taskName: '',
         modelName: '',
-        videoUrl: ''
-      },
-      submissionList: []
+        videoUrl: '',
+        sourceApiUrl: ''
+      }
     }
   },
   computed: {
+    displayUserName () {
+      return localStorage.getItem('auth_name') || '教师'
+    },
+    taskId () {
+      return this.$route.params.taskId
+    },
+    fromOverview () {
+      return this.$route.query.source === 'overview'
+    },
+    sidebarActiveMenu () {
+      return this.fromOverview ? 'task-overview-summary' : 'task-manage'
+    },
     pagedSubmissionList () {
       const start = (this.currentPage - 1) * this.pageSize
       const end = start + this.pageSize
@@ -169,36 +247,44 @@ export default {
       }
     },
     async loadSubmissionList () {
-      const taskId = this.$route.params.taskId
-      if (!taskId) {
-        this.submissionList = []
-        return
-      }
-
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/assignments/${taskId}/submissions`, {
+        const response = await fetch(`${API_BASE}/assignments/${this.taskId}/submissions`, {
           method: 'GET',
           headers: this.getAuthHeaders()
         })
         const result = await response.json()
+
         if (!response.ok || result.code !== 0) {
           throw new Error(result.message || '提交记录加载失败')
         }
 
         const list = Array.isArray(result.data) ? result.data : []
         this.submissionList = list.map(item => ({
-          id: item.evaluationId,
           evaluationId: item.evaluationId,
           evaluationResultId: item.evaluationResultId,
           studentId: item.studentId,
-          studentName: item.studentName || '未知学生',
+          studentName: item.studentName || '--',
           taskName: item.taskTitle || '未知任务',
           modelName: item.modelName || '--',
           submitTime: item.submitTime || '--',
           status: item.status || '--',
+          opponent: item.opponentName || '无',
+          opponentStudentId: item.opponentStudentId || null,
           result: item.resultText || '-',
-          hasVideo: !!item.hasVideo
+          detailedResult: item.detailedResult || '-',
+          hasLog: !!item.evaluationResultId,
+          hasVideo: !!item.hasVideo && !!item.evaluationResultId,
+          canDownloadModel: !!item.evaluationId,
+          sourceApiUrl: item.evaluationResultId
+            ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/video`
+            : '',
+          logApiUrl: item.evaluationResultId
+            ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/log`
+            : '',
+          modelDownloadUrl: item.evaluationId
+            ? `${API_BASE}/evaluation-results/evaluation/${item.evaluationId}/model-package`
+            : ''
         }))
       } catch (error) {
         this.submissionList = []
@@ -207,19 +293,54 @@ export default {
         this.loading = false
       }
     },
+    goBack () {
+      if (this.fromOverview) {
+        this.$router.push('/teacher/overview')
+        return
+      }
+      this.$router.push('/teacher/tasks')
+    },
+    goTeacherHome () {
+      this.$router.push('/teacher/home')
+    },
+    switchRole () {
+      localStorage.setItem('mock_login_role', 'student')
+      this.$router.push({ path: '/', query: { tab: 'open' } })
+    },
+    logout () {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      this.$router.push('/')
+    },
     goStudentDetail (studentId) {
+      if (!studentId) return
       this.$router.push(`/teacher/student-detail/${studentId}`)
     },
     async openVideo (item) {
-      if (!item.evaluationResultId) {
-        ElMessage.warning('暂无可播放录像')
-        return
+      this.closeVideoObjectUrlOnly()
+
+      this.currentVideo = {
+        taskName: item.taskName,
+        modelName: item.modelName,
+        videoUrl: '',
+        sourceApiUrl: item.sourceApiUrl
       }
+      this.videoError = ''
+      this.videoLoading = true
+      this.videoVisible = true
 
       try {
-        const response = await fetch(`${API_BASE}/evaluation-results/${item.evaluationResultId}/video`, {
+        const token = localStorage.getItem('auth_token')
+        if (!token) {
+          throw new Error('当前未登录或登录已过期')
+        }
+
+        const response = await fetch(item.sourceApiUrl, {
           method: 'GET',
-          headers: this.getAuthHeaders()
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         })
 
         if (!response.ok) {
@@ -232,14 +353,63 @@ export default {
         }
 
         const objectUrl = URL.createObjectURL(blob)
-        this.currentVideo = {
-          taskName: item.taskName,
-          modelName: item.modelName,
-          videoUrl: objectUrl
-        }
-        this.videoVisible = true
+        this.currentVideo.videoUrl = objectUrl
       } catch (error) {
-        ElMessage.error(error.message || '视频加载失败')
+        this.videoError = error.message || '视频加载失败'
+      } finally {
+        this.videoLoading = false
+      }
+    },
+    async downloadLog (item) {
+      try {
+        await this.fetchAndDownload(item.logApiUrl, `${item.taskName || 'evaluation'}_log.txt`)
+        ElMessage.success('日志下载成功')
+      } catch (error) {
+        ElMessage.error(error.message || '日志下载失败')
+      }
+    },
+    async downloadModel (item) {
+      try {
+        await this.fetchAndDownload(item.modelDownloadUrl, `${item.taskName || 'evaluation'}_model.zip`)
+        ElMessage.success('模型下载成功')
+      } catch (error) {
+        ElMessage.error(error.message || '模型下载失败')
+      }
+    },
+    async fetchAndDownload (url, filename) {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        throw new Error('当前未登录或登录已过期')
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`下载失败（${response.status}）`)
+      }
+
+      const blob = await response.blob()
+      if (!blob || blob.size === 0) {
+        throw new Error('下载文件为空')
+      }
+
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(objectUrl)
+    },
+    closeVideoObjectUrlOnly () {
+      if (this.currentVideo.videoUrl) {
+        URL.revokeObjectURL(this.currentVideo.videoUrl)
       }
     },
     closeVideo () {
@@ -248,48 +418,18 @@ export default {
         player.pause()
         player.currentTime = 0
       }
-      if (this.currentVideo.videoUrl && this.currentVideo.videoUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(this.currentVideo.videoUrl)
-      }
+
+      this.closeVideoObjectUrlOnly()
+
       this.currentVideo = {
         taskName: '',
         modelName: '',
-        videoUrl: ''
+        videoUrl: '',
+        sourceApiUrl: ''
       }
+      this.videoError = ''
+      this.videoLoading = false
       this.videoVisible = false
-    },
-    goBack () {
-      this.$router.push('/teacher/tasks')
-    },
-    goTeacherHome () {
-      this.$router.push('/teacher/home')
-    },
-    goTaskHall () {
-      this.$router.push('/teacher/hall')
-    },
-    goHistory () {
-      this.$router.push('/teacher/history')
-    },
-    goPublishTask () {
-      this.$router.push('/teacher/publish')
-    },
-    goTaskManage () {
-      this.$router.push('/teacher/tasks')
-    },
-    goClassData () {
-      this.$router.push('/teacher/classes')
-    },
-    goExportScore () {
-      this.$router.push('/teacher/export')
-    },
-    switchRole () {
-      sessionStorage.removeItem('mock_logged_out_view')
-      localStorage.setItem('mock_login_role', 'student')
-      this.$router.push({ path: '/', query: { tab: 'open' } })
-    },
-    logout () {
-      sessionStorage.setItem('mock_logged_out_view', 'true')
-      this.$router.push('/')
     }
   }
 }
@@ -319,7 +459,6 @@ export default {
 
 .page-header {
   margin-bottom: 18px;
-  margin-bottom: 18px;
 }
 
 .header-left {
@@ -331,63 +470,75 @@ export default {
 .page-header h2 {
   margin: 0;
   font-size: 22px;
+  font-weight: 700;
   color: #1f2d3d;
 }
 
 .back-btn {
+  min-width: 72px;
   height: 36px;
-  padding: 0 14px;
   border: 1px solid #dcdfe6;
+  border-radius: 4px;
   background: #ffffff;
   color: #606266;
-  border-radius: 4px;
+  font-size: 14px;
   cursor: pointer;
 }
 
-.card {
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  border-radius: 8px;
-  padding: 20px;
+.back-btn:hover {
+  color: #1f4e8c;
+  border-color: #1f4e8c;
 }
 
-.common-table {
+.table-card {
+  background: #ffffff;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.history-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.common-table th,
-.common-table td {
+.history-table th,
+.history-table td {
   padding: 14px 12px;
   border-bottom: 1px solid #ebeef5;
   text-align: left;
   font-size: 14px;
+  vertical-align: middle;
 }
 
-.common-table th {
+.history-table th {
   background: #f8fafc;
   color: #606266;
   font-weight: 700;
 }
 
-.table-empty-cell {
-  text-align: center;
+.empty-cell {
+  text-align: center !important;
   color: #909399;
+}
+
+.detail-cell {
+  min-width: 220px;
+  white-space: normal;
+  line-height: 1.6;
+  color: #606266;
 }
 
 .student-link {
   color: #1f4e8c;
   cursor: pointer;
-  font-weight: 600;
-}
-
-.student-link:hover {
   text-decoration: underline;
 }
 
 .table-btn {
+  min-width: 84px;
   height: 34px;
-  min-width: 86px;
+  padding: 0 12px;
   border: none;
   border-radius: 4px;
   background: #1f4e8c;
@@ -403,6 +554,10 @@ export default {
 .disabled-btn {
   background: #c0c4cc;
   cursor: not-allowed;
+}
+
+.disabled-btn:hover {
+  background: #c0c4cc;
 }
 
 .video-mask {
@@ -426,7 +581,7 @@ export default {
 }
 
 .video-dialog-header {
-  height: 56px;
+  min-height: 56px;
   padding: 0 20px;
   border-bottom: 1px solid #ebeef5;
   display: flex;
@@ -450,16 +605,21 @@ export default {
   cursor: pointer;
 }
 
+.close-btn:hover {
+  color: #1f4e8c;
+  border-color: #1f4e8c;
+}
+
 .video-dialog-body {
   padding: 20px;
 }
 
 .video-meta {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .video-task-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: #1f2d3d;
   margin-bottom: 8px;
@@ -474,7 +634,26 @@ export default {
   width: 100%;
   max-height: 520px;
   background: #000000;
-  border-radius: 6px;
+  border-radius: 8px;
+}
+
+.video-loading-box,
+.video-error-box {
+  width: 100%;
+  min-height: 220px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #606266;
+  background: #fafafa;
+}
+
+.video-error-box {
+  color: #c45656;
+  background: #fff6f6;
+  border-color: #f3c2c2;
 }
 
 @media (max-width: 900px) {
@@ -486,12 +665,12 @@ export default {
     padding: 16px;
   }
 
-  .card {
+  .table-card {
     overflow-x: auto;
   }
 
-  .common-table {
-    min-width: 980px;
+  .history-table {
+    min-width: 1500px;
   }
 }
 </style>

@@ -4,25 +4,9 @@
 
     <template v-if='loggedIn'>
       <div
-        class='menu-item'
-        :class='{ active: activeMenu === "profile" }'
-        @click="$emit('profile-click')"
-      >
-        个人主页
-      </div>
-
-      <div
-        class='menu-item'
-        :class='{ active: activeMenu === "class" }'
-        @click="$emit('class-click')"
-      >
-        我的班级
-      </div>
-
-      <div
         class='menu-item menu-item-parent'
         :class='{ active: activeMenu === "task-open" || activeMenu === "task-ended" }'
-        @click="$emit('toggle-task-menu')"
+        @click='handleTaskMenuClick'
       >
         <span>任务广场</span>
         <span class='arrow'>{{ taskMenuOpen ? '−' : '+' }}</span>
@@ -32,14 +16,14 @@
         <div
           class='submenu-item'
           :class='{ active: activeMenu === "task-open" }'
-          @click.stop="$emit('open-task-click')"
+          @click.stop='handleOpenTaskClick'
         >
           开放中
         </div>
         <div
           class='submenu-item'
           :class='{ active: activeMenu === "task-ended" }'
-          @click.stop="$emit('ended-task-click')"
+          @click.stop='handleEndedTaskClick'
         >
           已结束
         </div>
@@ -47,18 +31,42 @@
 
       <div
         class='menu-item'
+        :class='{ active: activeMenu === "class" }'
+        @click='handleClassClick'
+      >
+        我的班级
+      </div>
+
+      <div
+        class='menu-item'
+        :class='{ active: activeMenu === "ranking" }'
+        @click='goRanking'
+      >
+        排行榜
+      </div>
+
+      <div
+        class='menu-item'
         :class='{ active: activeMenu === "history" }'
-        @click="$emit('history-click')"
+        @click='handleHistoryClick'
       >
         提交历史
       </div>
 
       <div
-        class='menu-item ranking-menu-item'
-        :class='{ active: activeMenu === "ranking" }'
-        @click='goRanking'
+        class='menu-item'
+        :class='{ active: activeMenu === "profile" }'
+        @click='handleProfileClick'
       >
-        排行榜
+        个人主页
+      </div>
+
+      <div
+        class='menu-item'
+        :class='{ active: activeMenu === "resource" }'
+        @click='goResource'
+      >
+        环境下载
       </div>
     </template>
 
@@ -94,8 +102,29 @@ export default {
     'history-click'
   ],
   methods: {
+    handleTaskMenuClick () {
+      this.$emit('toggle-task-menu')
+    },
+    handleOpenTaskClick () {
+      this.$emit('open-task-click')
+    },
+    handleEndedTaskClick () {
+      this.$emit('ended-task-click')
+    },
+    handleClassClick () {
+      this.$emit('class-click')
+    },
+    handleHistoryClick () {
+      this.$emit('history-click')
+    },
+    handleProfileClick () {
+      this.$emit('profile-click')
+    },
     goRanking () {
       this.$router.push('/student/ranking')
+    },
+    goResource () {
+      this.$router.push('/student/resources')
     }
   }
 }
@@ -149,10 +178,6 @@ export default {
   justify-content: space-between;
 }
 
-.ranking-menu-item {
-  margin-top: 0;
-}
-
 .arrow {
   font-size: 16px;
   color: #909399;
@@ -188,10 +213,6 @@ export default {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid #dcdfe6;
-  }
-
-  .ranking-menu-item {
-    margin-top: 0;
   }
 }
 </style>

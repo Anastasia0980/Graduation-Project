@@ -53,11 +53,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     public void runEvaluation(Long evaluationId) {
         Evaluation evaluation = getEvaluationById(evaluationId);
-        // if (evaluation.getStatus() == EvaluationStatus.RUNNING) {
-        //     throw new RuntimeException("Evaluation is already running");
-        // } else if (evaluation.getStatus() == EvaluationStatus.FINISHED) {
-        //     throw new RuntimeException("Evaluation is already finished");
-        // }
+
         evaluation.setErrorMessage(null);
         evaluation.setStatus(EvaluationStatus.RUNNING);
         evaluation.setUpdateTime(now());
@@ -67,7 +63,6 @@ public class EvaluationServiceImpl implements EvaluationService {
 
         evaluation.setUpdateTime(now());
         evaluationRepository.save(evaluation);
-
     }
 
     @Override
@@ -125,16 +120,6 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
     }
 
-//    @Override
-//    public void runEvaluationByBot(Long evaluationId) {
-//        Evaluation evaluation = getEvaluationById(evaluationId);
-//        evaluation.setErrorMessage(null);
-//        evaluation.setStatus(EvaluationStatus.RUNNING);
-//        evaluation.setUpdateTime(now());
-//        evaluationRepository.save(evaluation);
-//
-//    }
-
     @Override
     @Async("evaluationExecutor")
     public void runEvaluationAsync(long evaluationId) {
@@ -158,5 +143,4 @@ public class EvaluationServiceImpl implements EvaluationService {
         };
         return evaluationRepository.findAll(spec, PageRequest.of(pageNum, pageSize));
     }
-
 }

@@ -12,20 +12,12 @@
     />
 
     <div class="layout">
-      <TeacherSidebar
-        active-menu="task-manage"
-        @teacher-home-click="goTeacherHome"
-        @task-hall-click="goTaskHall"
-        @history-click="goHistory"
-        @publish-click="goPublishTask"
-        @manage-click="goTaskManage"
-        @class-data-click="goClassData"
-        @export-click="goExportScore"
-      />
+      <TeacherSidebar active-menu="task-manage" />
 
       <main class="content-area">
-        <div class="page-header">
+        <div class="page-header page-header-between">
           <h2>任务管理</h2>
+          <button class="primary-btn publish-btn" @click="goPublishTask">发布任务</button>
         </div>
 
         <div class="card">
@@ -58,7 +50,6 @@
                 <td>
                   <div class="action-group">
                     <button class="primary-btn small-btn" @click="goEditTask(item)">修改</button>
-                    <button class="secondary-btn small-btn" @click="goViewTask(item)">查看</button>
                     <button class="danger-btn small-btn" @click="openDeleteDialog(item)">删除</button>
                   </div>
                 </td>
@@ -114,7 +105,7 @@ export default {
   },
   data () {
     return {
-      teacherName: localStorage.getItem('auth_name') || '王老师',
+      teacherName: localStorage.getItem('auth_name') || '教师',
       taskPage: 1,
       taskPageSize: 5,
       showDeleteDialog: false,
@@ -132,194 +123,122 @@ export default {
     }
   },
   created () {
-    this.loadTaskList()
+    this.loadClassMap()
+      .then(() => this.loadTaskList())
+      .catch(() => this.loadTaskList())
   },
   methods: {
-    async loadTaskList () {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
-        return
+    getAuthHeaders () {
+      const token = localStorage.getItem('auth_token') || ''
+      return {
+        Authorization: `Bearer ${token}`
       }
-
+    },
+    async loadClassMap () {
+      const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=500`, {
+        method: 'GET',
+        headers: this.getAuthHeaders()
+      })
+      const result = await response.json()
+      if (!response.ok || result.code !== 0) {
+        throw new Error(result.message || '班级数据加载失败')
+      }
+      const pageData = result.data || {}
+      const content = Array.isArray(pageData.content) ? pageData.content : []
+      this.classMap = {}
+      content.forEach(item => {
+        this.classMap[item.id] = item.name
+      })
+    },
+    async loadTaskList () {
       this.loading = true
       try {
-        await this.loadClassMap(token)
-
-        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`, {
+        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=500`, {
           method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+          headers: this.getAuthHeaders()
         })
         const result = await response.json()
 
         if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务列表加载失败')
+          throw new Error(result.message || '任务数据加载失败')
         }
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
 
-        this.taskList = content.map(item => this.mapTaskItem(item))
+        this.taskList = content.map(item => {
+          const nowTime = new Date().getTime()
+          const deadlineTime = item.deadline ? new Date(item.deadline).getTime() : nowTime
+          const createTime = item.createTime || item.updateTime || item.deadline
+
+          return {
+            id: item.id,
+            name: item.title,
+            classId: item.studentClass ? item.studentClass.id : null,
+            className: item.studentClass ? item.studentClass.name : (this.classMap[item.classId] || '未分配班级'),
+            startTime: this.formatDateTime(createTime),
+            deadline: this.formatDateTime(item.deadline),
+            status: deadlineTime >= nowTime ? '进行中' : '已结束'
+          }
+        })
       } catch (error) {
         this.taskList = []
-        ElMessage.error(error.message || '任务列表加载失败')
+        ElMessage.error(error.message || '任务数据加载失败')
       } finally {
         this.loading = false
       }
     },
-    async loadClassMap (token) {
-      try {
-        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=100`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          this.classMap = {}
-          return
-        }
-
-        const pageData = result.data || {}
-        const content = Array.isArray(pageData.content) ? pageData.content : []
-        const map = {}
-
-        content.forEach(item => {
-          map[item.id] = item.name
-        })
-
-        this.classMap = map
-      } catch (error) {
-        this.classMap = {}
-      }
-    },
-    mapTaskItem (item) {
-      const classId = item.studentClass && item.studentClass.id ? item.studentClass.id : null
-      const className = classId && this.classMap[classId]
-        ? this.classMap[classId]
-        : '未命名班级'
-
-      return {
-        id: item.id,
-        name: item.title || '未命名任务',
-        className,
-        startTime: this.formatDateTime(item.createTime),
-        deadline: this.formatDateTime(item.deadline),
-        status: this.computeTaskStatus(item.deadline),
-        raw: item
-      }
-    },
     formatDateTime (value) {
-      if (!value) {
-        return '--'
-      }
-
+      if (!value) return '--'
       const date = new Date(value)
-      if (Number.isNaN(date.getTime())) {
-        return value
-      }
-
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      const hour = String(date.getHours()).padStart(2, '0')
-      const minute = String(date.getMinutes()).padStart(2, '0')
-
-      return `${year}-${month}-${day} ${hour}:${minute}`
-    },
-    computeTaskStatus (deadline) {
-      if (!deadline) {
-        return '进行中'
-      }
-
-      const deadlineDate = new Date(deadline)
-      if (Number.isNaN(deadlineDate.getTime())) {
-        return '进行中'
-      }
-
-      return deadlineDate.getTime() < Date.now() ? '已结束' : '进行中'
-    },
-    goEditTask (item) {
-      this.$router.push(`/teacher/task-edit/${item.id}`)
-    },
-    goViewTask (item) {
-      this.$router.push(`/teacher/task-submissions/${item.id}`)
-    },
-    openDeleteDialog (item) {
-      this.currentTask = item
-      this.showDeleteDialog = true
-    },
-    async confirmDelete () {
-      if (!this.currentTask || !this.currentTask.id) {
-        this.showDeleteDialog = false
-        return
-      }
-
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        this.showDeleteDialog = false
-        ElMessage.error('登录信息已失效，请重新登录')
-        return
-      }
-
-      const assignmentId = this.currentTask.id
-      this.showDeleteDialog = false
-
-      try {
-        const response = await fetch(`${API_BASE}/assignments/${assignmentId}`, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          ElMessage.error(result.message || '删除任务失败')
-          return
-        }
-
-        // 从本地列表中移除该任务，避免重新请求
-        this.taskList = this.taskList.filter(item => item.id !== assignmentId)
-        ElMessage.success('删除任务成功')
-      } catch (error) {
-        ElMessage.error(error.message || '删除任务失败，请检查后端是否已启动')
-      } finally {
-        this.currentTask = null
-      }
+      if (Number.isNaN(date.getTime())) return '--'
+      const Y = date.getFullYear()
+      const M = String(date.getMonth() + 1).padStart(2, '0')
+      const D = String(date.getDate()).padStart(2, '0')
+      const h = String(date.getHours()).padStart(2, '0')
+      const m = String(date.getMinutes()).padStart(2, '0')
+      return `${Y}-${M}-${D} ${h}:${m}`
     },
     goTeacherHome () {
       this.$router.push('/teacher/home')
     },
-    goTaskHall () {
-      this.$router.push('/teacher/hall')
-    },
-    goHistory () {
-      this.$router.push('/teacher/history')
-    },
     goPublishTask () {
       this.$router.push('/teacher/publish')
     },
-    goTaskManage () {
-      this.$router.push('/teacher/tasks')
+    goEditTask (task) {
+      this.$router.push(`/teacher/task-edit/${task.id}`)
     },
-    goClassData () {
-      this.$router.push('/teacher/classes')
+    openDeleteDialog (task) {
+      this.currentTask = task
+      this.showDeleteDialog = true
     },
-    goExportScore () {
-      this.$router.push('/teacher/export')
+    async confirmDelete () {
+      if (!this.currentTask) return
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${this.currentTask.id}`, {
+          method: 'DELETE',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '删除任务失败')
+        }
+        ElMessage.success('删除任务成功')
+        this.showDeleteDialog = false
+        this.currentTask = null
+        this.loadTaskList()
+      } catch (error) {
+        ElMessage.error(error.message || '删除任务失败')
+      }
     },
     switchRole () {
-      sessionStorage.removeItem('mock_logged_out_view')
       localStorage.setItem('mock_login_role', 'student')
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
-      sessionStorage.setItem('mock_logged_out_view', 'true')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
       this.$router.push('/')
     }
   }
@@ -352,6 +271,13 @@ export default {
   margin-bottom: 18px;
 }
 
+.page-header-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .page-header h2 {
   margin: 0;
   font-size: 22px;
@@ -359,11 +285,15 @@ export default {
   color: #1f2d3d;
 }
 
+.publish-btn {
+  min-width: 96px;
+}
+
 .card {
   background: #ffffff;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
-  padding: 20px;
+  overflow: hidden;
 }
 
 .common-table {
@@ -396,17 +326,24 @@ export default {
   flex-wrap: wrap;
 }
 
-.small-btn {
-  min-width: 64px;
-  height: 34px;
-  padding: 0 12px;
+.primary-btn,
+.secondary-btn,
+.danger-btn {
+  height: 36px;
+  padding: 0 16px;
   border-radius: 4px;
-  font-size: 13px;
+  border: none;
   cursor: pointer;
+  font-size: 14px;
+}
+
+.small-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 
 .primary-btn {
-  border: none;
   background: #1f4e8c;
   color: #ffffff;
 }
@@ -416,9 +353,9 @@ export default {
 }
 
 .secondary-btn {
-  border: 1px solid #dcdfe6;
   background: #ffffff;
   color: #606266;
+  border: 1px solid #dcdfe6;
 }
 
 .secondary-btn:hover {
@@ -427,13 +364,12 @@ export default {
 }
 
 .danger-btn {
-  border: none;
-  background: #d9534f;
+  background: #f56c6c;
   color: #ffffff;
 }
 
 .danger-btn:hover {
-  background: #c9302c;
+  background: #dd6161;
 }
 
 .dialog-mask {
@@ -448,12 +384,16 @@ export default {
 }
 
 .dialog-box {
-  width: 460px;
+  width: 520px;
   max-width: 100%;
   background: #ffffff;
-  border: 1px solid #dcdfe6;
   border-radius: 8px;
+  border: 1px solid #dcdfe6;
   overflow: hidden;
+}
+
+.small-dialog {
+  width: 420px;
 }
 
 .dialog-header {
@@ -481,24 +421,29 @@ export default {
   cursor: pointer;
 }
 
+.close-btn:hover {
+  color: #1f4e8c;
+  border-color: #1f4e8c;
+}
+
 .dialog-body {
   padding: 20px;
   font-size: 14px;
-  line-height: 1.8;
+  color: #303133;
+  line-height: 1.7;
 }
 
 .dialog-tip {
   margin-top: 10px;
-  color: #909399;
   font-size: 13px;
+  color: #909399;
 }
 
 .dialog-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #ebeef5;
+  padding: 0 20px 20px;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
 @media (max-width: 900px) {
@@ -510,12 +455,17 @@ export default {
     padding: 16px;
   }
 
+  .page-header-between {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .card {
     overflow-x: auto;
   }
 
   .common-table {
-    min-width: 920px;
+    min-width: 900px;
   }
 }
 </style>
