@@ -109,7 +109,16 @@ public class ExperimentAssignmentController {
                     : userRepository.findByStudentClass_IdAndRoleAndIsDeletedFalse(classId, UserRole.STUDENT);
 
             List<Evaluation> evaluations = evaluationRepository.findByAssignmentIdOrderByCreateTimeDesc(assignment.getId());
-            Set<Integer> submittedStudentIdSet = evaluations.stream()
+            Set<Integer> classStudentIdSet = classStudents.stream()
+                    .map(User::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+
+            List<Evaluation> studentEvaluations = evaluations.stream()
+                    .filter(item -> item.getStudentId() != null && classStudentIdSet.contains(item.getStudentId()))
+                    .collect(Collectors.toList());
+
+            Set<Integer> submittedStudentIdSet = studentEvaluations.stream()
                     .map(Evaluation::getStudentId)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -126,7 +135,7 @@ public class ExperimentAssignmentController {
 
             vo.setSubmittedCount(submittedStudentNames.size());
             vo.setUnsubmittedCount(unsubmittedStudentNames.size());
-            vo.setTotalSubmissionCount(evaluations.size());
+            vo.setTotalSubmissionCount(studentEvaluations.size());
             vo.setSubmittedStudentNames(submittedStudentNames);
             vo.setUnsubmittedStudentNames(unsubmittedStudentNames);
 
