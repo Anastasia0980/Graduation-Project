@@ -14,6 +14,15 @@ public class LeaderBoard {
     private String nickname;
 
     /**
+     * 分组对战扩展字段
+     */
+    private Long teamId;
+    private String teamName;
+    private String captainName;
+    private String member1Name;
+    private String member2Name;
+
+    /**
      * 兼容旧字段；这里与 ladderScore 保持一致
      */
     private double bestScore;

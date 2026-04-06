@@ -43,6 +43,9 @@ public class ExperimentAssignment {
     @Column(nullable = false)
     private LocalDateTime deadline;
 
+    @Column(name = "team_group_deadline")
+    private LocalDateTime teamGroupDeadline;
+
     @Column(name="create_time")
     private LocalDateTime createTime;
 

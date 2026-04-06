@@ -68,6 +68,13 @@
               >
                 对战模式
               </button>
+              <button
+                class='mode-btn'
+                :class='{ active: currentMode === "team" }'
+                @click='switchMode("team")'
+              >
+                分组对战
+              </button>
             </div>
           </div>
 
@@ -82,6 +89,16 @@
                   <th>闯过关卡数</th>
                   <th>闯关时间</th>
                 </tr>
+                <tr v-else-if='currentMode === "team"'>
+                  <th>排名</th>
+                  <th>队伍名</th>
+                  <th>队长姓名</th>
+                  <th>队员1姓名</th>
+                  <th>队员2姓名</th>
+                  <th>天梯分</th>
+                  <th>战绩</th>
+                  <th>对战场次</th>
+                </tr>
                 <tr v-else>
                   <th>排名</th>
                   <th>姓名</th>
@@ -92,18 +109,37 @@
               </thead>
               <tbody>
                 <tr v-if='loading'>
-                  <td :colspan='currentMode === "single" ? 4 : 5' class='empty-cell'>加载中...</td>
+                  <td :colspan='currentColspan' class='empty-cell'>加载中...</td>
                 </tr>
 
                 <tr v-else-if='pagedRankingList.length === 0'>
-                  <td :colspan='currentMode === "single" ? 4 : 5' class='empty-cell'>当前暂无排行榜数据</td>
+                  <td :colspan='currentColspan' class='empty-cell'>当前暂无排行榜数据</td>
                 </tr>
 
-                <tr v-else-if='currentMode === "single"' v-for='item in pagedRankingList' :key='item.id'>
+                <tr
+                  v-else-if='currentMode === "single"'
+                  v-for='item in pagedRankingList'
+                  :key='item.id'
+                >
                   <td>{{ item.rank }}</td>
                   <td>{{ item.name }}</td>
                   <td>{{ item.levelCount }}</td>
                   <td>{{ item.clearTime }}</td>
+                </tr>
+
+                <tr
+                  v-else-if='currentMode === "team"'
+                  v-for='item in pagedRankingList'
+                  :key='item.teamId || item.rank'
+                >
+                  <td>{{ item.rank }}</td>
+                  <td>{{ item.teamName }}</td>
+                  <td>{{ item.captainName }}</td>
+                  <td>{{ item.member1Name }}</td>
+                  <td>{{ item.member2Name }}</td>
+                  <td>{{ item.ladderScore }}</td>
+                  <td>{{ item.record }}</td>
+                  <td>{{ item.matchCount }}</td>
                 </tr>
 
                 <tr v-else v-for='item in pagedRankingList' :key='item.studentId'>
@@ -157,6 +193,7 @@ export default {
       loading: false,
       allTaskOptions: [],
       versusRankingList: [],
+      teamRankingList: [],
       singleRankingMockList: [
         {
           id: 1,
@@ -176,12 +213,18 @@ export default {
       if (this.currentMode === 'single') {
         return this.allTaskOptions.filter(item => item.mode === 'SINGLE')
       }
+      if (this.currentMode === 'team') {
+        return this.allTaskOptions.filter(item => item.mode === 'TEAM')
+      }
       return this.allTaskOptions.filter(item => item.mode === 'VERSUS')
     },
     currentRankingList () {
       if (this.currentMode === 'single') {
         if (!this.selectedTaskId) return []
         return this.singleRankingMockList
+      }
+      if (this.currentMode === 'team') {
+        return this.teamRankingList
       }
       return this.versusRankingList
     },
@@ -194,7 +237,15 @@ export default {
       if (this.currentMode === 'single') {
         return '注：单人模式排行榜先按闯过关卡数降序排序；若闯过关卡数相同，则按闯关时间升序排序。'
       }
+      if (this.currentMode === 'team') {
+        return '注：分组对战排行榜按队伍天梯分降序排列；战绩与对战场次按一次挑战=一场统计，并在同一视图展示队长与队员信息。'
+      }
       return '注：对战模式排行榜按天梯分降序排列；天梯分综合考虑基础战绩、对手强度、对战多样性与重复挑战惩罚。战绩与对战场次按一次挑战=一场统计。'
+    },
+    currentColspan () {
+      if (this.currentMode === 'single') return 4
+      if (this.currentMode === 'team') return 8
+      return 5
     }
   },
   watch: {
@@ -202,6 +253,9 @@ export default {
       this.currentPage = 1
       if (this.currentMode === 'versus' && this.selectedTaskId) {
         this.loadVersusRanking()
+      }
+      if (this.currentMode === 'team' && this.selectedTaskId) {
+        this.loadTeamRanking()
       }
     },
     '$route.query': {
@@ -250,7 +304,7 @@ export default {
         const queryTaskId = this.$route.query.taskId
         const queryMode = this.$route.query.mode
 
-        if (queryMode === 'versus' || queryMode === 'single') {
+        if (queryMode === 'versus' || queryMode === 'single' || queryMode === 'team') {
           this.currentMode = queryMode
         }
 
@@ -267,6 +321,7 @@ export default {
       if (options.length === 0) {
         this.selectedTaskId = ''
         this.versusRankingList = []
+        this.teamRankingList = []
         return
       }
 
@@ -275,6 +330,9 @@ export default {
 
       if (this.currentMode === 'versus') {
         this.loadVersusRanking()
+      }
+      if (this.currentMode === 'team') {
+        this.loadTeamRanking()
       }
       this.syncRouteQuery()
     },
@@ -331,6 +389,48 @@ export default {
       } catch (error) {
         this.versusRankingList = []
         ElMessage.error(error.message || '排行榜加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    async loadTeamRanking () {
+      if (!this.selectedTaskId) {
+        this.teamRankingList = []
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await fetch(
+          `${API_BASE}/assignments/${this.selectedTaskId}/team-leaderboard?pageNum=0&pageSize=200`,
+          {
+            method: 'GET',
+            headers: this.getAuthHeaders()
+          }
+        )
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '分组排行榜加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+
+        this.teamRankingList = content.map(item => ({
+          rank: item.rank,
+          teamId: item.teamId,
+          teamName: item.teamName || '未知队伍',
+          captainName: item.captainName || '--',
+          member1Name: item.member1Name || '--',
+          member2Name: item.member2Name || '--',
+          ladderScore: item.ladderScore ?? item.bestScore ?? 0,
+          record: `${item.winCount || 0}胜${item.loseCount || 0}负${item.drawCount || 0}平`,
+          matchCount: item.matchCount || 0
+        }))
+      } catch (error) {
+        this.teamRankingList = []
+        ElMessage.error(error.message || '分组排行榜加载失败')
       } finally {
         this.loading = false
       }
@@ -460,6 +560,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .mode-btn {
@@ -537,7 +638,6 @@ export default {
 
   .mode-switch {
     justify-content: flex-start;
-    flex-wrap: wrap;
   }
 }
 </style>

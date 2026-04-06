@@ -195,7 +195,7 @@ export default {
         return '进入任务后可提交模型并参与对战。'
       }
       if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') {
-        return '进入任务后可进行团队锦标赛相关操作。'
+        return '进入任务后可进行分组对战模式相关操作。'
       }
       return '进入任务后可提交模型并完成测评。'
     },
@@ -217,7 +217,7 @@ export default {
     },
     mapModeLabel (evaluationMode) {
       if (evaluationMode === 'VERSUS' || evaluationMode === 'BATTLE') return '对战模式'
-      if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') return '团队锦标赛'
+      if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') return '分组对战模式'
       return '单人模式'
     },
     formatDateTime (value) {

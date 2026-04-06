@@ -2,7 +2,13 @@ package org.example.rlplatform.controller;
 
 import org.example.rlplatform.Repository.ScoreExportRecordRepository;
 import org.example.rlplatform.Repository.UserRepository;
-import org.example.rlplatform.entity.*;
+import org.example.rlplatform.entity.EvaluationMode;
+import org.example.rlplatform.entity.ExperimentAssignment;
+import org.example.rlplatform.entity.LeaderBoard;
+import org.example.rlplatform.entity.Result;
+import org.example.rlplatform.entity.ScoreExportRecord;
+import org.example.rlplatform.entity.User;
+import org.example.rlplatform.entity.UserRole;
 import org.example.rlplatform.service.ExperimentAssignmentService;
 import org.example.rlplatform.service.LeaderBoardService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
@@ -14,7 +20,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/teacher/exports")
@@ -87,6 +96,24 @@ public class ScoreExportController {
             row.setLevelCount(4);
             row.setClearTime("2小时15分");
             rows.add(row);
+        } else if (assignment.getEvaluationMode() == EvaluationMode.TEAM) {
+            Page<LeaderBoard> page = leaderBoardService.listTeam(assignmentId, 0, 1000);
+            List<LeaderBoard> rankingRows = page.getContent() == null ? Collections.emptyList() : page.getContent();
+
+            for (LeaderBoard item : rankingRows) {
+                ScoreExportRowVO row = new ScoreExportRowVO();
+                row.setRank(item.getRank());
+                row.setName(item.getTeamName());
+                row.setCaptainName(item.getCaptainName());
+                row.setMember1Name(item.getMember1Name());
+                row.setMember2Name(item.getMember2Name());
+                row.setLadderScore(item.getLadderScore());
+                row.setMatchCount(item.getMatchCount());
+                row.setWinCount(item.getWinCount());
+                row.setLoseCount(item.getLoseCount());
+                row.setDrawCount(item.getDrawCount());
+                rows.add(row);
+            }
         } else {
             Page<LeaderBoard> page = leaderBoardService.list(assignmentId, 0, 1000);
             List<LeaderBoard> rankingRows = page.getContent() == null ? Collections.emptyList() : page.getContent();

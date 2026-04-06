@@ -3,6 +3,8 @@ package org.example.rlplatform.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.rlplatform.Repository.BattleParticipantRepository;
+import org.example.rlplatform.Repository.TeamGroupRepository;
+import org.example.rlplatform.Repository.TeamMemberRepository;
 import org.example.rlplatform.Repository.EvaluationRepository;
 import org.example.rlplatform.Repository.EvaluationResultRepository;
 import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
@@ -14,6 +16,8 @@ import org.example.rlplatform.entity.EvaluationResult;
 import org.example.rlplatform.entity.EvaluationStatus;
 import org.example.rlplatform.entity.ExperimentAssignment;
 import org.example.rlplatform.entity.LeaderBoard;
+import org.example.rlplatform.entity.TeamGroup;
+import org.example.rlplatform.entity.TeamMember;
 import org.example.rlplatform.entity.User;
 import org.example.rlplatform.service.LeaderBoardService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +33,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class LeaderBoardServiceImpl implements LeaderBoardService {
@@ -47,6 +52,12 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private TeamGroupRepository teamGroupRepository;
+
+    @Autowired
+    private TeamMemberRepository teamMemberRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -264,6 +275,224 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
 
         return new PageImpl<>(pageRows, pageable, total);
     }
+
+    @Override
+    public Page<LeaderBoard> listTeam(Integer assignmentId, Integer pageNum, Integer pageSize) {
+        Pageable pageable = PageRequest.of(pageNum, pageSize);
+
+        ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
+        if (assignment == null || assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            return new PageImpl<>(Collections.emptyList(), pageable, 0);
+        }
+
+        List<Evaluation> evaluations = evaluationRepository.findByAssignmentIdOrderByCreateTimeDesc(assignmentId);
+        if (evaluations == null || evaluations.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, 0);
+        }
+
+        List<Long> evaluationIds = new ArrayList<>();
+        for (Evaluation evaluation : evaluations) {
+            evaluationIds.add(evaluation.getId());
+        }
+
+        Map<Long, EvaluationResult> resultMap = new HashMap<>();
+        for (EvaluationResult result : evaluationResultRepository.findByEvaluationIdIn(evaluationIds)) {
+            resultMap.put(result.getEvaluationId(), result);
+        }
+
+        Map<Long, BattleParticipant> participantMap = new HashMap<>();
+        for (BattleParticipant participant : battleParticipantRepository.findByEvaluationIdIn(evaluationIds)) {
+            participantMap.put(participant.getEvaluationId(), participant);
+        }
+
+        List<TeamGroup> teamGroups = teamGroupRepository.findByAssignmentIdAndIsDeletedFalseOrderByIdAsc(assignmentId);
+        if (teamGroups == null || teamGroups.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, 0);
+        }
+
+        Map<Integer, TeamGroup> captainTeamMap = new HashMap<>();
+        for (TeamGroup teamGroup : teamGroups) {
+            if (teamGroup.getCaptainStudentId() != null) {
+                captainTeamMap.put(teamGroup.getCaptainStudentId(), teamGroup);
+            }
+        }
+
+        Map<Integer, PlayerStats> statsMap = new LinkedHashMap<>();
+
+        for (Evaluation evaluation : evaluations) {
+            if (evaluation.getStatus() != EvaluationStatus.FINISHED) {
+                continue;
+            }
+
+            BattleParticipant participant = participantMap.get(evaluation.getId());
+            if (participant == null || !"HUMAN".equalsIgnoreCase(participant.getOpponentType())) {
+                continue;
+            }
+            if (participant.getStudent1Id() == null || participant.getStudent2Id() == null) {
+                continue;
+            }
+
+            TeamGroup team1 = captainTeamMap.get(participant.getStudent1Id().intValue());
+            TeamGroup team2 = captainTeamMap.get(participant.getStudent2Id().intValue());
+            if (team1 == null || team2 == null || Objects.equals(team1.getId(), team2.getId())) {
+                continue;
+            }
+
+            EvaluationResult evaluationResult = resultMap.get(evaluation.getId());
+            if (evaluationResult == null || evaluationResult.getDetailedResults() == null || evaluationResult.getDetailedResults().isBlank()) {
+                continue;
+            }
+
+            JsonNode root = parseJson(evaluationResult.getDetailedResults());
+            if (root == null || !root.has("winner")) {
+                continue;
+            }
+            Integer winner = root.path("winner").asInt();
+
+            Integer team1Id = team1.getId();
+            Integer team2Id = team2.getId();
+            PlayerStats stats1 = statsMap.computeIfAbsent(team1Id, key -> new PlayerStats(team1Id));
+            PlayerStats stats2 = statsMap.computeIfAbsent(team2Id, key -> new PlayerStats(team2Id));
+            stats1.matchCount += 1;
+            stats2.matchCount += 1;
+
+            if (winner == 1) {
+                stats1.winCount += 1;
+                stats2.loseCount += 1;
+                stats1.addOpponent(team2Id, 1, 1, 0, 0);
+                stats2.addOpponent(team1Id, 1, 0, 1, 0);
+            } else if (winner == 2) {
+                stats2.winCount += 1;
+                stats1.loseCount += 1;
+                stats1.addOpponent(team2Id, 1, 0, 1, 0);
+                stats2.addOpponent(team1Id, 1, 1, 0, 0);
+            } else {
+                stats1.drawCount += 1;
+                stats2.drawCount += 1;
+                stats1.addOpponent(team2Id, 1, 0, 0, 1);
+                stats2.addOpponent(team1Id, 1, 0, 0, 1);
+            }
+        }
+
+        if (statsMap.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, 0);
+        }
+
+        for (PlayerStats stats : statsMap.values()) {
+            if (stats.matchCount <= 0) {
+                stats.baseScore = 0.0;
+            } else {
+                stats.baseScore = (stats.winCount + 0.5 * stats.drawCount) / stats.matchCount;
+            }
+        }
+
+        for (PlayerStats stats : statsMap.values()) {
+            if (stats.matchCount <= 0) {
+                stats.opponentStrengthScore = 0.0;
+                stats.diversityScore = 0.0;
+                stats.penaltyScore = 0.0;
+                stats.activityFactor = 0.0;
+                stats.finalScore = 0.0;
+                stats.ladderScore = 0;
+                continue;
+            }
+
+            double weightedOpponentStrength = 0.0;
+            for (OpponentStats opponentStats : stats.opponentStatsMap.values()) {
+                PlayerStats opponent = statsMap.get(opponentStats.opponentId);
+                double opponentBaseScore = opponent == null ? 0.0 : opponent.baseScore;
+                double myPerformanceAgainstOpponent = opponentStats.matchCount <= 0
+                        ? 0.0
+                        : (opponentStats.winCount + 0.5 * opponentStats.drawCount) / opponentStats.matchCount;
+                weightedOpponentStrength += myPerformanceAgainstOpponent * opponentBaseScore * opponentStats.matchCount;
+            }
+
+            stats.opponentStrengthScore = weightedOpponentStrength / stats.matchCount;
+            stats.diversityScore = (double) stats.opponentStatsMap.size() / stats.matchCount;
+
+            int repeatedPenaltyCount = 0;
+            for (OpponentStats opponentStats : stats.opponentStatsMap.values()) {
+                repeatedPenaltyCount += Math.max(0, opponentStats.matchCount - 2);
+            }
+            stats.penaltyScore = (double) repeatedPenaltyCount / stats.matchCount;
+            stats.activityFactor = Math.min(1.0, stats.matchCount / 5.0);
+
+            double rawScore = 0.45 * stats.baseScore + 0.35 * stats.opponentStrengthScore + 0.15 * stats.diversityScore - 0.05 * stats.penaltyScore;
+            stats.finalScore = Math.max(0.0, rawScore * stats.activityFactor);
+            stats.ladderScore = 1000 + Math.max(0, (int) Math.round(stats.finalScore * 1000));
+        }
+
+        List<PlayerStats> sortedStats = new ArrayList<>(statsMap.values());
+        sortedStats.sort((a, b) -> {
+            if (b.ladderScore != a.ladderScore) {
+                return Integer.compare(b.ladderScore, a.ladderScore);
+            }
+            if (Double.compare(b.opponentStrengthScore, a.opponentStrengthScore) != 0) {
+                return Double.compare(b.opponentStrengthScore, a.opponentStrengthScore);
+            }
+            if (a.matchCount != b.matchCount) {
+                return Integer.compare(b.matchCount, a.matchCount);
+            }
+            return Integer.compare(a.studentId, b.studentId);
+        });
+
+        List<LeaderBoard> allRows = new ArrayList<>();
+        for (int i = 0; i < sortedStats.size(); i++) {
+            PlayerStats stats = sortedStats.get(i);
+            TeamGroup teamGroup = teamGroupRepository.findByIdAndIsDeletedFalse(stats.studentId);
+            if (teamGroup == null) {
+                continue;
+            }
+            LeaderBoard row = new LeaderBoard();
+            row.setRank(i + 1);
+            row.setTeamId(teamGroup.getId().longValue());
+            row.setTeamName(teamGroup.getTeamName());
+            fillTeamMemberNames(row, teamGroup);
+            row.setBestScore(stats.ladderScore);
+            row.setLadderScore(stats.ladderScore);
+            row.setWinCount(stats.winCount);
+            row.setLoseCount(stats.loseCount);
+            row.setDrawCount(stats.drawCount);
+            row.setMatchCount(stats.matchCount);
+            allRows.add(row);
+        }
+
+        int total = allRows.size();
+        int start = Math.min(pageNum * pageSize, total);
+        int end = Math.min(start + pageSize, total);
+        List<LeaderBoard> pageRows = allRows.subList(start, end);
+        return new PageImpl<>(pageRows, pageable, total);
+    }
+
+    private void fillTeamMemberNames(LeaderBoard row, TeamGroup teamGroup) {
+        List<TeamMember> members = teamMemberRepository.findByTeamIdAndIsDeletedFalseOrderByIdAsc(teamGroup.getId());
+        List<Integer> userIds = new ArrayList<>();
+        for (TeamMember member : members) {
+            userIds.add(member.getStudentId());
+        }
+
+        Map<Integer, String> nameMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            for (User user : userRepository.findAllById(userIds)) {
+                String displayName = (user.getUsername() != null && !user.getUsername().isBlank())
+                        ? user.getUsername()
+                        : user.getNickname();
+                nameMap.put(user.getId(), displayName == null || displayName.isBlank() ? "未知学生" : displayName);
+            }
+        }
+
+        row.setCaptainName(nameMap.getOrDefault(teamGroup.getCaptainStudentId(), "未知学生"));
+        List<String> others = new ArrayList<>();
+        for (TeamMember member : members) {
+            if (Objects.equals(member.getStudentId(), teamGroup.getCaptainStudentId())) {
+                continue;
+            }
+            others.add(nameMap.getOrDefault(member.getStudentId(), "未知学生"));
+        }
+        row.setMember1Name(others.size() > 0 ? others.get(0) : "--");
+        row.setMember2Name(others.size() > 1 ? others.get(1) : "--");
+    }
+
 
     private JsonNode parseJson(String text) {
         if (text == null || text.isBlank()) {

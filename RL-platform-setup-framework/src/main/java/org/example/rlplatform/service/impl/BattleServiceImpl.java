@@ -6,6 +6,8 @@ import org.example.rlplatform.Repository.EvaluationRepository;
 import org.example.rlplatform.Repository.EvaluationResultRepository;
 import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
 import org.example.rlplatform.Repository.UserRepository;
+import org.example.rlplatform.Repository.TeamGroupRepository;
+import org.example.rlplatform.Repository.TeamMemberRepository;
 import org.example.rlplatform.battle.BattleRunner;
 import org.example.rlplatform.entity.*;
 import org.example.rlplatform.service.BattleService;
@@ -39,6 +41,8 @@ public class BattleServiceImpl implements BattleService {
     private final ExperimentAssignmentRepository experimentAssignmentRepository;
     private final SystemBotService systemBotService;
     private final UserRepository userRepository;
+    private final TeamGroupRepository teamGroupRepository;
+    private final TeamMemberRepository teamMemberRepository;
 
     @Value("${evaluation.workspace:}")
     private String workspace;
@@ -51,7 +55,9 @@ public class BattleServiceImpl implements BattleService {
             BattleRunner battleRunner,
             ExperimentAssignmentRepository experimentAssignmentRepository,
             SystemBotService systemBotService,
-            UserRepository userRepository
+            UserRepository userRepository,
+            TeamGroupRepository teamGroupRepository,
+            TeamMemberRepository teamMemberRepository
     ) {
         this.evaluationRepository = evaluationRepository;
         this.evaluationResultRepository = evaluationResultRepository;
@@ -61,6 +67,8 @@ public class BattleServiceImpl implements BattleService {
         this.experimentAssignmentRepository = experimentAssignmentRepository;
         this.systemBotService = systemBotService;
         this.userRepository = userRepository;
+        this.teamGroupRepository = teamGroupRepository;
+        this.teamMemberRepository = teamMemberRepository;
     }
 
     @Override
@@ -90,6 +98,8 @@ public class BattleServiceImpl implements BattleService {
             if (assignment == null) {
                 return Result.error("任务不存在");
             }
+            validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+            validateTeamLockedIfNeeded(assignment, studentId.intValue());
 
             String environment = assignment.getEnvironment();
             if (environment == null || environment.isBlank()) {
@@ -125,10 +135,11 @@ public class BattleServiceImpl implements BattleService {
         if (studentId == null || assignmentId == null) {
             return Collections.emptyList();
         }
-        validBattleAssignment(assignmentId);
+        ExperimentAssignment assignment = validBattleAssignment(assignmentId);
+        Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
         List<BattleModelSubmission> submissions = battleModelSubmissionRepository
-                .findByAssignmentIdAndStudentIdAndActiveTrueOrderByIdDesc(assignmentId, studentId);
-        return buildBattleModelOptions(submissions);
+                .findByAssignmentIdAndStudentIdAndActiveTrueOrderByIdDesc(assignmentId, ownerStudentId);
+        return buildBattleModelOptions(assignment, submissions);
     }
 
     @Override
@@ -138,7 +149,9 @@ public class BattleServiceImpl implements BattleService {
             return Collections.emptyList();
         }
 
-        validBattleAssignment(assignmentId);
+        ExperimentAssignment assignment = validBattleAssignment(assignmentId);
+        validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+        validateTeamLockedIfNeeded(assignment, studentId.intValue());
 
         BattleModelSubmission mySubmission = battleModelSubmissionRepository.findByIdAndActiveTrue(mySubmissionId)
                 .orElseThrow(() -> new RuntimeException("我的模型记录不存在"));
@@ -146,13 +159,15 @@ public class BattleServiceImpl implements BattleService {
         if (!Objects.equals(mySubmission.getAssignmentId(), assignmentId)) {
             throw new RuntimeException("模型与当前任务不匹配");
         }
-        if (!Objects.equals(mySubmission.getStudentId(), studentId)) {
+
+        Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+        if (!Objects.equals(mySubmission.getStudentId(), ownerStudentId)) {
             throw new RuntimeException("不能使用他人的模型作为自己的出战模型");
         }
 
         List<BattleModelSubmission> submissions = battleModelSubmissionRepository
-                .findByAssignmentIdAndStudentIdNotAndActiveTrueOrderByIdDesc(assignmentId, studentId);
-        return buildBattleModelOptions(submissions);
+                .findByAssignmentIdAndStudentIdNotAndActiveTrueOrderByIdDesc(assignmentId, ownerStudentId);
+        return buildBattleModelOptions(assignment, submissions);
     }
 
     @Override
@@ -174,6 +189,8 @@ public class BattleServiceImpl implements BattleService {
             if (assignment == null) {
                 return Result.error("任务不存在");
             }
+            validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+            validateTeamLockedIfNeeded(assignment, studentId.intValue());
 
             BattleModelSubmission mySubmission = battleModelSubmissionRepository.findByIdAndActiveTrue(mySubmissionId)
                     .orElseThrow(() -> new RuntimeException("我的模型记录不存在"));
@@ -185,8 +202,9 @@ public class BattleServiceImpl implements BattleService {
                 return Result.error("模型与当前任务不匹配");
             }
 
-            if (!Objects.equals(mySubmission.getStudentId(), studentId)) {
-                return Result.error("只能使用自己的模型发起挑战");
+            Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+            if (!Objects.equals(mySubmission.getStudentId(), ownerStudentId)) {
+                return Result.error("只能使用当前队伍有效模型发起挑战");
             }
 
             if (Objects.equals(mySubmission.getStudentId(), opponentSubmission.getStudentId())) {
@@ -359,10 +377,73 @@ public class BattleServiceImpl implements BattleService {
         if (assignment == null) {
             return null;
         }
-        if (assignment.getEvaluationMode() != EvaluationMode.VERSUS) {
+        if (assignment.getEvaluationMode() != EvaluationMode.VERSUS
+                && assignment.getEvaluationMode() != EvaluationMode.TEAM) {
             throw new RuntimeException("当前任务不是对战模式");
         }
         return assignment;
+    }
+
+
+    private void validateTeamCaptainIfNeeded(ExperimentAssignment assignment, Integer currentUserId) {
+        if (assignment == null || assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            return;
+        }
+        var teamOpt = teamGroupRepository.findByAssignmentIdAndCaptainStudentIdAndIsDeletedFalse(assignment.getId(), currentUserId);
+        if (teamOpt.isEmpty()) {
+            throw new RuntimeException("当前任务为分组对战，仅队长可提交模型和发起挑战");
+        }
+    }
+
+
+    private void validateTeamLockedIfNeeded(ExperimentAssignment assignment, Integer currentUserId) {
+        if (assignment == null || assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            return;
+        }
+        TeamGroup team = findMyTeam(assignment.getId(), currentUserId);
+        if (team == null) {
+            throw new RuntimeException("当前未加入队伍");
+        }
+        if (!Boolean.TRUE.equals(team.getLocked())) {
+            throw new RuntimeException("请先确定队伍成员或等待自由组队截止后自动锁定");
+        }
+    }
+
+    private Long resolveSubmissionOwnerStudentId(ExperimentAssignment assignment, Long currentStudentId) {
+        if (assignment == null || assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            return currentStudentId;
+        }
+        TeamGroup team = findMyTeam(assignment.getId(), currentStudentId.intValue());
+        if (team == null) {
+            throw new RuntimeException("当前未加入队伍");
+        }
+        return team.getCaptainStudentId().longValue();
+    }
+
+    private TeamGroup findMyTeam(Integer assignmentId, Integer studentId) {
+        ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
+        List<TeamMember> memberships = teamMemberRepository.findByStudentIdAndIsDeletedFalse(studentId);
+        for (TeamMember member : memberships) {
+            TeamGroup team = teamGroupRepository.findByIdAndIsDeletedFalse(member.getTeamId());
+            if (team != null && Objects.equals(team.getAssignmentId(), assignmentId)) {
+                return ensureTeamAutoLocked(team, assignment);
+            }
+        }
+        return null;
+    }
+
+    private TeamGroup ensureTeamAutoLocked(TeamGroup team, ExperimentAssignment assignment) {
+        if (team == null || assignment == null || Boolean.TRUE.equals(team.getLocked())) {
+            return team;
+        }
+        LocalDateTime teamGroupDeadline = assignment.getTeamGroupDeadline();
+        if (teamGroupDeadline != null && !LocalDateTime.now().isBefore(teamGroupDeadline)) {
+            team.setLocked(true);
+            team.setLockTime(LocalDateTime.now());
+            team.setUpdateTime(LocalDateTime.now());
+            team = teamGroupRepository.save(team);
+        }
+        return team;
     }
 
     private Long currentStudentId() {
@@ -399,7 +480,7 @@ public class BattleServiceImpl implements BattleService {
         return (name == null || name.isBlank()) ? "model.pt" : name;
     }
 
-    private List<BattleModelOptionVO> buildBattleModelOptions(List<BattleModelSubmission> submissions) {
+    private List<BattleModelOptionVO> buildBattleModelOptions(ExperimentAssignment assignment, List<BattleModelSubmission> submissions) {
         List<BattleModelOptionVO> result = new ArrayList<>();
         for (BattleModelSubmission submission : submissions) {
             BattleModelOptionVO vo = new BattleModelOptionVO();
@@ -413,6 +494,17 @@ public class BattleServiceImpl implements BattleService {
                     studentName = userOpt.get().getUsername();
                 }
             }
+
+            if (assignment != null && assignment.getEvaluationMode() == EvaluationMode.TEAM && submission.getStudentId() != null) {
+                var teamOpt = teamGroupRepository.findByAssignmentIdAndCaptainStudentIdAndIsDeletedFalse(
+                        assignment.getId(),
+                        submission.getStudentId().intValue()
+                );
+                if (teamOpt.isPresent()) {
+                    studentName = buildTeamDisplayName(teamOpt.get());
+                }
+            }
+
             vo.setStudentName(studentName);
             vo.setModelName(submission.getModelName());
             vo.setSubmitTime(submission.getCreateTime() == null ? "--" : submission.getCreateTime().format(DATETIME_FORMATTER));
@@ -425,6 +517,40 @@ public class BattleServiceImpl implements BattleService {
             result.add(vo);
         }
         return result;
+    }
+
+    private String buildTeamDisplayName(TeamGroup team) {
+        if (team == null) {
+            return "未知队伍";
+        }
+        List<TeamMember> members = teamMemberRepository.findByTeamIdAndIsDeletedFalseOrderByIdAsc(team.getId());
+        List<Integer> memberIds = new ArrayList<>();
+        for (TeamMember member : members) {
+            memberIds.add(member.getStudentId());
+        }
+
+        Map<Integer, String> nameMap = new HashMap<>();
+        if (!memberIds.isEmpty()) {
+            for (User user : userRepository.findAllById(memberIds)) {
+                String name = user.getUsername();
+                if (name == null || name.isBlank()) {
+                    name = user.getNickname();
+                }
+                nameMap.put(user.getId(), name == null ? "未知学生" : name);
+            }
+        }
+
+        String captainName = nameMap.getOrDefault(team.getCaptainStudentId(), "未知学生");
+        List<String> parts = new ArrayList<>();
+        parts.add(team.getTeamName());
+        parts.add(captainName);
+        for (TeamMember member : members) {
+            if (Objects.equals(member.getStudentId(), team.getCaptainStudentId())) {
+                continue;
+            }
+            parts.add(nameMap.getOrDefault(member.getStudentId(), "未知学生"));
+        }
+        return String.join(" - ", parts);
     }
 
     private int[] countBattleRecord(Long submissionId) {

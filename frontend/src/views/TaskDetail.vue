@@ -136,14 +136,16 @@
 
           <template v-else>
             <div class='side-desc'>
-              当前任务为团队锦标赛模式。请先完成队伍操作，再查看当前对战安排。
+              当前任务为分组对战模式。学生需先完成组队，再由队长统一上传模型；后续队伍可像多人对战一样自主选择其他队伍发起异步挑战。
             </div>
 
             <div class='tournament-btn-group'>
-              <button class='primary-btn' @click='showCreateTeamDialog = true'>创建队伍</button>
-              <button class='secondary-btn side-secondary' @click='showJoinTeamDialog = true'>加入队伍</button>
-              <button class='danger-btn' :disabled='!hasTeam' @click='showLeaveTeamDialog = true'>退出队伍</button>
-              <button class='primary-btn' :disabled='!hasTeam' @click='goTournamentBracket'>查看当前对战安排</button>
+              <button class='primary-btn' :disabled='hasTeam' @click='showCreateTeamDialog = true'>创建队伍</button>
+              <button class='secondary-btn side-secondary' :disabled='hasTeam' @click='showJoinTeamDialog = true'>加入队伍</button>
+              <button class='danger-btn' :disabled='!hasTeam || !teamInfo.isCaptain' @click='showDissolveTeamDialog = true'>解散队伍</button>
+              <button class='danger-btn side-secondary' :disabled='!hasTeam || teamInfo.isCaptain' @click='showLeaveTeamDialog = true'>退出队伍</button>
+              <button class='primary-btn' :disabled='!hasTeam' @click='handleTeamBattleEntryClick'>上传模型</button>
+              <button class='secondary-btn side-secondary' :disabled='!hasTeam' @click='openMyBattleModelsDialog'>查看已提交模型</button>
             </div>
 
             <div class='team-info-box' v-if='hasTeam'>
@@ -156,13 +158,19 @@
                 <span>队伍码</span>
                 <span>{{ teamInfo.teamCode }}</span>
               </div>
-              <div class='team-info-row'>
-                <span>队长</span>
-                <span>{{ teamInfo.captain }}</span>
-              </div>
-              <div class='team-info-row'>
-                <span>人数</span>
-                <span>{{ teamInfo.members.length }} / 3</span>
+              <div class='team-member-stack'>
+                <div class='team-member-row'>
+                  <span>队长</span>
+                  <span>{{ displayTeamSlot(0) }}</span>
+                </div>
+                <div class='team-member-row'>
+                  <span>队员1</span>
+                  <span>{{ displayTeamSlot(1) }}</span>
+                </div>
+                <div class='team-member-row'>
+                  <span>队员2</span>
+                  <span>{{ displayTeamSlot(2) }}</span>
+                </div>
               </div>
             </div>
           </template>
@@ -180,7 +188,7 @@
               <span class='mini-value'>{{ environmentText }}</span>
             </div>
             <div class='mini-info-row'>
-              <span class='mini-label'>截止时间</span>
+              <span class='mini-label'>任务截止时间</span>
               <span class='mini-value'>{{ deadlineText }}</span>
             </div>
           </div>
@@ -196,13 +204,13 @@
             >
               <div class='ranking-left'>
                 <span class='ranking-rank'>{{ item.rank }}</span>
-                <span class='ranking-name'>{{ item.name }}</span>
+                <span class='ranking-name'>{{ item.displayName }}</span>
               </div>
               <div class='ranking-score'>{{ item.score }}</div>
             </div>
           </div>
-          <button class='secondary-btn show-all-btn' @click='handleRankingAction'>
-            {{ taskMode === 'battle' ? '查看详情' : '展开所有' }}
+          <button class='secondary-btn show-all-btn' @click='goRankingDetail'>
+            查看详情
           </button>
         </div>
       </aside>
@@ -443,7 +451,7 @@
                 </div>
               </div>
               <div class='battle-model-actions'>
-                <button class='primary-btn small-action-btn' :disabled='challengeLoading' @click='challengeOpponent(item)'>
+                <button class='primary-btn small-action-btn' :disabled='challengeLoading || (taskMode === "tournament" && !teamInfo.isCaptain)' @click='challengeOpponent(item)'>
                   {{ challengeLoading ? '发起中...' : '挑战' }}
                 </button>
               </div>
@@ -500,34 +508,7 @@
         </div>
       </div>
     </div>
-
-    <div v-if='showRankingDialog' class='dialog-mask' @click='showRankingDialog = false'>
-      <div class='dialog-box ranking-dialog' @click.stop>
-        <div class='dialog-header'>
-          <div class='dialog-title'>完整排行榜</div>
-          <button class='close-btn' @click='showRankingDialog = false'>关闭</button>
-        </div>
-
-        <div class='dialog-body ranking-dialog-body'>
-          <table class='ranking-table'>
-            <thead>
-              <tr>
-                <th>排名</th>
-                <th>姓名</th>
-                <th>分数</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for='item in rankingList' :key='item.rank'>
-                <td>{{ item.rank }}</td>
-                <td>{{ item.name }}</td>
-                <td>{{ item.score }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+  </div>
 
     <div v-if='showCreateTeamDialog' class='dialog-mask' @click='closeCreateTeamDialog'>
       <div class='dialog-box' @click.stop>
@@ -540,11 +521,7 @@
             <label>队伍名称</label>
             <input v-model='newTeamName' type='text' placeholder='请输入队伍名称' />
           </div>
-          <div class='form-item'>
-            <label>队伍码</label>
-            <input value='TEAM2026A' type='text' disabled />
-          </div>
-          <div class='dialog-tip'>当前队伍码先写死为 TEAM2026A。</div>
+          <div class='dialog-tip'>创建成功后会自动生成队伍码，并显示在当前队伍信息中。</div>
         </div>
         <div class='dialog-footer'>
           <button class='secondary-btn footer-btn' @click='closeCreateTeamDialog'>取消</button>
@@ -564,7 +541,7 @@
             <label>队伍码</label>
             <input v-model='joinTeamCode' type='text' placeholder='请输入队伍码' />
           </div>
-          <div class='dialog-tip'>当前可输入示例队伍码：TEAM2026A</div>
+          <div class='dialog-tip'>请输入队长提供的真实队伍码。</div>
         </div>
         <div class='dialog-footer'>
           <button class='secondary-btn footer-btn' @click='closeJoinTeamDialog'>取消</button>
@@ -588,7 +565,22 @@
         </div>
       </div>
     </div>
-  </div>
+
+    <div v-if='showDissolveTeamDialog' class='dialog-mask' @click='showDissolveTeamDialog = false'>
+      <div class='dialog-box small-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>解散队伍</div>
+          <button class='close-btn' @click='showDissolveTeamDialog = false'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          确定要解散当前队伍吗？解散后队伍成员将全部退出队伍。
+        </div>
+        <div class='dialog-footer'>
+          <button class='secondary-btn footer-btn' @click='showDissolveTeamDialog = false'>取消</button>
+          <button class='danger-btn footer-btn' @click='dissolveTeam'>解散</button>
+        </div>
+      </div>
+    </div>
 </template>
 
 <script>
@@ -631,7 +623,6 @@ export default {
       showEndedDialog: false,
       showSubmitDialog: false,
       showTaskListDialog: false,
-      showRankingDialog: false,
       showMyBattleModelsDialog: false,
       showOpponentDialog: false,
       currentSubmitMode: 'single',
@@ -650,35 +641,27 @@ export default {
       myBattleModels: [],
       opponentModels: [],
       selectedMyBattleModel: null,
-      rankingList: [
-        { rank: 1, name: '李四', score: 1280 },
-        { rank: 2, name: '张三', score: 1205 },
-        { rank: 3, name: '王五', score: 1150 },
-        { rank: 4, name: '赵六', score: 1088 },
-        { rank: 5, name: '陈七', score: 1020 },
-        { rank: 6, name: '孙八', score: 980 }
-      ],
-      staticRankingList: [
-        { rank: 1, name: '李四', score: 1280 },
-        { rank: 2, name: '张三', score: 1205 },
-        { rank: 3, name: '王五', score: 1150 },
-        { rank: 4, name: '赵六', score: 1088 },
-        { rank: 5, name: '陈七', score: 1020 },
-        { rank: 6, name: '孙八', score: 980 }
-      ],
+      rankingList: [],
       myBattleModelsMessage: '',
       opponentModelsMessage: '',
       showCreateTeamDialog: false,
       showJoinTeamDialog: false,
       showLeaveTeamDialog: false,
+      showDissolveTeamDialog: false,
+      teamLoading: false,
+      teamActionLoading: false,
       newTeamName: '',
       joinTeamCode: '',
       hasTeam: false,
       teamInfo: {
+        teamId: null,
         name: '',
         teamCode: '',
         captain: '',
-        members: []
+        members: [],
+        memberCount: 0,
+        maxMembers: 3,
+        isCaptain: false
       }
     }
   },
@@ -751,18 +734,17 @@ export default {
       if (assignmentId) {
         await this.loadTaskDetail(assignmentId)
         if (this.taskMode === 'battle') {
-          await Promise.all([
-            this.loadBotStatus(assignmentId),
-            this.loadBattleRanking(assignmentId)
-          ])
-        } else {
-          this.rankingList = this.staticRankingList.slice()
+          await this.loadBotStatus(assignmentId)
         }
+        if (this.taskMode === 'tournament') {
+          await this.loadMyTeam(assignmentId)
+        }
+        await this.loadRankingList(assignmentId)
       } else {
+        this.rankingList = []
         this.hasEasyBot = this.$route.query.hasEasyBot === 'true'
         this.hasMediumBot = this.$route.query.hasMediumBot === 'true'
         this.hasHardBot = this.$route.query.hasHardBot === 'true'
-        this.rankingList = this.staticRankingList.slice()
       }
     },
     getAssignmentId () {
@@ -839,40 +821,6 @@ export default {
         this.hasHardBot = false
       }
     },
-    async loadBattleRanking (assignmentId) {
-      const token = localStorage.getItem('auth_token') || ''
-      if (!token || !assignmentId) {
-        this.rankingList = []
-        return
-      }
-
-      try {
-        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/leaderboard?pageNum=0&pageSize=20`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '排行榜加载失败')
-        }
-
-        const pageData = result.data || {}
-        const content = Array.isArray(pageData.content) ? pageData.content : []
-        this.rankingList = content.map(item => ({
-          rank: item.rank,
-          name: item.nickname || '未知学生',
-          score: item.ladderScore ?? item.bestScore ?? 0,
-          studentId: item.studentId,
-          record: `${item.winCount || 0}胜${item.loseCount || 0}负${item.drawCount || 0}平`,
-          matchCount: item.matchCount || 0
-        }))
-      } catch (error) {
-        this.rankingList = []
-      }
-    },
     fillTaskDetail (task) {
       const config = this.parseTaskConfig(task)
       const taskMode = this.mapTaskMode(task.evaluationMode)
@@ -934,25 +882,72 @@ export default {
         this.modeLabelText = '对战模式'
         this.taskSubtitle = '学生先上传模型保存，再从已提交模型中选择自己的模型并指定对手发起挑战'
       } else {
-        this.modeLabelText = '团队锦标赛'
-        this.taskSubtitle = '学生在当前任务详情页中完成组队、退队与查看对战安排等操作'
+        this.modeLabelText = '分组对战模式'
+        this.taskSubtitle = '学生在当前任务详情页中完成组队、上传队伍模型，并以队伍为单位发起异步挑战'
       }
     },
-    handleRankingAction () {
-      if (this.taskMode === 'battle') {
-        this.viewFullRanking()
+
+    async loadRankingList (assignmentId) {
+      if (!assignmentId || this.taskMode === 'single') {
+        this.rankingList = []
         return
       }
-      this.showRankingDialog = true
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.rankingList = []
+        return
+      }
+
+      const path = this.taskMode === 'tournament'
+        ? `/assignments/${assignmentId}/team-leaderboard?pageNum=0&pageSize=3`
+        : `/assignments/${assignmentId}/leaderboard?pageNum=0&pageSize=3`
+
+      try {
+        const response = await fetch(`${API_BASE}${path}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '排行榜加载失败')
+        }
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.rankingList = content.map(item => ({
+          rank: item.rank,
+          displayName: this.taskMode === 'tournament' ? (item.teamName || '未知队伍') : (item.nickname || '未知学生'),
+          score: item.ladderScore ?? item.bestScore ?? 0
+        }))
+      } catch (error) {
+        this.rankingList = []
+      }
     },
-    viewFullRanking () {
+    handleTeamBattleEntryClick () {
+      if (!this.hasTeam) {
+        ElMessage.warning('请先创建或加入队伍')
+        return
+      }
+      if (!this.teamInfo.isCaptain) {
+        ElMessage.warning('仅队长可上传模型')
+        return
+      }
+      this.openSubmitDialog('human')
+    },
+    goRankingDetail () {
+      if (this.taskMode === 'single') {
+        return
+      }
       const role = (localStorage.getItem('auth_role') || '').toUpperCase()
-      const rankingPath = role === 'TEACHER' ? '/teacher/ranking' : '/student/ranking'
+      const path = role === 'TEACHER' ? '/teacher/ranking' : '/student/ranking'
+      const mode = this.taskMode === 'tournament' ? 'team' : 'versus'
       this.$router.push({
-        path: rankingPath,
+        path,
         query: {
-          taskId: this.getAssignmentId(),
-          mode: 'versus'
+          mode,
+          taskId: this.getAssignmentId()
         }
       })
     },
@@ -1177,6 +1172,10 @@ export default {
       }
     },
     async openOpponentDialog (item) {
+      if (this.taskMode === 'tournament' && !this.teamInfo.isCaptain) {
+        ElMessage.warning('仅队长可发起挑战')
+        return
+      }
       this.selectedMyBattleModel = item
       this.showOpponentDialog = true
       await this.loadOpponentModels(item.submissionId)
@@ -1279,45 +1278,197 @@ export default {
         this.queryLoading = false
       }
     },
-    createTeam () {
-      const teamName = this.newTeamName.trim() || '未命名队伍'
-      this.teamInfo = {
-        name: teamName,
-        teamCode: 'TEAM2026A',
-        captain: '张三',
-        members: [
-          { studentId: '2023123456', name: '张三', role: '队长' }
-        ]
+    async createTeam () {
+      const teamName = this.newTeamName.trim()
+      if (!teamName) {
+        ElMessage.warning('请输入队伍名称')
+        return
       }
-      this.hasTeam = true
-      this.closeCreateTeamDialog()
+
+      const assignmentId = this.getAssignmentId()
+      const token = localStorage.getItem('auth_token')
+      if (!assignmentId || !token) {
+        ElMessage.error('当前未登录或任务信息缺失')
+        return
+      }
+
+      this.teamActionLoading = true
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/teams`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ teamName })
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '创建队伍失败')
+        }
+        this.applyTeamInfo(result.data)
+        this.closeCreateTeamDialog()
+        ElMessage.success(`队伍创建成功，队伍码：${this.teamInfo.teamCode}`)
+      } catch (error) {
+        ElMessage.error(error.message || '创建队伍失败')
+      } finally {
+        this.teamActionLoading = false
+      }
     },
-    joinTeam () {
-      if (!this.joinTeamCode.trim()) {
+    async joinTeam () {
+      const teamCode = this.joinTeamCode.trim().toUpperCase()
+      if (!teamCode) {
         ElMessage.warning('请输入队伍码')
         return
       }
+
+      const assignmentId = this.getAssignmentId()
+      const token = localStorage.getItem('auth_token')
+      if (!assignmentId || !token) {
+        ElMessage.error('当前未登录或任务信息缺失')
+        return
+      }
+
+      this.teamActionLoading = true
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/teams/join`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ teamCode })
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '加入队伍失败')
+        }
+        this.applyTeamInfo(result.data)
+        this.closeJoinTeamDialog()
+        ElMessage.success('加入队伍成功')
+      } catch (error) {
+        ElMessage.error(error.message || '加入队伍失败')
+      } finally {
+        this.teamActionLoading = false
+      }
+    },
+    async leaveTeam () {
+      const assignmentId = this.getAssignmentId()
+      const token = localStorage.getItem('auth_token')
+      if (!assignmentId || !token) {
+        ElMessage.error('当前未登录或任务信息缺失')
+        return
+      }
+
+      this.teamActionLoading = true
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/teams/leave`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '退出队伍失败')
+        }
+        this.resetTeamInfo()
+        this.showLeaveTeamDialog = false
+        ElMessage.success('退出队伍成功')
+      } catch (error) {
+        ElMessage.error(error.message || '退出队伍失败')
+      } finally {
+        this.teamActionLoading = false
+      }
+    },
+    async dissolveTeam () {
+      const assignmentId = this.getAssignmentId()
+      const token = localStorage.getItem('auth_token')
+      if (!assignmentId || !token) {
+        ElMessage.error('当前未登录或任务信息缺失')
+        return
+      }
+
+      this.teamActionLoading = true
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/teams/dissolve`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '解散队伍失败')
+        }
+        this.resetTeamInfo()
+        this.showDissolveTeamDialog = false
+        ElMessage.success('队伍已解散')
+      } catch (error) {
+        ElMessage.error(error.message || '解散队伍失败')
+      } finally {
+        this.teamActionLoading = false
+      }
+    },
+    async loadMyTeam (assignmentId) {
+      const token = localStorage.getItem('auth_token')
+      if (!assignmentId || !token) {
+        this.resetTeamInfo()
+        return
+      }
+
+      this.teamLoading = true
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/teams/my`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '队伍信息加载失败')
+        }
+        this.applyTeamInfo(result.data)
+      } catch (error) {
+        this.resetTeamInfo()
+      } finally {
+        this.teamLoading = false
+      }
+    },
+    applyTeamInfo (data) {
+      if (!data) {
+        this.resetTeamInfo()
+        return
+      }
+      const memberNames = Array.isArray(data.memberNames) ? data.memberNames : []
       this.teamInfo = {
-        name: 'Alpha 队',
-        teamCode: 'TEAM2026A',
-        captain: '李四',
-        members: [
-          { studentId: '2023123457', name: '李四', role: '队长' },
-          { studentId: '2023123456', name: '张三', role: '成员' }
-        ]
+        teamId: data.teamId || null,
+        name: data.teamName || '',
+        teamCode: data.teamCode || '',
+        captain: data.captainName || '',
+        members: memberNames,
+        memberCount: data.memberCount || memberNames.length,
+        maxMembers: data.maxMembers || 3,
+        isCaptain: !!data.captain
       }
       this.hasTeam = true
-      this.closeJoinTeamDialog()
     },
-    leaveTeam () {
+    resetTeamInfo () {
       this.hasTeam = false
       this.teamInfo = {
+        teamId: null,
         name: '',
         teamCode: '',
         captain: '',
-        members: []
+        members: [],
+        memberCount: 0,
+        maxMembers: 3,
+        isCaptain: false
       }
-      this.showLeaveTeamDialog = false
+    },
+    displayTeamSlot (index) {
+      return this.teamInfo.members[index] || '等待加入'
     },
     closeCreateTeamDialog () {
       this.showCreateTeamDialog = false
@@ -1326,9 +1477,6 @@ export default {
     closeJoinTeamDialog () {
       this.showJoinTeamDialog = false
       this.joinTeamCode = ''
-    },
-    goTournamentBracket () {
-      this.$router.push('/student/tournament')
     },
     goBack () {
       this.$router.back()
@@ -1643,6 +1791,22 @@ function titleSafe (value, fallback) {
   gap: 12px;
 }
 
+.team-member-stack {
+  margin-top: 6px;
+}
+
+.team-member-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 1px dashed #ebeef5;
+  font-size: 14px;
+  color: #606266;
+}
+
+.team-member-row:first-child {
+  border-top: 1px dashed #ebeef5;
+}
 .team-info-box {
   margin-top: 16px;
   padding-top: 14px;

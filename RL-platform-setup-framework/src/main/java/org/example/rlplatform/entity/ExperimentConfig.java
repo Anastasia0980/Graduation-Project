@@ -13,4 +13,5 @@ public class ExperimentConfig {
     private String actionSpace;
     private String rewardFunction;
     private String evaluationFunction;
+    private Integer teamMaxMembers;
 }

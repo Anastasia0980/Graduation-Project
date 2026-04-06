@@ -69,6 +69,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         dbassignment.setAgentName(experimentAssignment.getAgentName());
         dbassignment.setEnvironment(experimentAssignment.getEnvironment());
         dbassignment.setDeadline(experimentAssignment.getDeadline());
+        dbassignment.setTeamGroupDeadline(experimentAssignment.getTeamGroupDeadline());
         dbassignment.setUpdateTime(LocalDateTime.now());
         dbassignment.setIsDeleted(false);
 
