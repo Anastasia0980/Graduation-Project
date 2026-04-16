@@ -6,10 +6,12 @@ import org.example.rlplatform.entity.Evaluation;
 import org.example.rlplatform.entity.EvaluationResult;
 import org.example.rlplatform.Repository.EvaluationResultRepository;
 import org.example.rlplatform.entity.EvaluationStatus;
+import org.example.rlplatform.service.CurriculumProgressService;
 import org.example.rlplatform.service.ModelFileService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -18,9 +20,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 
+@Slf4j
 @Component
 public class EvaluationExecuter {
 
@@ -41,7 +45,15 @@ public class EvaluationExecuter {
     @Autowired
     private ModelFileService modelFileService;
 
+    @Autowired
+    private CurriculumProgressService curriculumProgressService;
+
     public void execute(Evaluation evaluation) {
+        final Long evalId = evaluation.getId();
+        log.info("Evaluation start id={} env={} episodes={} modelId={} taskId={}",
+                evalId, evaluation.getEnvironment(), evaluation.getEpisodes(), evaluation.getModelId(),
+                evaluation.getTaskId());
+
         String modelName = null;
         String configPath = null;
         if (evaluation.getModelId() != null) {
@@ -54,6 +66,7 @@ public class EvaluationExecuter {
 
         if (configPath != null && !configPath.isBlank()) {
             if (!Paths.get(configPath.replace("\\", "/")).toFile().exists()) {
+                log.warn("Evaluation id={} aborted: config not found path={}", evalId, configPath);
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage("Config file not found: " + configPath);
                 saveEvaluationResult(evaluation, null, null);
@@ -67,6 +80,7 @@ public class EvaluationExecuter {
             JsonNode configRoot = objectMapper.readTree(Paths.get(configPath).toFile());
             agentType = configRoot.path("algorithm").asText(null);
             if (agentType == null || agentType.isBlank()) {
+                log.warn("Evaluation id={} aborted: algorithm missing in config path={}", evalId, configPath);
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage("algorithm not found in config: " + configPath);
                 saveEvaluationResult(evaluation, null, null);
@@ -75,6 +89,7 @@ public class EvaluationExecuter {
 
             String baselinePath = evaluation.getBaselineModelPath();
             if (baselinePath == null || baselinePath.isBlank()) {
+                log.warn("Evaluation id={} aborted: baseline model path not set", evalId);
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage("baseline model path not set for evaluation id: " + evaluation.getId());
                 saveEvaluationResult(evaluation, null, null);
@@ -83,6 +98,7 @@ public class EvaluationExecuter {
             baselineModelPath = Paths.get(baselinePath);
 
         } catch (Exception e) {
+            log.warn("Evaluation id={} aborted: failed to read config path={}: {}", evalId, configPath, e.getMessage());
             evaluation.setStatus(EvaluationStatus.FAILED);
             evaluation.setErrorMessage("Failed to read config file: " + e.getMessage());
             saveEvaluationResult(evaluation, null, null);
@@ -92,11 +108,30 @@ public class EvaluationExecuter {
         Path cwd = Paths.get(System.getProperty("user.dir"));
         Path script = cwd.resolve(scriptPath).normalize();
         if (!script.toFile().exists()) {
+            log.warn("Evaluation id={} aborted: script not found path={}", evalId, script);
             evaluation.setStatus(EvaluationStatus.FAILED);
             evaluation.setErrorMessage("Script not found: " + script);
             saveEvaluationResult(evaluation, null, null);
             return ;
         }
+
+        String rawTaskId = evaluation.getTaskId();
+        if (rawTaskId == null || rawTaskId.isBlank()) {
+            log.warn("Evaluation id={} aborted: task_id not set (闯关模式必填)", evalId);
+            evaluation.setStatus(EvaluationStatus.FAILED);
+            evaluation.setErrorMessage("task_id not set for evaluation");
+            saveEvaluationResult(evaluation, null, null);
+            return;
+        }
+        String taskIdNorm = rawTaskId.trim().toUpperCase(Locale.ROOT);
+        if (!taskIdNorm.matches("T(10|[1-9])")) {
+            log.warn("Evaluation id={} aborted: invalid task_id={}", evalId, rawTaskId);
+            evaluation.setStatus(EvaluationStatus.FAILED);
+            evaluation.setErrorMessage("invalid task_id (expect T1…T10): " + rawTaskId);
+            saveEvaluationResult(evaluation, null, null);
+            return;
+        }
+        evaluation.setTaskId(taskIdNorm);
 
         ProcessBuilder pb = new ProcessBuilder(
                 pythonCmd, script.toString(),
@@ -107,6 +142,7 @@ public class EvaluationExecuter {
                 "--workspace", workspaceConfig,
                 "--baseline_model_path", baselineModelPath.toString(),
                 "--config_path", configPath,
+                "--task_id", taskIdNorm,
                 "--render_video"
                 // "--realtime_render"
         );
@@ -114,7 +150,11 @@ public class EvaluationExecuter {
         pb.redirectErrorStream(true);
         pb.directory(cwd.toFile());
 
+        log.info("Evaluation id={} spawning process python={} script={} cwd={} agent={} modelName={} taskId={}",
+                evalId, pythonCmd, script, cwd, agentType, modelName, taskIdNorm);
+
         StringBuilder output = new StringBuilder();
+        long processStartMs = System.currentTimeMillis();
         try {
             Process process = pb.start();
             try (BufferedReader reader = new BufferedReader(
@@ -125,8 +165,10 @@ public class EvaluationExecuter {
                 }
             }
             boolean finished = process.waitFor(30, TimeUnit.MINUTES);
+            long elapsedMs = System.currentTimeMillis() - processStartMs;
             if (!finished) {
                 process.destroyForcibly();
+                log.warn("Evaluation id={} failed: python timeout after {}ms (limit 30m)", evalId, elapsedMs);
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage("Python execution timeout");
                 saveEvaluationResult(evaluation, null, null);
@@ -135,6 +177,10 @@ public class EvaluationExecuter {
 
             int exitCode = process.exitValue();
             String out = output.toString().trim();
+            if (log.isDebugEnabled()) {
+                log.debug("Evaluation id={} raw output ({} chars): {}", evalId, out.length(),
+                        out.length() > 4000 ? out.substring(0, 4000) + "..." : out);
+            }
 
             String jsonLine = extractJsonLine(out);
             JsonNode root = null;
@@ -147,15 +193,20 @@ public class EvaluationExecuter {
             }
 
             if (exitCode != 0) {
-                evaluation.setStatus(EvaluationStatus.FAILED);
-                evaluation.setErrorMessage(root != null && root.has("error")
+                String errMsg = root != null && root.has("error")
                         ? root.path("error").asText()
-                        : (out.isEmpty() ? "Python script failed (no output)" : out));
+                        : (out.isEmpty() ? "Python script failed (no output)" : out);
+                log.warn("Evaluation id={} python exitCode={} after {}ms error={}", evalId, exitCode, elapsedMs, errMsg);
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage(errMsg);
                 saveEvaluationResult(evaluation, root, jsonLine);
                 return;
             }
 
             if (root == null) {
+                String preview = out.length() > 500 ? out.substring(0, 500) + "..." : out;
+                log.warn("Evaluation id={} failed: no valid JSON line in output after {}ms preview={}",
+                        evalId, elapsedMs, preview);
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage("Invalid JSON from script. Output: " +
                         (out.length() > 500 ? out.substring(0, 500) + "..." : out));
@@ -168,8 +219,49 @@ public class EvaluationExecuter {
             if (root.has("error")) {
                 evaluation.setErrorMessage(root.path("error").asText());
             }
+
+            if (evaluation.getStatus() == EvaluationStatus.FINISHED) {
+                String tid = evaluation.getTaskId();
+                if (tid != null && !tid.isBlank()) {
+                    if (!root.has("student_avg_reward")) {
+                        evaluation.setStatus(EvaluationStatus.FAILED);
+                        evaluation.setErrorMessage("脚本未返回 student_avg_reward，无法判定闯关结果");
+                    } else if (!root.has("baseline_avg_reward")) {
+                        evaluation.setStatus(EvaluationStatus.FAILED);
+                        evaluation.setErrorMessage("脚本未返回 baseline_avg_reward，无法判定闯关结果");
+                    } else {
+                        double studentReward = root.path("student_avg_reward").asDouble(Double.NaN);
+                        double baselineReward = root.path("baseline_avg_reward").asDouble(Double.NaN);
+                        if (Double.isNaN(studentReward)) {
+                            evaluation.setStatus(EvaluationStatus.FAILED);
+                            evaluation.setErrorMessage("student_avg_reward 无法解析为数值");
+                        } else if (Double.isNaN(baselineReward)) {
+                            evaluation.setStatus(EvaluationStatus.FAILED);
+                            evaluation.setErrorMessage("baseline_avg_reward 无法解析为数值");
+                        } else if (studentReward <= baselineReward) {
+                            evaluation.setStatus(EvaluationStatus.FAILED);
+                            evaluation.setErrorMessage(
+                                    String.format(
+                                            Locale.ROOT,
+                                            "未通过当前关：学生均值 %.4f 未超过 baseline 均值 %.4f",
+                                            studentReward,
+                                            baselineReward
+                                    )
+                            );
+                        } else {
+                            curriculumProgressService.recordPassedStage(
+                                    evaluation.getStudentId(),
+                                    evaluation.getAssignmentId(),
+                                    tid);
+                        }
+                    }
+                }
+            }
+
+            log.info("Evaluation id={} finished status={} in {}ms", evalId, evaluation.getStatus(), elapsedMs);
             saveEvaluationResult(evaluation, root, jsonLine);
         } catch (Exception e) {
+            log.error("Evaluation id={} unexpected error", evalId, e);
             evaluation.setStatus(EvaluationStatus.FAILED);
             evaluation.setErrorMessage(e.getMessage());
             saveEvaluationResult(evaluation, null, null);
@@ -202,7 +294,9 @@ public class EvaluationExecuter {
             }
             writeResultLog(er.getResultDir(), logContent);
             evaluationResultRepository.save(er);
+            log.debug("Evaluation id={} result row saved", evaluation.getId());
         } catch (Exception e) {
+            log.error("Evaluation id={} save EvaluationResult failed", evaluation.getId(), e);
             evaluation.setStatus(EvaluationStatus.FAILED);
             if (evaluation.getErrorMessage() == null || evaluation.getErrorMessage().isBlank()) {
                 evaluation.setErrorMessage("Save result failed: " + e.getMessage());

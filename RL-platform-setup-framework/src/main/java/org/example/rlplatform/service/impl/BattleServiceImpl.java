@@ -14,6 +14,7 @@ import org.example.rlplatform.vo.BattleTaskDetailVO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +22,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
 
+@Slf4j
 @Service
 public class BattleServiceImpl implements BattleService {
 
@@ -172,6 +174,7 @@ public class BattleServiceImpl implements BattleService {
             return Result.success(data);
 
         } catch (Exception e) {
+            log.error("submitAndMaybeStart failed assignmentId={}", assignmentId, e);
             return Result.error(e.getMessage());
         }
     }
@@ -277,6 +280,7 @@ public class BattleServiceImpl implements BattleService {
             return Result.success(data);
 
         } catch (Exception e) {
+            log.error("submitBotAndStart failed assignmentId={}", assignmentId, e);
             return Result.error(e.getMessage());
         }
     }

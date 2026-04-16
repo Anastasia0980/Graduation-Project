@@ -5,6 +5,7 @@ import org.example.rlplatform.entity.*;
 import org.example.rlplatform.Repository.EvaluationRepository;
 import org.example.rlplatform.evaluation.EvaluationExecuter;
 import org.example.rlplatform.evaluation.EvaluationRunner;
+import org.example.rlplatform.service.CurriculumProgressService;
 import org.example.rlplatform.service.ModelFileService;
 import org.example.rlplatform.service.EvaluationService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
@@ -15,17 +16,19 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
-import java.util.Collections;
+import java.util.Locale;
 
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.web.multipart.MultipartFile;
 
 import static java.time.LocalDateTime.now;
 
+@Slf4j
 @Service
 public class EvaluationServiceImpl implements EvaluationService {
 
@@ -47,6 +50,9 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Autowired
     private EvaluationRunner evaluationRunner;
 
+    @Autowired
+    private CurriculumProgressService curriculumProgressService;
+
     @Value("${evaluation.baselineRoot:}")
     private String baselineRoot;
 
@@ -63,7 +69,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     @Override
-    public void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config, String baselineDifficulty, String baselineId) {
+    public void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config) {
         Evaluation evaluation = null;
         try {
             Map<String, Object> claims = ThreadLocalUtil.get();
@@ -92,6 +98,8 @@ public class EvaluationServiceImpl implements EvaluationService {
 
             ModelFile modelFile = modelFileService.uploadModelWithConfig(model, config, studentId);
 
+            String taskId = curriculumProgressService.resolveNextTaskId(studentId, assignmentId);
+
             // 从任务配置中解析 baselineOptions
             ExperimentConfig taskConfig = null;
             if (assignment.getConfigJson() != null && !assignment.getConfigJson().isBlank()) {
@@ -101,36 +109,7 @@ public class EvaluationServiceImpl implements EvaluationService {
                     taskConfig = null;
                 }
             }
-            Map<String, List<BaselineOption>> baselineOptions = taskConfig != null
-                    ? taskConfig.getBaselineOptions()
-                    : null;
-
-            String diff = (baselineDifficulty == null || baselineDifficulty.isBlank())
-                    ? "easy"
-                    : baselineDifficulty.trim().toLowerCase();
-
-            List<BaselineOption> candidates = (baselineOptions != null)
-                    ? baselineOptions.getOrDefault(diff, Collections.emptyList())
-                    : Collections.emptyList();
-
-            if (candidates.isEmpty()) {
-                throw new IllegalStateException("任务未配置 baseline 选项（difficulty=" + diff + "）");
-            }
-
-            BaselineOption chosen = null;
-            if (baselineId != null && !baselineId.isBlank()) {
-                for (BaselineOption opt : candidates) {
-                    if (opt != null && baselineId.equals(opt.getId())) {
-                        chosen = opt;
-                        break;
-                    }
-                }
-                if (chosen == null) {
-                    throw new IllegalArgumentException("baseline 选项不合法或未开放");
-                }
-            } else {
-                chosen = candidates.get(0);
-            }
+            BaselineOption chosen = selectBaselineForTask(taskConfig, taskId);
 
             if (chosen.getModelPath() == null || chosen.getModelPath().isBlank()) {
                 throw new IllegalStateException("baseline 选项未配置 modelPath");
@@ -148,9 +127,11 @@ public class EvaluationServiceImpl implements EvaluationService {
             evaluation.setModelId(modelFile.getId());
             evaluation.setAssignmentId(assignmentId);
             evaluation.setEpisodes(episodes);
-            evaluation.setBaselineDifficulty(diff);
+            // 闯关模式下不再使用 baselineDifficulty（历史字段，避免写入错误语义）
+            evaluation.setBaselineDifficulty(null);
             evaluation.setBaselineId(chosen.getId());
             evaluation.setBaselineModelPath(baselineModelPath);
+            evaluation.setTaskId(taskId);
             evaluation.setStatus(EvaluationStatus.PENDING);
             evaluation.setCreateTime(now());
             evaluation.setUpdateTime(now());
@@ -159,6 +140,8 @@ public class EvaluationServiceImpl implements EvaluationService {
             evaluationRunner.runAsync(evaluation.getId());
 
         } catch (Exception e) {
+            log.error("runEvaluationByConfig failed assignmentId={} evaluationId={}",
+                    assignmentId, evaluation != null ? evaluation.getId() : null, e);
             if (evaluation != null) {
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage(e.getMessage());
@@ -167,6 +150,22 @@ public class EvaluationServiceImpl implements EvaluationService {
             }
             throw new RuntimeException(e);
         }
+    }
+
+    private BaselineOption selectBaselineForTask(ExperimentConfig taskConfig, String taskId) {
+        String normalizedTaskId = taskId == null ? "" : taskId.trim().toUpperCase(Locale.ROOT);
+        if (normalizedTaskId.isBlank()) {
+            throw new IllegalStateException("无法确定当前闯关 taskId");
+        }
+
+        BaselineOption selected = (taskConfig != null && taskConfig.getTaskBaselineOptions() != null)
+                ? taskConfig.getTaskBaselineOptions().get(normalizedTaskId)
+                : null;
+        if (selected != null) {
+            return selected;
+        }
+
+        throw new IllegalStateException("任务未配置当前关卡 baseline（taskId=" + normalizedTaskId + "）");
     }
 
 //    @Override

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
 import org.example.rlplatform.entity.ExperimentAssignment;
 import org.example.rlplatform.entity.ExperimentConfig;
+import org.example.rlplatform.entity.BaselineOption;
+import org.example.rlplatform.entity.EvaluationMode;
 import org.example.rlplatform.entity.StudentClass;
 import org.example.rlplatform.entity.User;
 import org.example.rlplatform.service.ExperimentAssignmentService;
@@ -12,15 +14,22 @@ import org.example.rlplatform.service.StudentClassService;
 import org.example.rlplatform.service.UserService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
+    private static final Pattern TASK_ID_PATTERN = Pattern.compile("^T(10|[1-9])$");
 
     @Autowired
     private StudentClassService studentClassService;
@@ -34,6 +43,9 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Value("${evaluation.baselineRoot:}")
+    private String baselineRoot;
+
     @Override
     public void create(Integer classId, ExperimentAssignment experimentAssignment) {
         Map<String, Object> claims = ThreadLocalUtil.get();
@@ -46,6 +58,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
 
         ExperimentConfig config = experimentAssignment.getConfig();
         if (config != null) {
+            validateConfigByMode(experimentAssignment.getEvaluationMode(), config);
             try {
                 experimentAssignment.setConfigJson(objectMapper.writeValueAsString(config));
             } catch (JsonProcessingException e) {
@@ -74,6 +87,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
 
         ExperimentConfig config = dbassignment.getConfig();
         if (config != null) {
+            validateConfigByMode(dbassignment.getEvaluationMode(), config);
             try {
                 dbassignment.setConfigJson(objectMapper.writeValueAsString(config));
             } catch (JsonProcessingException e) {
@@ -139,5 +153,69 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         assignment.setIsDeleted(true);
         assignment.setUpdateTime(LocalDateTime.now());
         experimentAssignmentRepository.save(assignment);
+    }
+
+    private void validateConfigByMode(EvaluationMode mode, ExperimentConfig config) {
+        if (mode != EvaluationMode.SINGLE) {
+            return;
+        }
+        if (config == null) {
+            throw new IllegalArgumentException("SINGLE 作业必须配置 taskBaselineOptions");
+        }
+        Map<String, BaselineOption> taskBaselineOptions = config.getTaskBaselineOptions();
+        if (taskBaselineOptions == null || taskBaselineOptions.isEmpty()) {
+            throw new IllegalArgumentException("SINGLE 作业必须配置 taskBaselineOptions（key 仅允许 T1..T10）");
+        }
+        if (config.getBaselineOptions() != null && !config.getBaselineOptions().isEmpty()) {
+            throw new IllegalArgumentException("SINGLE 作业不再支持 baselineOptions(easy/medium/hard)，请改为 taskBaselineOptions");
+        }
+        if (baselineRoot == null || baselineRoot.isBlank()) {
+            throw new IllegalStateException("evaluation.baselineRoot 未配置，无法校验 baseline 文件是否存在");
+        }
+
+        for (Map.Entry<String, BaselineOption> entry : taskBaselineOptions.entrySet()) {
+            String key = entry.getKey() == null ? "" : entry.getKey().trim().toUpperCase();
+            if (!TASK_ID_PATTERN.matcher(key).matches()) {
+                throw new IllegalArgumentException("taskBaselineOptions 包含非法关卡 key: " + entry.getKey() + "（仅允许 T1..T10）");
+            }
+
+            BaselineOption option = entry.getValue();
+            if (option == null) {
+                throw new IllegalArgumentException("关卡 " + key + " 未配置 baseline");
+            }
+            String modelPath = option.getModelPath();
+            if (modelPath == null || modelPath.trim().isBlank()) {
+                throw new IllegalArgumentException("关卡 " + key + " 缺少可用 modelPath");
+            }
+            if (!modelPathExistsUnderBaselineRoot(modelPath)) {
+                throw new IllegalArgumentException("关卡 " + key + " 的 modelPath 文件不存在（基于 baselineRoot 校验）");
+            }
+        }
+
+        for (int i = 1; i <= 10; i++) {
+            String requiredTaskId = "T" + i;
+            if (!taskBaselineOptions.containsKey(requiredTaskId)) {
+                throw new IllegalArgumentException("SINGLE 作业必须完整配置 T1..T10，缺少: " + requiredTaskId);
+            }
+            BaselineOption option = taskBaselineOptions.get(requiredTaskId);
+            if (option == null) {
+                throw new IllegalArgumentException("关卡 " + requiredTaskId + " 未配置 baseline");
+            }
+        }
+    }
+
+    private boolean modelPathExistsUnderBaselineRoot(String modelPath) {
+        if (modelPath == null || modelPath.trim().isBlank()) {
+            return false;
+        }
+        String normalized = modelPath.trim().replace("\\", "/");
+        Path candidate;
+        if (Paths.get(normalized).isAbsolute()) {
+            candidate = Paths.get(normalized);
+        } else {
+            String root = baselineRoot.trim().replace("\\", "/").replaceAll("/+$", "");
+            candidate = Paths.get(root, normalized.replaceAll("^/+", ""));
+        }
+        return Files.exists(candidate);
     }
 }

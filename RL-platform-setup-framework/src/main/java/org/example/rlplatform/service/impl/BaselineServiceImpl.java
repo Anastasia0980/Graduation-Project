@@ -27,12 +27,12 @@ public class BaselineServiceImpl implements BaselineService {
     @Value("${evaluation.baselineRoot:}")
     private String baselineRoot;
 
-    private static final List<String> DIFFICULTIES = Arrays.asList("easy", "medium", "hard");
+    private static final List<String> TASK_IDS = Arrays.asList("T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10");
 
     @Override
     public Map<String, List<BaselineOption>> getBaselineCatalogByEnvironment(String environment) {
         Map<String, List<BaselineOption>> catalog = new HashMap<>();
-        DIFFICULTIES.forEach(d -> catalog.put(d, new ArrayList<>()));
+        TASK_IDS.forEach(t -> catalog.put(t, new ArrayList<>()));
 
         if (baselineRoot == null || baselineRoot.isBlank() || environment == null || environment.isBlank()) {
             return catalog;
@@ -43,13 +43,13 @@ public class BaselineServiceImpl implements BaselineService {
             return catalog;
         }
 
-        for (String difficulty : DIFFICULTIES) {
-            Path diffDir = envBase.resolve(difficulty);
-            if (!Files.exists(diffDir) || !Files.isDirectory(diffDir)) {
+        for (String taskId : TASK_IDS) {
+            Path taskDir = envBase.resolve(taskId);
+            if (!Files.exists(taskDir) || !Files.isDirectory(taskDir)) {
                 continue;
             }
 
-            try (DirectoryStream<Path> algoDirs = Files.newDirectoryStream(diffDir)) {
+            try (DirectoryStream<Path> algoDirs = Files.newDirectoryStream(taskDir)) {
                 for (Path algoDir : algoDirs) {
                     if (!Files.isDirectory(algoDir)) continue;
 
@@ -58,18 +58,18 @@ public class BaselineServiceImpl implements BaselineService {
                     Path baselineFile = algoDir.resolve("baseline.pth");
                     if (!Files.exists(baselineFile)) continue;
 
-                    String baselineId = difficulty + "-" + algoKey;
+                    String baselineId = taskId + "-" + algoKey;
 
-                    String modelPath = environment + "/" + difficulty + "/" + algoDirName + "/baseline.pth";
+                    String modelPath = environment + "/" + taskId + "/" + algoDirName + "/baseline.pth";
 
                     // upsert baseline record（但保留 isDeleted 语义：catalog 只返回未删除的资源）
                     Baseline record = baselineRepository
-                            .findByEnvironmentAndDifficultyAndAlgorithm(environment, difficulty, algoKey)
+                            .findByEnvironmentAndTaskIdAndAlgorithm(environment, taskId, algoKey)
                             .orElse(null);
                     if (record == null) {
                         Baseline newRecord = new Baseline();
                         newRecord.setEnvironment(environment);
-                        newRecord.setDifficulty(difficulty);
+                        newRecord.setTaskId(taskId);
                         newRecord.setAlgorithm(algoKey);
                         newRecord.setModelPath(modelPath);
                         newRecord.setIsDeleted(false);
@@ -83,7 +83,7 @@ public class BaselineServiceImpl implements BaselineService {
                     }
 
                     Baseline refreshed = baselineRepository
-                            .findByEnvironmentAndDifficultyAndAlgorithm(environment, difficulty, algoKey)
+                            .findByEnvironmentAndTaskIdAndAlgorithm(environment, taskId, algoKey)
                             .orElse(null);
                     if (refreshed == null || Boolean.TRUE.equals(refreshed.getIsDeleted())) {
                         continue;
@@ -94,13 +94,13 @@ public class BaselineServiceImpl implements BaselineService {
                     option.setLabel(algoDirName);
                     option.setAlgorithm(algoKey);
                     option.setModelPath(modelPath);
-                    catalog.get(difficulty).add(option);
+                    catalog.get(taskId).add(option);
                 }
             } catch (IOException ignored) {
                 // catalog 兜底：出错时返回已收集的数据（更利于线上不因目录扫描中断）
             }
 
-            catalog.get(difficulty).sort(Comparator.comparing(BaselineOption::getLabel, String.CASE_INSENSITIVE_ORDER));
+            catalog.get(taskId).sort(Comparator.comparing(BaselineOption::getLabel, String.CASE_INSENSITIVE_ORDER));
         }
 
         return catalog;
@@ -113,12 +113,12 @@ public class BaselineServiceImpl implements BaselineService {
     }
 
     @Override
-    public BaselineOption uploadBaseline(String environment, String difficulty, String algorithm, MultipartFile model) {
+    public BaselineOption uploadBaseline(String environment, String taskId, String algorithm, MultipartFile model) {
         if (environment == null || environment.isBlank()) {
             throw new IllegalArgumentException("environment 不能为空");
         }
-        if (difficulty == null || difficulty.isBlank()) {
-            throw new IllegalArgumentException("difficulty 不能为空");
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("taskId 不能为空");
         }
         if (algorithm == null || algorithm.isBlank()) {
             throw new IllegalArgumentException("algorithm 不能为空");
@@ -128,7 +128,10 @@ public class BaselineServiceImpl implements BaselineService {
         }
 
         String env = environment.trim();
-        String diff = difficulty.trim().toLowerCase();
+        String task = taskId.trim().toUpperCase(Locale.ROOT);
+        if (!task.matches("T(10|[1-9])")) {
+            throw new IllegalArgumentException("taskId 非法，仅支持 T1..T10");
+        }
         String algo = normalizeAlgorithmId(algorithm);
 
         if (baselineRoot == null || baselineRoot.isBlank()) {
@@ -137,7 +140,7 @@ public class BaselineServiceImpl implements BaselineService {
 
         Path algoDir = Paths.get(baselineRoot)
                 .resolve(env)
-                .resolve(diff)
+                .resolve(task)
                 .resolve(algo);
         try {
             Files.createDirectories(algoDir);
@@ -153,15 +156,15 @@ public class BaselineServiceImpl implements BaselineService {
             throw new RuntimeException("baseline 文件写入失败", e);
         }
 
-        String modelPath = env + "/" + diff + "/" + algo + "/baseline.pth";
+        String modelPath = env + "/" + task + "/" + algo + "/baseline.pth";
 
         Baseline record = baselineRepository
-                .findByEnvironmentAndDifficultyAndAlgorithm(env, diff, algo)
+                .findByEnvironmentAndTaskIdAndAlgorithm(env, task, algo)
                 .orElse(null);
         if (record == null) {
             record = new Baseline();
             record.setEnvironment(env);
-            record.setDifficulty(diff);
+            record.setTaskId(task);
             record.setAlgorithm(algo);
             record.setIsDeleted(false);
             record.setCreateTime(LocalDateTime.now());
@@ -172,7 +175,7 @@ public class BaselineServiceImpl implements BaselineService {
         baselineRepository.save(record);
 
         BaselineOption option = new BaselineOption();
-        option.setId(diff + "-" + algo.toLowerCase());
+        option.setId(task + "-" + algo.toLowerCase(Locale.ROOT));
         option.setLabel(algo);
         option.setAlgorithm(algo);
         option.setModelPath(modelPath);
@@ -180,23 +183,26 @@ public class BaselineServiceImpl implements BaselineService {
     }
 
     @Override
-    public void softDeleteBaseline(String environment, String difficulty, String algorithm) {
+    public void softDeleteBaseline(String environment, String taskId, String algorithm) {
         if (environment == null || environment.isBlank()) {
             throw new IllegalArgumentException("environment 不能为空");
         }
-        if (difficulty == null || difficulty.isBlank()) {
-            throw new IllegalArgumentException("difficulty 不能为空");
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("taskId 不能为空");
         }
         if (algorithm == null || algorithm.isBlank()) {
             throw new IllegalArgumentException("algorithm 不能为空");
         }
 
         String env = environment.trim();
-        String diff = difficulty.trim().toLowerCase();
+        String task = taskId.trim().toUpperCase(Locale.ROOT);
+        if (!task.matches("T(10|[1-9])")) {
+            throw new IllegalArgumentException("taskId 非法，仅支持 T1..T10");
+        }
         String algo = normalizeAlgorithmId(algorithm);
 
         Baseline record = baselineRepository
-                .findByEnvironmentAndDifficultyAndAlgorithm(env, diff, algo)
+                .findByEnvironmentAndTaskIdAndAlgorithm(env, task, algo)
                 .orElse(null);
         if (record == null) {
             throw new RuntimeException("baseline 不存在");

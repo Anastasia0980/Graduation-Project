@@ -5,11 +5,13 @@ import org.example.rlplatform.entity.ExperimentAssignment;
 import org.example.rlplatform.entity.Result;
 import org.example.rlplatform.entity.User;
 import org.example.rlplatform.entity.BaselineOption;
+import org.example.rlplatform.service.CurriculumProgressService;
 import org.example.rlplatform.service.EvaluationService;
 import org.example.rlplatform.service.BaselineService;
 import org.example.rlplatform.service.ExperimentAssignmentService;
 import org.example.rlplatform.service.UserService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
+import org.example.rlplatform.vo.CurriculumProgressVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -38,6 +40,9 @@ public class ExperimentAssignmentController {
 
     @Autowired
     private BaselineService baselineService;
+
+    @Autowired
+    private CurriculumProgressService curriculumProgressService;
 
     @PostMapping("class/{classId}/assignments")
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
@@ -85,15 +90,23 @@ public class ExperimentAssignmentController {
     public Result<Void> createEvaluation(
         @PathVariable Integer assignmentId, 
         @RequestParam("model") MultipartFile model,
-        @RequestParam("config") MultipartFile config,
-        @RequestParam(value = "baselineDifficulty", required = false) String baselineDifficulty,
-        @RequestParam(value = "baselineId", required = false) String baselineId
+        @RequestParam("config") MultipartFile config
     ) {
         Map<String, Object> claims = ThreadLocalUtil.get();
         Integer studentId = (Integer) claims.get("id");
         checkCooldown(studentId, assignmentId.longValue(), 10L);
-        evaluationService.runEvaluationByConfig(assignmentId, model, config, baselineDifficulty, baselineId);
+        evaluationService.runEvaluationByConfig(assignmentId, model, config);
         return Result.success();
+    }
+
+    @GetMapping("assignments/{assignmentId}/curriculum-progress")
+    public Result<CurriculumProgressVO> curriculumProgress(@PathVariable Integer assignmentId) {
+        Map<String, Object> claims = ThreadLocalUtil.get();
+        if (claims == null || claims.get("id") == null) {
+            return Result.error("未登录或登录已失效");
+        }
+        Integer studentId = (Integer) claims.get("id");
+        return Result.success(curriculumProgressService.getProgress(studentId, assignmentId));
     }
 
     @DeleteMapping("assignments/{assignmentId}")
@@ -139,7 +152,7 @@ public class ExperimentAssignmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
     public Result<BaselineOption> uploadBaseline(
         @PathVariable Integer assignmentId,
-        @RequestParam("difficulty") String difficulty,
+        @RequestParam("taskId") String taskId,
         @RequestParam("algorithm") String algorithm,
         @RequestParam("model") MultipartFile model
     ) {
@@ -148,7 +161,7 @@ public class ExperimentAssignmentController {
             return Result.error("实验任务不存在或已删除");
         }
         try {
-            BaselineOption option = baselineService.uploadBaseline(assignment.getEnvironment(), difficulty, algorithm, model);
+            BaselineOption option = baselineService.uploadBaseline(assignment.getEnvironment(), taskId, algorithm, model);
             return Result.success(option);
         } catch (Exception e) {
             return Result.error(e.getMessage() != null ? e.getMessage() : "baseline 上传失败");
@@ -162,12 +175,12 @@ public class ExperimentAssignmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
     public Result<BaselineOption> uploadBaselineByEnvironment(
         @RequestParam("environment") String environment,
-        @RequestParam("difficulty") String difficulty,
+        @RequestParam("taskId") String taskId,
         @RequestParam("algorithm") String algorithm,
         @RequestParam("model") MultipartFile model
     ) {
         try {
-            BaselineOption option = baselineService.uploadBaseline(environment, difficulty, algorithm, model);
+            BaselineOption option = baselineService.uploadBaseline(environment, taskId, algorithm, model);
             return Result.success(option);
         } catch (Exception e) {
             return Result.error(e.getMessage() != null ? e.getMessage() : "baseline 上传失败");
@@ -181,10 +194,10 @@ public class ExperimentAssignmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
     public Result<Void> softDeleteBaseline(
         @RequestParam("environment") String environment,
-        @RequestParam("difficulty") String difficulty,
+        @RequestParam("taskId") String taskId,
         @RequestParam("algorithm") String algorithm
     ) {
-        baselineService.softDeleteBaseline(environment, difficulty, algorithm);
+        baselineService.softDeleteBaseline(environment, taskId, algorithm);
         return Result.success();
     }
 

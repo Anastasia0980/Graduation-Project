@@ -20,4 +20,11 @@ public class ExperimentConfig {
      * - value: 该难度下允许选择的 baseline 列表（可按算法细分）
      */
     private Map<String, List<BaselineOption>> baselineOptions;
+
+    /**
+     * 闯关模式 baseline 选项：
+     * - key: T1 ... T10
+     * - value: 当前关唯一 baseline
+     */
+    private Map<String, BaselineOption> taskBaselineOptions;
 }

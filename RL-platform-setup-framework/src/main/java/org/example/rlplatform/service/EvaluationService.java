@@ -9,7 +9,7 @@ public interface EvaluationService {
 
     Evaluation getEvaluationById(long id);
 
-    void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config, String baselineDifficulty, String baselineId);
+    void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config);
 
     Page<Evaluation> list(Integer pageNum, Integer pageSize, Integer assignmentId, Integer studentId, String status);
 }

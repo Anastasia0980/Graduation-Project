@@ -41,6 +41,10 @@ public class Evaluation {
     @Column(name = "baseline_model_path", columnDefinition = "TEXT")
     private String baselineModelPath;
 
+    /** 闯关关卡，如 T1…T10，传给评测脚本 --task_id */
+    @Column(name = "task_id", length = 16)
+    private String taskId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EvaluationStatus status = EvaluationStatus.PENDING;

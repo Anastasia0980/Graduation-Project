@@ -270,37 +270,37 @@
         </div>
 
         <div v-if='taskMode === "single"' class='card section-space'>
-          <div class='card-title'>Baseline 配置</div>
+          <div class='card-title'>闯关 Baseline 配置（T1~T10 每关唯一）</div>
 
           <div class='form-grid'>
-            <div class='form-item full-width'>
-              <label>简单难度</label>
+            <div
+              v-for='taskId in taskIds'
+              :key='taskId'
+              class='form-item full-width'
+            >
+              <label>{{ taskId }}</label>
               <div class='baseline-diff-block'>
                 <div class='baseline-diff-subtitle'>已选</div>
-                <div v-if='(baselineSelectedOptionsByDifficulty.easy || []).length === 0' class='baseline-empty'>未选择</div>
+                <div v-if='!baselineSelectedOptionByTask[taskId]' class='baseline-empty'>未选择</div>
                 <div v-else class='baseline-selected-list'>
-                  <div
-                    v-for='opt in baselineSelectedOptionsByDifficulty.easy'
-                    :key='opt.id'
-                    class='baseline-item'
-                  >
-                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
-                    <button type='button' class='baseline-x-btn' @click='removeBaselineFromSelection("easy", opt.id)'>X</button>
+                  <div class='baseline-item'>
+                    <span>{{ baselineSelectedOptionByTask[taskId].label || baselineSelectedOptionByTask[taskId].algorithm || baselineSelectedOptionByTask[taskId].id }}</span>
+                    <button type='button' class='baseline-x-btn' @click='removeBaselineFromSelection(taskId)'>X</button>
                   </div>
                 </div>
 
                 <div class='baseline-diff-subtitle'>可选</div>
-                <div v-if='baselineAvailableOptionsByDifficulty.easy.length === 0' class='baseline-empty'>暂无可选</div>
+                <div v-if='baselineAvailableOptionsByTask[taskId].length === 0' class='baseline-empty'>暂无可选</div>
                 <div v-else class='baseline-available-list'>
                   <div
-                    v-for='opt in baselineAvailableOptionsByDifficulty.easy'
+                    v-for='opt in baselineAvailableOptionsByTask[taskId]'
                     :key='opt.id'
                     class='baseline-item baseline-item-available'
                   >
                     <span>{{ opt.label || opt.algorithm || opt.id }}</span>
                     <div class='baseline-action-buttons'>
-                      <button type='button' class='baseline-add-btn' @click='addBaselineToSelection("easy", opt.id)'>加入</button>
-                      <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog("easy", opt)'>X</button>
+                      <button type='button' class='baseline-add-btn' @click='addBaselineToSelection(taskId, opt.id)'>设为本关</button>
+                      <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog(taskId, opt)'>X</button>
                     </div>
                   </div>
                 </div>
@@ -308,124 +308,19 @@
                 <div class='baseline-upload-box'>
                   <div class='baseline-row'>
                     <span class='baseline-upload-label'>algorithm：</span>
-                    <input v-model='baselineUpload.easy.algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
+                    <input v-model='baselineUpload[taskId].algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
                   </div>
                   <div class='baseline-row'>
                     <input
                       type='file'
                       accept='.pth'
+                      :ref='`baselineFileInput_${taskId}`'
                       class='baseline-file-input'
-                      @change='handleBaselineFileChange($event, "easy")'
+                      @change='handleBaselineFileChange($event, taskId)'
                     />
-                    <span class='baseline-file-name'>{{ baselineUpload.easy.fileName }}</span>
-                    <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel("easy")'>
-                      上传并加入
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class='form-item full-width'>
-              <label>中等难度</label>
-              <div class='baseline-diff-block'>
-                <div class='baseline-diff-subtitle'>已选</div>
-                <div v-if='(baselineSelectedOptionsByDifficulty.medium || []).length === 0' class='baseline-empty'>未选择</div>
-                <div v-else class='baseline-selected-list'>
-                  <div
-                    v-for='opt in baselineSelectedOptionsByDifficulty.medium'
-                    :key='opt.id'
-                    class='baseline-item'
-                  >
-                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
-                    <button type='button' class='baseline-x-btn' @click='removeBaselineFromSelection("medium", opt.id)'>X</button>
-                  </div>
-                </div>
-
-                <div class='baseline-diff-subtitle'>可选</div>
-                <div v-if='baselineAvailableOptionsByDifficulty.medium.length === 0' class='baseline-empty'>暂无可选</div>
-                <div v-else class='baseline-available-list'>
-                  <div
-                    v-for='opt in baselineAvailableOptionsByDifficulty.medium'
-                    :key='opt.id'
-                    class='baseline-item baseline-item-available'
-                  >
-                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
-                    <div class='baseline-action-buttons'>
-                      <button type='button' class='baseline-add-btn' @click='addBaselineToSelection("medium", opt.id)'>加入</button>
-                      <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog("medium", opt)'>X</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div class='baseline-upload-box'>
-                  <div class='baseline-row'>
-                    <span class='baseline-upload-label'>algorithm：</span>
-                    <input v-model='baselineUpload.medium.algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
-                  </div>
-                  <div class='baseline-row'>
-                    <input
-                      type='file'
-                      accept='.pth'
-                      class='baseline-file-input'
-                      @change='handleBaselineFileChange($event, "medium")'
-                    />
-                    <span class='baseline-file-name'>{{ baselineUpload.medium.fileName }}</span>
-                    <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel("medium")'>
-                      上传并加入
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class='form-item full-width'>
-              <label>困难难度</label>
-              <div class='baseline-diff-block'>
-                <div class='baseline-diff-subtitle'>已选</div>
-                <div v-if='(baselineSelectedOptionsByDifficulty.hard || []).length === 0' class='baseline-empty'>未选择</div>
-                <div v-else class='baseline-selected-list'>
-                  <div
-                    v-for='opt in baselineSelectedOptionsByDifficulty.hard'
-                    :key='opt.id'
-                    class='baseline-item'
-                  >
-                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
-                    <button type='button' class='baseline-x-btn' @click='removeBaselineFromSelection("hard", opt.id)'>X</button>
-                  </div>
-                </div>
-
-                <div class='baseline-diff-subtitle'>可选</div>
-                <div v-if='baselineAvailableOptionsByDifficulty.hard.length === 0' class='baseline-empty'>暂无可选</div>
-                <div v-else class='baseline-available-list'>
-                  <div
-                    v-for='opt in baselineAvailableOptionsByDifficulty.hard'
-                    :key='opt.id'
-                    class='baseline-item baseline-item-available'
-                  >
-                    <span>{{ opt.label || opt.algorithm || opt.id }}</span>
-                    <div class='baseline-action-buttons'>
-                      <button type='button' class='baseline-add-btn' @click='addBaselineToSelection("hard", opt.id)'>加入</button>
-                      <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog("hard", opt)'>X</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div class='baseline-upload-box'>
-                  <div class='baseline-row'>
-                    <span class='baseline-upload-label'>algorithm：</span>
-                    <input v-model='baselineUpload.hard.algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
-                  </div>
-                  <div class='baseline-row'>
-                    <input
-                      type='file'
-                      accept='.pth'
-                      class='baseline-file-input'
-                      @change='handleBaselineFileChange($event, "hard")'
-                    />
-                    <span class='baseline-file-name'>{{ baselineUpload.hard.fileName }}</span>
-                    <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel("hard")'>
-                      上传并加入
+                    <span class='baseline-file-name'>{{ baselineUpload[taskId].fileName }}</span>
+                    <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel(taskId)'>
+                      上传并设为本关
                     </button>
                   </div>
                 </div>
@@ -531,6 +426,7 @@ import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 
 const API_BASE = 'http://localhost:8080'
+const TASK_IDS = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10']
 
 export default {
   name: 'TeacherPublishTaskView',
@@ -556,24 +452,22 @@ export default {
       classOptions: [],
       algorithmOptions: ['DDPG', 'DQN', 'Qlearning', 'PPO'],
       selectedAlgorithms: [],
-      // baseline catalog（来自后端 /baselines/catalog）
-      baselineCatalog: {
-        easy: [],
-        medium: [],
-        hard: []
-      },
-      // baseline 选中项（存 baselineOption.id）
-      baselineSelectedIds: {
-        easy: [],
-        medium: [],
-        hard: []
-      },
-      // baseline 上传输入（一次上传一个 difficulty+algorithm）
-      baselineUpload: {
-        easy: { algorithm: '', file: null, fileName: '当前未选择文件' },
-        medium: { algorithm: '', file: null, fileName: '当前未选择文件' },
-        hard: { algorithm: '', file: null, fileName: '当前未选择文件' }
-      },
+      taskIds: TASK_IDS,
+      // 闯关 baseline catalog（来自后端 /baselines/catalog，key: T1..T10）
+      baselineCatalog: TASK_IDS.reduce((acc, taskId) => {
+        acc[taskId] = []
+        return acc
+      }, {}),
+      // 每关 baseline 选中项（每关唯一，存 baselineOption.id）
+      baselineSelectedIds: TASK_IDS.reduce((acc, taskId) => {
+        acc[taskId] = null
+        return acc
+      }, {}),
+      // baseline 上传输入（一次上传一个关卡 + algorithm）
+      baselineUpload: TASK_IDS.reduce((acc, taskId) => {
+        acc[taskId] = { algorithm: '', file: null, fileName: '当前未选择文件' }
+        return acc
+      }, {}),
       taskForm: {
         name: '',
         classId: '',
@@ -599,39 +493,31 @@ export default {
         const token = localStorage.getItem('auth_token')
         if (!token) return
 
-        // 切换环境后 baseline 选项应重新拉取，同时清空已选项
-        this.baselineSelectedIds.easy = []
-        this.baselineSelectedIds.medium = []
-        this.baselineSelectedIds.hard = []
+        // 切换环境后闯关 baseline 选项应重新拉取，同时清空各关已选
+        this.taskIds.forEach(taskId => {
+          this.baselineSelectedIds[taskId] = null
+        })
         this.loadBaselineCatalog(token)
       }
     }
   },
   computed: {
-    baselineSelectedOptionsByDifficulty () {
-      const buildSelected = (diff) => {
-        const ids = this.baselineSelectedIds?.[diff] || []
-        return ids
-          .map(id => this.getBaselineOptionById(diff, id))
-          .filter(Boolean)
-      }
-      return {
-        easy: buildSelected('easy'),
-        medium: buildSelected('medium'),
-        hard: buildSelected('hard')
-      }
+    baselineSelectedOptionByTask () {
+      const mapped = {}
+      this.taskIds.forEach(taskId => {
+        const selectedId = this.baselineSelectedIds?.[taskId]
+        mapped[taskId] = selectedId ? this.getBaselineOptionById(taskId, selectedId) : null
+      })
+      return mapped
     },
-    baselineAvailableOptionsByDifficulty () {
-      const buildAvailable = (diff) => {
-        const catalogList = this.baselineCatalog?.[diff] || []
-        const selected = this.baselineSelectedIds?.[diff] || []
-        return catalogList.filter(opt => opt && !selected.includes(opt.id))
-      }
-      return {
-        easy: buildAvailable('easy'),
-        medium: buildAvailable('medium'),
-        hard: buildAvailable('hard')
-      }
+    baselineAvailableOptionsByTask () {
+      const mapped = {}
+      this.taskIds.forEach(taskId => {
+        const catalogList = this.baselineCatalog?.[taskId] || []
+        const selectedId = this.baselineSelectedIds?.[taskId]
+        mapped[taskId] = catalogList.filter(opt => opt && opt.id !== selectedId)
+      })
+      return mapped
     }
   },
   methods: {
@@ -764,27 +650,21 @@ export default {
         }
 
         const catalog = result.data || {}
-        this.baselineCatalog = {
-          easy: Array.isArray(catalog.easy) ? catalog.easy : [],
-          medium: Array.isArray(catalog.medium) ? catalog.medium : [],
-          hard: Array.isArray(catalog.hard) ? catalog.hard : []
-        }
+        this.taskIds.forEach(taskId => {
+          this.baselineCatalog[taskId] = Array.isArray(catalog[taskId]) ? catalog[taskId] : []
+        })
       } catch (error) {
         ElMessage.warning(error.message || 'Baseline catalog 加载失败')
       }
     },
-    addBaselineToSelection (difficulty, baselineId) {
-      const list = this.baselineSelectedIds[difficulty] || []
-      if (!list.includes(baselineId)) {
-        this.baselineSelectedIds[difficulty] = [...list, baselineId]
-      }
+    addBaselineToSelection (taskId, baselineId) {
+      this.baselineSelectedIds[taskId] = baselineId
     },
-    removeBaselineFromSelection (difficulty, baselineId) {
-      const list = this.baselineSelectedIds[difficulty] || []
-      this.baselineSelectedIds[difficulty] = list.filter(id => id !== baselineId)
+    removeBaselineFromSelection (taskId) {
+      this.baselineSelectedIds[taskId] = null
     },
-    getBaselineOptionById (difficulty, baselineId) {
-      const catalogList = this.baselineCatalog?.[difficulty] || []
+    getBaselineOptionById (taskId, baselineId) {
+      const catalogList = this.baselineCatalog?.[taskId] || []
       const fromCatalog = catalogList.find(opt => opt && opt.id === baselineId)
       if (fromCatalog) return fromCatalog
 
@@ -796,26 +676,40 @@ export default {
         id: baselineId,
         label: algoKey ? String(algoKey).toUpperCase() : baselineId,
         algorithm: algoKey,
-        modelPath: algoKey ? `${env}/${difficulty}/${algoKey}/baseline.pth` : ''
+        modelPath: algoKey ? `${env}/${taskId}/${algoKey}/baseline.pth` : ''
       }
     },
-    handleBaselineFileChange (event, difficulty) {
+    handleBaselineFileChange (event, taskId) {
       const file = event.target.files && event.target.files[0]
       if (!file) return
-      this.baselineUpload[difficulty].file = file
-      this.baselineUpload[difficulty].fileName = file.name
+      this.baselineUpload[taskId].file = file
+      this.baselineUpload[taskId].fileName = file.name
     },
-    async uploadBaselineModel (difficulty) {
-      const upload = this.baselineUpload[difficulty] || {}
+    resetBaselineUpload (taskId) {
+      const baselineState = this.baselineUpload[taskId]
+      if (!baselineState) return
+
+      baselineState.algorithm = ''
+      baselineState.file = null
+      baselineState.fileName = '当前未选择文件'
+
+      const fileInputRef = this.$refs[`baselineFileInput_${taskId}`]
+      const fileInput = Array.isArray(fileInputRef) ? fileInputRef[0] : fileInputRef
+      if (fileInput) {
+        fileInput.value = ''
+      }
+    },
+    async uploadBaselineModel (taskId) {
+      const upload = this.baselineUpload[taskId] || {}
       const algorithm = String(upload.algorithm || '').trim()
       const file = upload.file
 
       if (!algorithm) {
-        ElMessage.warning(`请输入${difficulty}算法名`)
+        ElMessage.warning(`请输入 ${taskId} 算法名`)
         return
       }
       if (!file) {
-        ElMessage.warning(`请选择${difficulty}的 baseline.pth 文件`)
+        ElMessage.warning(`请选择 ${taskId} 的 baseline.pth 文件`)
         return
       }
 
@@ -828,7 +722,7 @@ export default {
       try {
         const formData = new FormData()
         formData.append('environment', this.taskForm.environmentCode || 'tictactoe_v3')
-        formData.append('difficulty', difficulty)
+        formData.append('taskId', taskId)
         formData.append('algorithm', algorithm)
         formData.append('model', file)
 
@@ -849,16 +743,15 @@ export default {
 
         await this.loadBaselineCatalog(token)
 
-        const baselineId = `${difficulty}-${algorithm.toLowerCase()}`
-        this.addBaselineToSelection(difficulty, baselineId)
+        const baselineId = `${taskId}-${algorithm.toLowerCase()}`
+        this.addBaselineToSelection(taskId, baselineId)
 
-        this.baselineUpload[difficulty].file = null
-        this.baselineUpload[difficulty].fileName = '当前未选择文件'
+        this.resetBaselineUpload(taskId)
       } catch (error) {
         ElMessage.error(error.message || 'baseline 上传失败，请检查后端是否已启动')
       }
     },
-    async softDeleteBaselineFromCatalog (difficulty, opt) {
+    async softDeleteBaselineFromCatalog (taskId, opt) {
       const token = localStorage.getItem('auth_token')
       if (!token) {
         ElMessage.error('登录信息已失效，请重新登录')
@@ -877,7 +770,7 @@ export default {
 
       try {
         await ElMessageBox.confirm(
-          '确认将该 baseline 资源删除吗？\n删除后将从可选列表中消失。',
+          `确认删除 ${taskId} 的该 baseline 资源吗？\n删除后将从可选列表中消失。`,
           '提示',
           {
             type: 'warning',
@@ -891,7 +784,7 @@ export default {
 
       const params = new URLSearchParams({
         environment: this.taskForm.environmentCode || '',
-        difficulty,
+        taskId,
         algorithm
       })
 
@@ -910,7 +803,7 @@ export default {
 
         ElMessage.success('baseline 已删除')
         if (baselineId) {
-          this.removeBaselineFromSelection(difficulty, baselineId)
+          this.removeBaselineFromSelection(taskId)
         }
         await this.loadBaselineCatalog(token)
       } catch (error) {
@@ -931,27 +824,25 @@ export default {
         ? `${this.taskForm.rule}\n\n淘汰赛说明：\n${this.taskForm.tournamentRule}`
         : this.taskForm.rule
 
-      const baselineOptions = {}
+      const taskBaselineOptions = {}
       const env = this.taskForm.environmentCode || 'tictactoe_v3'
-      ;['easy', 'medium', 'hard'].forEach(diff => {
-        const selectedIds = this.baselineSelectedIds[diff] || []
-        const catalogList = this.baselineCatalog[diff] || []
-
-        baselineOptions[diff] = selectedIds.map(id => {
-          const fromCatalog = catalogList.find(opt => opt && opt.id === id)
-          if (fromCatalog) return fromCatalog
-
-          // 兜底：当 catalog 尚未加载/找不到该 id 时，通过 id 推断 modelPath
-          const parts = String(id || '').split('-')
-          const algoKey = parts[1] || ''
-
-          return {
-            id,
-            label: algoKey ? String(algoKey).toUpperCase() : id,
-            algorithm: algoKey,
-            modelPath: `${env}/${diff}/${algoKey}/baseline.pth`
-          }
-        })
+      this.taskIds.forEach(taskId => {
+        const selectedId = this.baselineSelectedIds[taskId]
+        if (!selectedId) return
+        const catalogList = this.baselineCatalog[taskId] || []
+        const fromCatalog = catalogList.find(opt => opt && opt.id === selectedId)
+        if (fromCatalog) {
+          taskBaselineOptions[taskId] = fromCatalog
+          return
+        }
+        const parts = String(selectedId || '').split('-')
+        const algoKey = parts[1] || ''
+        taskBaselineOptions[taskId] = {
+          id: selectedId,
+          label: algoKey ? String(algoKey).toUpperCase() : selectedId,
+          algorithm: algoKey,
+          modelPath: `${env}/${taskId}/${algoKey}/baseline.pth`
+        }
       })
 
       return {
@@ -961,7 +852,7 @@ export default {
         actionSpace: this.taskForm.actionSpace,
         rewardFunction: this.taskForm.reward,
         evaluationFunction: this.taskForm.evaluation,
-        baselineOptions
+        taskBaselineOptions
       }
     },
     validatePublishForm () {
@@ -982,12 +873,11 @@ export default {
         return false
       }
       if (this.taskMode === 'single') {
-        const totalBaselineSelected = ['easy', 'medium', 'hard'].reduce((sum, diff) => {
-          return sum + ((this.baselineSelectedIds[diff] || []).length)
-        }, 0)
-        if (totalBaselineSelected === 0) {
-          ElMessage.warning('请至少选择一个 baseline')
-          return false
+        for (const taskId of this.taskIds) {
+          if (!this.baselineSelectedIds[taskId]) {
+            ElMessage.warning(`请为 ${taskId} 选择一个 baseline`)
+            return false
+          }
         }
       }
       return true

@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface BaselineRepository extends JpaRepository<Baseline, Long> {
-    Optional<Baseline> findByEnvironmentAndDifficultyAndAlgorithm(String environment, String difficulty, String algorithm);
+    Optional<Baseline> findByEnvironmentAndTaskIdAndAlgorithm(String environment, String taskId, String algorithm);
 
     List<Baseline> findByEnvironmentAndIsDeletedFalse(String environment);
 }

@@ -5,7 +5,7 @@
 - 支持 LunarLander (DQN / PPO / PPO-GAE)
 - 统一输出 JSON 到 stdout，便于后端调用。
 - 调用示例：
-    python evaluate.py --env LunarLander-v3 --agent dqn --model_name dqn_episode_500.pth --episodes 10 --workspace E:\2025-2026\GP\LunarLander-RL-Comparison --render_video --baseline_model_path LunarLander\dqn\dqn_episode_100.pth
+    python evaluate.py --env LunarLander-v3 --agent dqn --model_name DDQN_LLdV2_250.pth --episodes 10 --workspace E:\2025-2026\GP\LunarLander-RL-Comparison --render_video --baseline_model_path LunarLander-v3\easy\dqn\dqn_episode_100.pth
 
 """
 
@@ -23,7 +23,6 @@ try:
 except ImportError:  # pragma: no cover - 运行环境中若无 gymnasium 则退回 gym
     import gym
 
-from sympy.core.numbers import I
 import torch
 import ffmpeg
 import glob
@@ -37,6 +36,9 @@ from policy_wrapper import _PolicyWrapper, DQNPolicy, PPOPolicy, PPOGAEPolicy, D
 
 
 STEPS_PER_EPISODE = 1000
+
+
+        
 # seed = 42  # 设置随机种子以复现结果
 
 # # 设置随机种子
@@ -64,7 +66,8 @@ def _maybe_add_mujoco_dll_directory() -> None:
 def make_env(env_id: str,
              model_name: str,
              realtime_render: bool = False,
-             render_video: bool = False):
+             render_video: bool = False,
+             task_id: str | None = None):
     """
     统一的环境创建函数，支持三种模式：
     - 实时渲染（human）
@@ -77,12 +80,19 @@ def make_env(env_id: str,
     """
     result_dir = None
 
-    if realtime_render:
-        env = gym.make(env_id, render_mode="human")
-    elif render_video:
-        env = gym.make(env_id, render_mode="rgb_array")
-    else:
-        env = gym.make(env_id, render_mode=None)
+    render_mode = "human" if realtime_render else ("rgb_array" if render_video else None)
+    normalized_task_id = (task_id or "").strip().upper()
+    if not normalized_task_id:
+        raise ValueError("闯关模式要求必须传入 --task_id（T1...T10）")
+    try:
+        import lunar_task_env  # type: ignore
+
+        env = lunar_task_env.make_lunar_env(normalized_task_id, render_mode=render_mode)
+    except ImportError as e:
+        raise ImportError(
+            "找不到 lunar_task_env.py。"
+            "请确认 --workspace 指向包含该文件的目录。"
+        ) from e
 
     if render_video:
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -233,7 +243,14 @@ def video_side_by_side(student_video: str, baseline_video: str, output_path: str
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Unified RL evaluation: run episodes and output JSON.")
-    parser.add_argument("--env", required=True, help="Gym/Gymnasium environment id, e.g. HalfCheetah-v2 or LunarLander-v3")
+    parser.add_argument(
+        "--env",
+        required=True,
+        help=(
+            "Gym/Gymnasium 环境 id，例如 HalfCheetah-v2、LunarLander-v3，"
+            "或课程任务 LunarLander-T1-v0 … LunarLander-T6-v0（需 workspace 含 lunar_task_env.py）"
+        ),
+    )
     parser.add_argument("--agent", required=True,
                         help="Agent type: ddpg / dqn / ppo / ppo_gae")
     parser.add_argument("--model_name", required=True,
@@ -250,6 +267,8 @@ def parse_args(argv=None):
                         help="Optional baseline model path")
     parser.add_argument("--config_path", default=None,
                         help="Optional config file path associated with model")
+    parser.add_argument("--task_id", required=True,
+                        help="Curriculum task id, e.g. T1 ... T10")
     return parser.parse_args(argv)
 
 
@@ -259,12 +278,13 @@ def main(argv=None):
     args = parse_args(argv)
 
     workspace = os.path.abspath(args.workspace or os.getcwd())
-    if args.workspace and workspace not in sys.path:
+    if workspace not in sys.path:
         sys.path.insert(0, workspace)
     os.chdir(workspace)
 
     result = {
         "status": "FINISHED",
+        "task_id": (args.task_id.strip().upper() if args.task_id else None),
         "student_avg_reward": 0.0,
         "student_rewards": [],
         "baseline_avg_reward": 0.0,
@@ -279,6 +299,7 @@ def main(argv=None):
             model_name=args.model_name,
             realtime_render=bool(args.realtime_render),
             render_video=bool(args.render_video),
+            task_id=args.task_id,
         )
 
         # HalfCheetah 等连续环境默认给一个步数上限
@@ -303,6 +324,7 @@ def main(argv=None):
                     model_name=baseline_model_name,
                     realtime_render=bool(args.realtime_render),
                     render_video=bool(args.render_video),
+                    task_id=args.task_id,
                 )
                 baseline_policy = load_policy(env_baseline, args.agent, baseline_path)
                 baseline_rewards = run_episodes(env_baseline, baseline_policy, args.episodes, max_steps=max_steps)
@@ -311,12 +333,16 @@ def main(argv=None):
                 baseline_used = True
                 env_baseline.close()
                 videoConcat(result_dir_baseline)
+        else:
+            print("Warning: No baseline model path provided")
 
         if baseline_used:
             if (result["student_avg_reward"] > result["baseline_avg_reward"]):
                 result["winner"] = 1
             else:
                 result["winner"] = 0
+        else:
+            print("Warning: No baseline model used")
 
         if baseline_used and args.render_video and result_dir is not None and result_dir_baseline is not None:
             student_video_path = result_dir + ".mp4"

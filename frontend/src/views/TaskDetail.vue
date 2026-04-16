@@ -88,14 +88,30 @@
 
           <template v-if='taskMode === "single"'>
             <div class='side-desc'>
-              当前任务为单人模式。学生提交模型后，平台将在预设环境中独立完成测评。
+              当前任务为闯关单人模式。通过条件：战胜当前关卡基线模型。
+            </div>
+            <div class='curriculum-info-box'>
+              <div class='mini-bot-title'>闯关进度</div>
+              <div class='mini-bot-row'>
+                <span>已通过</span>
+                <span>{{ curriculumPassedText }}</span>
+              </div>
+              <div class='mini-bot-row'>
+                <span>当前挑战</span>
+                <span :class='curriculumNextTaskId ? "status-ok" : "status-off"'>
+                  {{ curriculumNextTaskId || '加载中' }}
+                </span>
+              </div>
+              <div v-if='curriculumLoadError' class='curriculum-tip curriculum-tip-warning'>
+                {{ curriculumLoadError }}
+              </div>
             </div>
             <button
               class='primary-btn submit-action-btn'
               :class='{ "ended-submit-btn": isTaskEnded }'
               @click='handleSingleSubmitClick'
             >
-              提交单人测评
+              {{ singleSubmitButtonText }}
             </button>
           </template>
 
@@ -295,34 +311,9 @@
           <div class='dialog-tip submit-mode-tip'>当前提交方式：{{ submitModeText }}</div>
 
           <div v-if='currentSubmitMode === "single"' class='form-item'>
-            <label>Baseline（难度 / 算法）</label>
-            <div class='baseline-grid'>
-              <div class='baseline-row'>
-                <span class='baseline-label'>难度</span>
-                <select v-model='baselineDifficulty' @change='baselineId = ""'>
-                  <option value='easy'>easy</option>
-                  <option value='medium'>medium</option>
-                  <option value='hard'>hard</option>
-                </select>
-              </div>
-
-              <div class='baseline-row'>
-                <span class='baseline-label'>算法</span>
-                <select v-model='baselineId'>
-                  <option v-if='baselineOptionsForDifficulty.length === 0' value='' disabled>该难度暂无可用 baseline</option>
-                  <option
-                    v-for='opt in baselineOptionsForDifficulty'
-                    :key='opt.id || opt.label'
-                    :value='opt.id'
-                  >
-                    {{ opt.label || opt.algorithm || opt.id }}
-                  </option>
-                </select>
-              </div>
-
-              <div class='baseline-tip'>
-                说明：所选baseline将与你的模型进行比较，并最终按照avg_reward决定胜负。
-              </div>
+            <label>当前闯关说明</label>
+            <div class='baseline-tip'>
+              本次将提交到 {{ curriculumNextTaskId || '当前关卡' }}，并由后端自动使用该关卡对应 baseline 进行评测。
             </div>
           </div>
 
@@ -580,16 +571,12 @@ export default {
       submitMessage: '',
       queryMessage: '',
       evaluationId: null,
+      curriculumHighestPassedTaskIndex: 0,
+      curriculumNextTaskId: '',
+      curriculumLoadError: '',
       selectedFiles: {
         config: null,
         model: null
-      },
-      baselineDifficulty: 'easy',
-      baselineId: '',
-      baselineOptions: {
-        easy: [],
-        medium: [],
-        hard: []
       },
       taskList: [],
       rankingList: [
@@ -639,10 +626,13 @@ export default {
       }
       return '单人测评'
     },
-    baselineOptionsForDifficulty () {
-      const key = this.baselineDifficulty || 'easy'
-      const options = this.baselineOptions && this.baselineOptions[key]
-      return Array.isArray(options) ? options : []
+    singleSubmitButtonText () {
+      return this.curriculumNextTaskId ? `提交当前关（${this.curriculumNextTaskId}）` : '提交当前关'
+    },
+    curriculumPassedText () {
+      const n = Number(this.curriculumHighestPassedTaskIndex || 0)
+      if (!n || n <= 0) return '暂无'
+      return `T1 ~ T${Math.min(10, n)}`
     },
     submitFeedbackClass () {
       return this.submitMessage.startsWith('提交失败') || this.submitMessage.startsWith('请')
@@ -662,10 +652,6 @@ export default {
         this.initTaskInfo()
       },
       deep: true
-    },
-    baselineDifficulty () {
-      const first = this.baselineOptionsForDifficulty[0]
-      this.baselineId = first && first.id ? first.id : ''
     }
   },
   methods: {
@@ -680,6 +666,9 @@ export default {
 
       if (assignmentId) {
         await this.loadTaskDetail(assignmentId)
+        if (this.taskMode === 'single') {
+          await this.loadCurriculumProgress(assignmentId)
+        }
         if (this.taskMode === 'battle') {
           await this.loadBotStatus(assignmentId)
         }
@@ -763,6 +752,35 @@ export default {
         this.hasHardBot = false
       }
     },
+    async loadCurriculumProgress (assignmentId) {
+      this.curriculumLoadError = ''
+      this.curriculumHighestPassedTaskIndex = 0
+      this.curriculumNextTaskId = ''
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.curriculumLoadError = '未获取到进度信息，提交时将由后端自动判定当前关卡。'
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/curriculum-progress`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '闯关进度加载失败')
+        }
+        const progress = result.data || {}
+        this.curriculumHighestPassedTaskIndex = Number(progress.highestPassedTaskIndex || 0)
+        this.curriculumNextTaskId = progress.nextTaskId || ''
+      } catch (error) {
+        this.curriculumLoadError = `${error.message || '闯关进度加载失败'}，提交时将由后端自动判定当前关卡。`
+      }
+    },
     fillTaskDetail (task) {
       const config = this.parseTaskConfig(task)
       const taskMode = this.mapTaskMode(task.evaluationMode)
@@ -783,18 +801,6 @@ export default {
       this.rewardText = config.rewardFunction || '当前暂无奖励说明。'
       this.evaluationText = config.evaluationFunction || '当前暂无评测说明。'
       this.algorithmTags = this.parseAgentNames(task.agentName)
-
-      // single 模式 baseline 选项（由任务配置控制）
-      const baselineOptions = config && config.baselineOptions ? config.baselineOptions : null
-      this.baselineOptions = {
-        easy: Array.isArray(baselineOptions && baselineOptions.easy) ? baselineOptions.easy : [],
-        medium: Array.isArray(baselineOptions && baselineOptions.medium) ? baselineOptions.medium : [],
-        hard: Array.isArray(baselineOptions && baselineOptions.hard) ? baselineOptions.hard : []
-      }
-      if (!this.baselineId) {
-        const first = this.baselineOptionsForDifficulty[0]
-        this.baselineId = first && first.id ? first.id : ''
-      }
     },
     parseTaskConfig (task) {
       if (task.config && typeof task.config === 'object') {
@@ -967,14 +973,6 @@ export default {
         form.append('difficulty', this.currentBotDifficulty)
       }
 
-      // single 模式 baseline
-      if (this.currentSubmitMode === 'single') {
-        form.append('baselineDifficulty', this.baselineDifficulty || 'easy')
-        if (this.baselineId) {
-          form.append('baselineId', this.baselineId)
-        }
-      }
-
       this.loadingSubmit = true
       this.submitMessage = ''
       this.evaluationId = null
@@ -1014,6 +1012,9 @@ export default {
           this.evaluationId = payload.evaluationId
         } else if (payload.id) {
           this.evaluationId = payload.id
+        }
+        if (this.currentSubmitMode === 'single') {
+          this.submitMessage = `${this.submitMessage}，可在历史记录中查看本关是否通过。`
         }
 
         this.showSubmitDialog = false
@@ -1440,6 +1441,23 @@ function titleSafe (value, fallback) {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid #ebeef5;
+}
+
+.curriculum-info-box {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #ebeef5;
+}
+
+.curriculum-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #909399;
+}
+
+.curriculum-tip-warning {
+  color: #e6a23c;
 }
 
 .status-ok {

@@ -17,13 +17,13 @@ public class Baseline {
     @Column(nullable = false)
     private String environment;
 
-    @Column(nullable = false)
-    private String difficulty;
+    @Column(name = "task_id", nullable = false, length = 16)
+    private String taskId;
 
     @Column(nullable = false)
     private String algorithm;
 
-    // 相对 baselineRoot 的路径（例如：tictactoe_v3/easy/dqn/baseline.pth）
+    // 相对 baselineRoot 的路径（例如：LunarLander-v3/T1/dqn/baseline.pth）
     @Column(name = "model_path", columnDefinition = "TEXT")
     private String modelPath;
 

@@ -1,0 +1,42 @@
+spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  application:
+    name: RLplatform
+  datasource:
+    url: jdbc:mysql://localhost:3306/rl_platform
+    username: root
+    password: qtq031113
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+#TODO: 需要修改为实际的路径
+evaluation:
+  python: "C:/Users/qtq/anaconda3/envs/mojito/python.exe"
+  script: "scripts/evaluate.py"
+  workspace: "E:/2025-2026/GP/LunarLander-RL-Comparison"
+  baselineRoot: "E:/2025-2026/GP/LunarLander-RL-Comparison/saved_models"
+
+# logging:
+#   level:
+#     org.example.rlplatform.evaluation.EvaluationExecuter: DEBUG
+
+battle:
+  python: "E:/Anaconda/envs/rl/python.exe"
+  script: "scripts/battle_evaluator.py"
+
+system:
+  bot-root: "E:/system_model"
