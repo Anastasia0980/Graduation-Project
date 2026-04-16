@@ -1,15 +1,19 @@
 package org.example.rlplatform.service.impl;
 
+import org.example.rlplatform.Repository.BattleModelSubmissionRepository;
 import org.example.rlplatform.Repository.BattleParticipantRepository;
 import org.example.rlplatform.Repository.EvaluationRepository;
 import org.example.rlplatform.Repository.EvaluationResultRepository;
 import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
+import org.example.rlplatform.Repository.UserRepository;
+import org.example.rlplatform.Repository.TeamGroupRepository;
+import org.example.rlplatform.Repository.TeamMemberRepository;
 import org.example.rlplatform.battle.BattleRunner;
-import org.example.rlplatform.battle.InMemoryBattleQueue;
 import org.example.rlplatform.entity.*;
 import org.example.rlplatform.service.BattleService;
 import org.example.rlplatform.service.SystemBotService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
+import org.example.rlplatform.vo.BattleModelOptionVO;
 import org.example.rlplatform.vo.BattleTaskDetailVO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -20,43 +24,62 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Slf4j
 @Service
 public class BattleServiceImpl implements BattleService {
 
-    private final InMemoryBattleQueue battleQueue;
+    private static final int DEFAULT_GAMES = 30;
+    private static final DateTimeFormatter DATETIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private final EvaluationRepository evaluationRepository;
     private final EvaluationResultRepository evaluationResultRepository;
     private final BattleParticipantRepository battleParticipantRepository;
+    private final BattleModelSubmissionRepository battleModelSubmissionRepository;
     private final BattleRunner battleRunner;
     private final ExperimentAssignmentRepository experimentAssignmentRepository;
     private final SystemBotService systemBotService;
+    private final UserRepository userRepository;
+    private final TeamGroupRepository teamGroupRepository;
+    private final TeamMemberRepository teamMemberRepository;
 
     @Value("${evaluation.workspace:}")
     private String workspace;
 
     public BattleServiceImpl(
-            InMemoryBattleQueue battleQueue,
             EvaluationRepository evaluationRepository,
             EvaluationResultRepository evaluationResultRepository,
             BattleParticipantRepository battleParticipantRepository,
+            BattleModelSubmissionRepository battleModelSubmissionRepository,
             BattleRunner battleRunner,
             ExperimentAssignmentRepository experimentAssignmentRepository,
-            SystemBotService systemBotService
+            SystemBotService systemBotService,
+            UserRepository userRepository,
+            TeamGroupRepository teamGroupRepository,
+            TeamMemberRepository teamMemberRepository
     ) {
-        this.battleQueue = battleQueue;
         this.evaluationRepository = evaluationRepository;
         this.evaluationResultRepository = evaluationResultRepository;
         this.battleParticipantRepository = battleParticipantRepository;
+        this.battleModelSubmissionRepository = battleModelSubmissionRepository;
         this.battleRunner = battleRunner;
         this.experimentAssignmentRepository = experimentAssignmentRepository;
         this.systemBotService = systemBotService;
+        this.userRepository = userRepository;
+        this.teamGroupRepository = teamGroupRepository;
+        this.teamMemberRepository = teamMemberRepository;
     }
 
     @Override
     public Result<?> submitAndMaybeStart(Integer assignmentId, MultipartFile model, MultipartFile config) {
+        return submitBattleModel(assignmentId, model, config);
+    }
+
+    @Override
+    public Result<?> submitBattleModel(Integer assignmentId, MultipartFile model, MultipartFile config) {
         try {
             if (assignmentId == null) {
                 return Result.error("assignmentId is required");
@@ -68,79 +91,135 @@ public class BattleServiceImpl implements BattleService {
                 return Result.error("config is required");
             }
 
-            Map<String, Object> claims = ThreadLocalUtil.get();
-            if (claims == null || claims.get("id") == null) {
+            Long studentId = currentStudentId();
+            if (studentId == null) {
                 return Result.error("当前登录信息无效，请重新登录");
             }
 
-            Integer currentUserId = (Integer) claims.get("id");
-            Long studentId = currentUserId.longValue();
-
-            ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
+            ExperimentAssignment assignment = validBattleAssignment(assignmentId);
             if (assignment == null) {
                 return Result.error("任务不存在");
             }
-
-            if (assignment.getEvaluationMode() != EvaluationMode.VERSUS) {
-                return Result.error("当前任务不是对战模式，不能提交对战");
-            }
+            validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+            validateTeamLockedIfNeeded(assignment, studentId.intValue());
 
             String environment = assignment.getEnvironment();
             if (environment == null || environment.isBlank()) {
                 return Result.error("任务未配置环境");
             }
 
-            int games = 30;
+            String rel = saveStudentFiles(studentId, model, config);
 
-            String baseDir = (workspace != null && !workspace.isBlank())
-                    ? workspace
-                    : Paths.get(System.getProperty("user.dir")).toString();
+            BattleModelSubmission submission = new BattleModelSubmission();
+            submission.setAssignmentId(assignmentId);
+            submission.setStudentId(studentId);
+            submission.setEnvironment(environment);
+            submission.setGames(DEFAULT_GAMES);
+            submission.setStudentDirRel(rel);
+            submission.setModelName(safeModelName(model));
+            submission.setActive(true);
+            submission.setCreateTime(LocalDateTime.now());
+            battleModelSubmissionRepository.save(submission);
 
-            String uuid = UUID.randomUUID().toString().replace("-", "");
-            Path studentDir = Paths.get(baseDir, "uploads", String.valueOf(studentId), uuid);
-            Files.createDirectories(studentDir);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("submissionId", submission.getId());
+            data.put("modelName", submission.getModelName());
+            data.put("message", "模型已保存，可在“已提交模型”中选择该模型发起挑战。");
+            return Result.success(data);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
 
-            Path configPath = studentDir.resolve("config.json");
-            Path modelPath = studentDir.resolve("model.pt");
+    @Override
+    public List<BattleModelOptionVO> listMyBattleModels(Integer assignmentId) {
+        Long studentId = currentStudentId();
+        if (studentId == null || assignmentId == null) {
+            return Collections.emptyList();
+        }
+        ExperimentAssignment assignment = validBattleAssignment(assignmentId);
+        Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+        List<BattleModelSubmission> submissions = battleModelSubmissionRepository
+                .findByAssignmentIdAndStudentIdAndActiveTrueOrderByIdDesc(assignmentId, ownerStudentId);
+        return buildBattleModelOptions(assignment, submissions);
+    }
 
-            config.transferTo(configPath);
-            model.transferTo(modelPath);
+    @Override
+    public List<BattleModelOptionVO> listOpponentBattleModels(Integer assignmentId, Long mySubmissionId) {
+        Long studentId = currentStudentId();
+        if (studentId == null || assignmentId == null || mySubmissionId == null) {
+            return Collections.emptyList();
+        }
 
-            String rel = Paths.get("uploads", String.valueOf(studentId), uuid)
-                    .toString()
-                    .replace("\\", "/");
+        ExperimentAssignment assignment = validBattleAssignment(assignmentId);
+        validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+        validateTeamLockedIfNeeded(assignment, studentId.intValue());
 
-            Submission submission = new Submission(
-                    assignmentId,
-                    studentId,
-                    environment,
-                    games,
-                    rel,
-                    model.getOriginalFilename(),
-                    LocalDateTime.now()
-            );
+        BattleModelSubmission mySubmission = battleModelSubmissionRepository.findByIdAndActiveTrue(mySubmissionId)
+                .orElseThrow(() -> new RuntimeException("我的模型记录不存在"));
 
-            int queueSize = battleQueue.enqueue(submission);
-            Submission[] pair = battleQueue.tryDequeuePair(assignmentId);
+        if (!Objects.equals(mySubmission.getAssignmentId(), assignmentId)) {
+            throw new RuntimeException("模型与当前任务不匹配");
+        }
 
-            if (pair == null) {
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("queued", true);
-                data.put("queueSize", queueSize);
-                data.put("assignmentId", assignmentId);
-                data.put("environment", environment);
-                data.put("games", games);
-                data.put("message", "已进入匹配队列，等待另一位同学提交。");
-                return Result.success(data);
+        Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+        if (!Objects.equals(mySubmission.getStudentId(), ownerStudentId)) {
+            throw new RuntimeException("不能使用他人的模型作为自己的出战模型");
+        }
+
+        List<BattleModelSubmission> submissions = battleModelSubmissionRepository
+                .findByAssignmentIdAndStudentIdNotAndActiveTrueOrderByIdDesc(assignmentId, ownerStudentId);
+        return buildBattleModelOptions(assignment, submissions);
+    }
+
+    @Override
+    public Result<?> challengeBySubmission(Integer assignmentId, Long mySubmissionId, Long opponentSubmissionId) {
+        try {
+            if (assignmentId == null) {
+                return Result.error("assignmentId is required");
+            }
+            if (mySubmissionId == null || opponentSubmissionId == null) {
+                return Result.error("mySubmissionId and opponentSubmissionId are required");
+            }
+
+            Long studentId = currentStudentId();
+            if (studentId == null) {
+                return Result.error("当前登录信息无效，请重新登录");
+            }
+
+            ExperimentAssignment assignment = validBattleAssignment(assignmentId);
+            if (assignment == null) {
+                return Result.error("任务不存在");
+            }
+            validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+            validateTeamLockedIfNeeded(assignment, studentId.intValue());
+
+            BattleModelSubmission mySubmission = battleModelSubmissionRepository.findByIdAndActiveTrue(mySubmissionId)
+                    .orElseThrow(() -> new RuntimeException("我的模型记录不存在"));
+            BattleModelSubmission opponentSubmission = battleModelSubmissionRepository.findByIdAndActiveTrue(opponentSubmissionId)
+                    .orElseThrow(() -> new RuntimeException("对手模型记录不存在"));
+
+            if (!Objects.equals(mySubmission.getAssignmentId(), assignmentId)
+                    || !Objects.equals(opponentSubmission.getAssignmentId(), assignmentId)) {
+                return Result.error("模型与当前任务不匹配");
+            }
+
+            Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+            if (!Objects.equals(mySubmission.getStudentId(), ownerStudentId)) {
+                return Result.error("只能使用当前队伍有效模型发起挑战");
+            }
+
+            if (Objects.equals(mySubmission.getStudentId(), opponentSubmission.getStudentId())) {
+                return Result.error("不能挑战自己上传的模型");
             }
 
             Evaluation evaluation = new Evaluation();
-            evaluation.setStudentId(pair[0].getStudentId().intValue());
+            evaluation.setStudentId(studentId.intValue());
             evaluation.setAgentName("BATTLE");
-            evaluation.setEnvironment(environment);
+            evaluation.setEnvironment(assignment.getEnvironment());
             evaluation.setModelId(null);
             evaluation.setAssignmentId(assignmentId);
-            evaluation.setEpisodes(games);
+            evaluation.setEpisodes(DEFAULT_GAMES);
             evaluation.setStatus(EvaluationStatus.PENDING);
             evaluation.setCreateTime(LocalDateTime.now());
             evaluation.setUpdateTime(LocalDateTime.now());
@@ -148,31 +227,27 @@ public class BattleServiceImpl implements BattleService {
 
             BattleParticipant participant = new BattleParticipant();
             participant.setEvaluationId(evaluation.getId());
-            participant.setStudent1Id(pair[0].getStudentId());
-            participant.setStudent2Id(pair[1].getStudentId());
-            participant.setStudent1DirRel(pair[0].getStudentDirRel());
-            participant.setStudent2DirRel(pair[1].getStudentDirRel());
+            participant.setStudent1Id(mySubmission.getStudentId());
+            participant.setStudent2Id(opponentSubmission.getStudentId());
+            participant.setStudent1SubmissionId(mySubmission.getId());
+            participant.setStudent2SubmissionId(opponentSubmission.getId());
+            participant.setStudent1DirRel(mySubmission.getStudentDirRel());
+            participant.setStudent2DirRel(opponentSubmission.getStudentDirRel());
             participant.setOpponentType("HUMAN");
             participant.setOpponentName(null);
             participant.setDifficulty(null);
-            participant.setStudent1ModelName(pair[0].getModelName());
-            participant.setStudent2ModelName(pair[1].getModelName());
+            participant.setStudent1ModelName(mySubmission.getModelName());
+            participant.setStudent2ModelName(opponentSubmission.getModelName());
             battleParticipantRepository.save(participant);
 
             battleRunner.runBattleAsync(evaluation.getId());
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("queued", false);
-            data.put("matched", true);
             data.put("evaluationId", evaluation.getId());
-            data.put("student1", pair[0].getStudentId());
-            data.put("student2", pair[1].getStudentId());
-            data.put("assignmentId", assignmentId);
-            data.put("environment", environment);
-            data.put("games", games);
-            data.put("message", "匹配成功，已启动对战评测。");
+            data.put("mySubmissionId", mySubmissionId);
+            data.put("opponentSubmissionId", opponentSubmissionId);
+            data.put("message", "挑战已发起，平台正在异步执行对战评测。");
             return Result.success(data);
-
         } catch (Exception e) {
             log.error("submitAndMaybeStart failed assignmentId={}", assignmentId, e);
             return Result.error(e.getMessage());
@@ -195,21 +270,14 @@ public class BattleServiceImpl implements BattleService {
                 return Result.error("config is required");
             }
 
-            Map<String, Object> claims = ThreadLocalUtil.get();
-            if (claims == null || claims.get("id") == null) {
+            Long studentId = currentStudentId();
+            if (studentId == null) {
                 return Result.error("当前登录信息无效，请重新登录");
             }
 
-            Integer currentUserId = (Integer) claims.get("id");
-            Long studentId = currentUserId.longValue();
-
-            ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
+            ExperimentAssignment assignment = validBattleAssignment(assignmentId);
             if (assignment == null) {
                 return Result.error("任务不存在");
-            }
-
-            if (assignment.getEvaluationMode() != EvaluationMode.VERSUS) {
-                return Result.error("当前任务不是对战模式，不能进行人机对战");
             }
 
             String environment = assignment.getEnvironment();
@@ -217,24 +285,7 @@ public class BattleServiceImpl implements BattleService {
                 return Result.error("任务未配置环境");
             }
 
-            int games = 30;
-
-            String baseDir = (workspace != null && !workspace.isBlank())
-                    ? workspace
-                    : Paths.get(System.getProperty("user.dir")).toString();
-
-            String uuid = UUID.randomUUID().toString().replace("-", "");
-            Path studentDir = Paths.get(baseDir, "uploads", String.valueOf(studentId), uuid);
-            Files.createDirectories(studentDir);
-
-            Path configPath = studentDir.resolve("config.json");
-            Path modelPath = studentDir.resolve("model.pt");
-            config.transferTo(configPath);
-            model.transferTo(modelPath);
-
-            String rel = Paths.get("uploads", String.valueOf(studentId), uuid)
-                    .toString()
-                    .replace("\\", "/");
+            String rel = saveStudentFiles(studentId, model, config);
 
             String botAbsDir = systemBotService.getBotAbsoluteDir(assignmentId, difficulty);
             Path botPath = Paths.get(botAbsDir);
@@ -248,7 +299,7 @@ public class BattleServiceImpl implements BattleService {
             evaluation.setEnvironment(environment);
             evaluation.setModelId(null);
             evaluation.setAssignmentId(assignmentId);
-            evaluation.setEpisodes(games);
+            evaluation.setEpisodes(DEFAULT_GAMES);
             evaluation.setStatus(EvaluationStatus.PENDING);
             evaluation.setCreateTime(LocalDateTime.now());
             evaluation.setUpdateTime(LocalDateTime.now());
@@ -258,12 +309,14 @@ public class BattleServiceImpl implements BattleService {
             participant.setEvaluationId(evaluation.getId());
             participant.setStudent1Id(studentId);
             participant.setStudent2Id(null);
+            participant.setStudent1SubmissionId(null);
+            participant.setStudent2SubmissionId(null);
             participant.setStudent1DirRel(rel);
             participant.setStudent2DirRel(botAbsDir);
             participant.setOpponentType("BOT");
             participant.setOpponentName(mapDifficultyName(difficulty));
             participant.setDifficulty(difficulty.toLowerCase(Locale.ROOT));
-            participant.setStudent1ModelName(model.getOriginalFilename());
+            participant.setStudent1ModelName(safeModelName(model));
             participant.setStudent2ModelName("系统模型");
             battleParticipantRepository.save(participant);
 
@@ -275,7 +328,7 @@ public class BattleServiceImpl implements BattleService {
             data.put("evaluationId", evaluation.getId());
             data.put("assignmentId", assignmentId);
             data.put("environment", environment);
-            data.put("games", games);
+            data.put("games", DEFAULT_GAMES);
             data.put("message", "人机对战已启动。");
             return Result.success(data);
 
@@ -321,6 +374,230 @@ public class BattleServiceImpl implements BattleService {
         }
 
         return result;
+    }
+
+    private ExperimentAssignment validBattleAssignment(Integer assignmentId) {
+        ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
+        if (assignment == null) {
+            return null;
+        }
+        if (assignment.getEvaluationMode() != EvaluationMode.VERSUS
+                && assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            throw new RuntimeException("当前任务不是对战模式");
+        }
+        return assignment;
+    }
+
+
+    private void validateTeamCaptainIfNeeded(ExperimentAssignment assignment, Integer currentUserId) {
+        if (assignment == null || assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            return;
+        }
+        var teamOpt = teamGroupRepository.findByAssignmentIdAndCaptainStudentIdAndIsDeletedFalse(assignment.getId(), currentUserId);
+        if (teamOpt.isEmpty()) {
+            throw new RuntimeException("当前任务为分组对战，仅队长可提交模型和发起挑战");
+        }
+    }
+
+
+    private void validateTeamLockedIfNeeded(ExperimentAssignment assignment, Integer currentUserId) {
+        if (assignment == null || assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            return;
+        }
+        TeamGroup team = findMyTeam(assignment.getId(), currentUserId);
+        if (team == null) {
+            throw new RuntimeException("当前未加入队伍");
+        }
+        if (!Boolean.TRUE.equals(team.getLocked())) {
+            throw new RuntimeException("请先确定队伍成员或等待自由组队截止后自动锁定");
+        }
+    }
+
+    private Long resolveSubmissionOwnerStudentId(ExperimentAssignment assignment, Long currentStudentId) {
+        if (assignment == null || assignment.getEvaluationMode() != EvaluationMode.TEAM) {
+            return currentStudentId;
+        }
+        TeamGroup team = findMyTeam(assignment.getId(), currentStudentId.intValue());
+        if (team == null) {
+            throw new RuntimeException("当前未加入队伍");
+        }
+        return team.getCaptainStudentId().longValue();
+    }
+
+    private TeamGroup findMyTeam(Integer assignmentId, Integer studentId) {
+        ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
+        List<TeamMember> memberships = teamMemberRepository.findByStudentIdAndIsDeletedFalse(studentId);
+        for (TeamMember member : memberships) {
+            TeamGroup team = teamGroupRepository.findByIdAndIsDeletedFalse(member.getTeamId());
+            if (team != null && Objects.equals(team.getAssignmentId(), assignmentId)) {
+                return ensureTeamAutoLocked(team, assignment);
+            }
+        }
+        return null;
+    }
+
+    private TeamGroup ensureTeamAutoLocked(TeamGroup team, ExperimentAssignment assignment) {
+        if (team == null || assignment == null || Boolean.TRUE.equals(team.getLocked())) {
+            return team;
+        }
+        LocalDateTime teamGroupDeadline = assignment.getTeamGroupDeadline();
+        if (teamGroupDeadline != null && !LocalDateTime.now().isBefore(teamGroupDeadline)) {
+            team.setLocked(true);
+            team.setLockTime(LocalDateTime.now());
+            team.setUpdateTime(LocalDateTime.now());
+            team = teamGroupRepository.save(team);
+        }
+        return team;
+    }
+
+    private Long currentStudentId() {
+        Map<String, Object> claims = ThreadLocalUtil.get();
+        if (claims == null || claims.get("id") == null) {
+            return null;
+        }
+        Integer currentUserId = (Integer) claims.get("id");
+        return currentUserId.longValue();
+    }
+
+    private String saveStudentFiles(Long studentId, MultipartFile model, MultipartFile config) throws Exception {
+        String baseDir = (workspace != null && !workspace.isBlank())
+                ? workspace
+                : Paths.get(System.getProperty("user.dir")).toString();
+
+        String uuid = UUID.randomUUID().toString().replace("-", "");
+        Path studentDir = Paths.get(baseDir, "uploads", String.valueOf(studentId), uuid);
+        Files.createDirectories(studentDir);
+
+        Path configPath = studentDir.resolve("config.json");
+        Path modelPath = studentDir.resolve("model.pt");
+
+        config.transferTo(configPath);
+        model.transferTo(modelPath);
+
+        return Paths.get("uploads", String.valueOf(studentId), uuid)
+                .toString()
+                .replace("\\", "/");
+    }
+
+    private String safeModelName(MultipartFile model) {
+        String name = model == null ? null : model.getOriginalFilename();
+        return (name == null || name.isBlank()) ? "model.pt" : name;
+    }
+
+    private List<BattleModelOptionVO> buildBattleModelOptions(ExperimentAssignment assignment, List<BattleModelSubmission> submissions) {
+        List<BattleModelOptionVO> result = new ArrayList<>();
+        for (BattleModelSubmission submission : submissions) {
+            BattleModelOptionVO vo = new BattleModelOptionVO();
+            vo.setSubmissionId(submission.getId());
+            vo.setStudentId(submission.getStudentId());
+
+            String studentName = "未知学生";
+            if (submission.getStudentId() != null) {
+                Optional<User> userOpt = userRepository.findById(submission.getStudentId().intValue());
+                if (userOpt.isPresent() && userOpt.get().getUsername() != null && !userOpt.get().getUsername().isBlank()) {
+                    studentName = userOpt.get().getUsername();
+                }
+            }
+
+            if (assignment != null && assignment.getEvaluationMode() == EvaluationMode.TEAM && submission.getStudentId() != null) {
+                var teamOpt = teamGroupRepository.findByAssignmentIdAndCaptainStudentIdAndIsDeletedFalse(
+                        assignment.getId(),
+                        submission.getStudentId().intValue()
+                );
+                if (teamOpt.isPresent()) {
+                    studentName = buildTeamDisplayName(teamOpt.get());
+                }
+            }
+
+            vo.setStudentName(studentName);
+            vo.setModelName(submission.getModelName());
+            vo.setSubmitTime(submission.getCreateTime() == null ? "--" : submission.getCreateTime().format(DATETIME_FORMATTER));
+
+            int[] record = countBattleRecord(submission.getId());
+            vo.setWinCount(record[0]);
+            vo.setLoseCount(record[1]);
+            vo.setDrawCount(record[2]);
+
+            result.add(vo);
+        }
+        return result;
+    }
+
+    private String buildTeamDisplayName(TeamGroup team) {
+        if (team == null) {
+            return "未知队伍";
+        }
+        List<TeamMember> members = teamMemberRepository.findByTeamIdAndIsDeletedFalseOrderByIdAsc(team.getId());
+        List<Integer> memberIds = new ArrayList<>();
+        for (TeamMember member : members) {
+            memberIds.add(member.getStudentId());
+        }
+
+        Map<Integer, String> nameMap = new HashMap<>();
+        if (!memberIds.isEmpty()) {
+            for (User user : userRepository.findAllById(memberIds)) {
+                String name = user.getUsername();
+                if (name == null || name.isBlank()) {
+                    name = user.getNickname();
+                }
+                nameMap.put(user.getId(), name == null ? "未知学生" : name);
+            }
+        }
+
+        String captainName = nameMap.getOrDefault(team.getCaptainStudentId(), "未知学生");
+        List<String> parts = new ArrayList<>();
+        parts.add(team.getTeamName());
+        parts.add(captainName);
+        for (TeamMember member : members) {
+            if (Objects.equals(member.getStudentId(), team.getCaptainStudentId())) {
+                continue;
+            }
+            parts.add(nameMap.getOrDefault(member.getStudentId(), "未知学生"));
+        }
+        return String.join(" - ", parts);
+    }
+
+    private int[] countBattleRecord(Long submissionId) {
+        int win = 0;
+        int lose = 0;
+        int draw = 0;
+
+        List<BattleParticipant> participants = battleParticipantRepository
+                .findByStudent1SubmissionIdOrStudent2SubmissionIdOrderByIdDesc(submissionId, submissionId);
+
+        for (BattleParticipant participant : participants) {
+            if (participant.getEvaluationId() == null) {
+                continue;
+            }
+            List<EvaluationResult> results = evaluationResultRepository.findByEvaluationId(participant.getEvaluationId());
+            if (results == null || results.isEmpty()) {
+                continue;
+            }
+            EvaluationResult result = results.get(0);
+            if (result.getWinner() == null) {
+                continue;
+            }
+            if (result.getWinner() == 0) {
+                draw++;
+                continue;
+            }
+            boolean isStudent1 = Objects.equals(participant.getStudent1SubmissionId(), submissionId);
+            if (isStudent1) {
+                if (result.getWinner() == 1) {
+                    win++;
+                } else if (result.getWinner() == 2) {
+                    lose++;
+                }
+            } else {
+                if (result.getWinner() == 2) {
+                    win++;
+                } else if (result.getWinner() == 1) {
+                    lose++;
+                }
+            }
+        }
+
+        return new int[]{win, lose, draw};
     }
 
     private String buildStatusText(EvaluationStatus status) {

@@ -16,6 +16,8 @@ public interface UserRepository extends JpaRepository<User, Integer>, JpaSpecifi
 
     List<User> findAllByIsDeletedFalse();
 
+    List<User> findByStudentClass_IdAndRoleAndIsDeletedFalse(Integer classId, UserRole role);
+
     @Modifying
     @Query("UPDATE User u SET u.password = :password WHERE u.id = :id")
     void updatePwd(@Param("password") String password, @Param("id") Integer id);

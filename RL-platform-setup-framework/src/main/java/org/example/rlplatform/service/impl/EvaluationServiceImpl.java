@@ -195,5 +195,4 @@ public class EvaluationServiceImpl implements EvaluationService {
         };
         return evaluationRepository.findAll(spec, PageRequest.of(pageNum, pageSize));
     }
-
 }

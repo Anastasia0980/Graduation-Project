@@ -2,6 +2,7 @@ package org.example.rlplatform.controller;
 
 import org.example.rlplatform.entity.Result;
 import org.example.rlplatform.service.BattleService;
+import org.example.rlplatform.vo.BattleModelOptionVO;
 import org.example.rlplatform.vo.BattleTaskDetailVO;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,6 +27,37 @@ public class BattleController {
             @RequestParam("config") MultipartFile config
     ) {
         return battleService.submitAndMaybeStart(assignmentId, model, config);
+    }
+
+    @PostMapping("/models/{assignmentId}")
+    public Result<?> submitBattleModel(
+            @PathVariable Integer assignmentId,
+            @RequestParam("model") MultipartFile model,
+            @RequestParam("config") MultipartFile config
+    ) {
+        return battleService.submitBattleModel(assignmentId, model, config);
+    }
+
+    @GetMapping("/models/{assignmentId}/mine")
+    public Result<List<BattleModelOptionVO>> listMyBattleModels(@PathVariable Integer assignmentId) {
+        return Result.success(battleService.listMyBattleModels(assignmentId));
+    }
+
+    @GetMapping("/models/{assignmentId}/opponents")
+    public Result<List<BattleModelOptionVO>> listOpponentBattleModels(
+            @PathVariable Integer assignmentId,
+            @RequestParam("mySubmissionId") Long mySubmissionId
+    ) {
+        return Result.success(battleService.listOpponentBattleModels(assignmentId, mySubmissionId));
+    }
+
+    @PostMapping("/challenge/{assignmentId}")
+    public Result<?> challenge(
+            @PathVariable Integer assignmentId,
+            @RequestParam("mySubmissionId") Long mySubmissionId,
+            @RequestParam("opponentSubmissionId") Long opponentSubmissionId
+    ) {
+        return battleService.challengeBySubmission(assignmentId, mySubmissionId, opponentSubmissionId);
     }
 
     @PostMapping("/bot-submit/{assignmentId}")

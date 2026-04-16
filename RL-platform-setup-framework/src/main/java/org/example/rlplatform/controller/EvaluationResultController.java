@@ -38,7 +38,6 @@ public class EvaluationResultController {
         return Result.success(evaluationResultService.list());
     }
 
-    /** 直接返回第一个视频文件流，前端可用 <video src="/evaluation-results/1/video"> 播放 */
     @GetMapping(value = "/{id}/video", produces = "video/mp4")
     public ResponseEntity<Resource> getVideo(@PathVariable Long id) {
         Resource resource = evaluationResultService.getVideo(id);
@@ -62,4 +61,21 @@ public class EvaluationResultController {
         return Result.success(evaluationResultService.listByEvaluationId(evaluationId));
     }
 
+    @GetMapping(value = "/{id}/log", produces = "text/plain;charset=UTF-8")
+    public ResponseEntity<Resource> downloadLog(@PathVariable Long id) {
+        Resource resource = evaluationResultService.getLog(id);
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"evaluation_" + id + "_log.txt\"")
+                .contentType(MediaType.parseMediaType("text/plain;charset=UTF-8"))
+                .body(resource);
+    }
+
+    @GetMapping(value = "/evaluation/{evaluationId}/model-package", produces = "application/zip")
+    public ResponseEntity<Resource> downloadModelPackage(@PathVariable Long evaluationId) {
+        Resource resource = evaluationResultService.downloadModelPackage(evaluationId);
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"evaluation_" + evaluationId + "_model.zip\"")
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .body(resource);
+    }
 }

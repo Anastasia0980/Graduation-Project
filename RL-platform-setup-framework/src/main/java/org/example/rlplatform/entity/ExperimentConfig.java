@@ -7,12 +7,14 @@ import java.util.Map;
 
 @Data
 public class ExperimentConfig {
+    private List<String> algorithmOptions;
     private String overview;
     private String rules;
     private String observationSpace;
     private String actionSpace;
     private String rewardFunction;
     private String evaluationFunction;
+    private Integer teamMaxMembers;
 
     /**
      * single 模式 baseline 选项：

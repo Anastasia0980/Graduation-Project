@@ -1036,10 +1036,6 @@ export default {
       return 'SINGLE'
     },
     buildConfigPayload () {
-      const rulesText = this.taskMode === 'tournament' && this.taskForm.tournamentRule
-        ? `${this.taskForm.rule}\n\n淘汰赛说明：\n${this.taskForm.tournamentRule}`
-        : this.taskForm.rule
-
       const taskBaselineOptions = {}
       this.taskIds.forEach(taskId => {
         const selectedId = this.baselineSelectedIds[taskId]

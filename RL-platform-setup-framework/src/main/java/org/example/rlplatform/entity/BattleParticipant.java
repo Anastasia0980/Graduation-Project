@@ -12,23 +12,29 @@ public class BattleParticipant {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name="evaluation_id", nullable = false, unique = true)
+    @Column(name = "evaluation_id", nullable = false, unique = true)
     private Long evaluationId;
 
-    @Column(name="student1_id", nullable = false)
+    @Column(name = "student1_id")
     private Long student1Id;
 
-    @Column(name="student2_id")
+    @Column(name = "student2_id")
     private Long student2Id;
 
-    @Column(name="student1_dir_rel", nullable = false, length = 500)
+    @Column(name = "student1_submission_id")
+    private Long student1SubmissionId;
+
+    @Column(name = "student2_submission_id")
+    private Long student2SubmissionId;
+
+    @Column(name = "student1_dir_rel", length = 500)
     private String student1DirRel;
 
-    @Column(name="student2_dir_rel", nullable = false, length = 500)
+    @Column(name = "student2_dir_rel", length = 500)
     private String student2DirRel;
 
     @Column(name = "opponent_type", length = 20)
-    private String opponentType; // HUMAN / BOT
+    private String opponentType;
 
     @Column(name = "opponent_name", length = 100)
     private String opponentName;
