@@ -21,7 +21,7 @@
     <div class="topbar-right">
       <template v-if="loggedIn">
         <span class="user-name" @click="$emit('user-click')">{{ displayUserName }}</span>
-        <button class="ghost-btn" @click="$emit('logout')">退出</button>
+        <button class="ghost-btn" @click="handleLogout">退出</button>
       </template>
 
       <template v-else>
@@ -55,11 +55,20 @@ export default {
   },
   computed: {
     displayUserName () {
-      const authName = localStorage.getItem('auth_name')
-      if (authName && authName.trim()) {
-        return authName
+      if (!this.loggedIn) {
+        return ''
       }
       return this.userName || ''
+    }
+  },
+  methods: {
+    handleLogout () {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
+      sessionStorage.removeItem('mock_logged_out_view')
+      this.$emit('logout')
     }
   }
 }

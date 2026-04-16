@@ -76,7 +76,7 @@ def evaluate(student1_folder, student2_folder, games=50):
         env.reset()
         agent_names = env.possible_agents
 
-        # 🔥 公平轮换先手
+        # 公平轮换先手
         if game % 2 == 0:
             current_agents = {
                 agent_names[0]: agent1,
@@ -103,7 +103,7 @@ def evaluate(student1_folder, student2_folder, games=50):
             done = termination or truncation
 
             if done:
-                # 🔥 记录最终 reward
+                # 记录最终 reward
                 final_reward_dict[agent_name] = reward
                 env.step(None)
                 continue
@@ -111,7 +111,7 @@ def evaluate(student1_folder, student2_folder, games=50):
             action = current_agents[agent_name].act(obs)
             env.step(action)
 
-        # 🔥 正确统计胜负
+        # 正确统计胜负
         r1 = final_reward_dict.get(player1_name, 0)
         r2 = final_reward_dict.get(player2_name, 0)
 

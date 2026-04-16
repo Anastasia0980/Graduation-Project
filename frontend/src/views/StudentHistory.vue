@@ -18,7 +18,6 @@
         :task-menu-open='false'
         @profile-click='goProfile'
         @class-click='goStudentClass'
-        @tournament-click='goTournament'
         @toggle-task-menu='goHomeOpenTasks'
         @open-task-click='goHomeOpenTasks'
         @ended-task-click='goHomeEndedTasks'
@@ -40,17 +39,19 @@
                 <th>测评状态</th>
                 <th>对手</th>
                 <th>结果</th>
-                <th>录像</th>
+                <th>详细结果</th>
                 <th>日志</th>
+                <th>录像</th>
+                <th>下载</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if='loading'>
-                <td colspan='7' class='empty-cell'>加载中...</td>
+                <td colspan='10' class='empty-cell'>加载中...</td>
               </tr>
 
               <tr v-else-if='pagedHistoryList.length === 0'>
-                <td colspan='7' class='empty-cell'>当前暂无提交记录</td>
+                <td colspan='10' class='empty-cell'>当前暂无提交记录</td>
               </tr>
 
               <tr v-else v-for='item in pagedHistoryList' :key='item.evaluationId'>
@@ -60,6 +61,24 @@
                 <td>{{ item.status }}</td>
                 <td>{{ item.opponent }}</td>
                 <td>{{ item.result }}</td>
+                <td class='detail-cell'>{{ item.detailedResult }}</td>
+                <td>
+                  <button
+                    v-if='item.hasLog'
+                    class='table-btn'
+                    @click='downloadLog(item)'
+                  >
+                    下载日志
+                  </button>
+
+                  <button
+                    v-else
+                    class='table-btn disabled-btn'
+                    disabled
+                  >
+                    暂无
+                  </button>
+                </td>
                 <td>
                   <button
                     v-if='item.hasVideo'
@@ -79,18 +98,19 @@
                 </td>
                 <td>
                   <button
-                    v-if='item.hasLog'
+                    v-if='item.canDownloadModel'
                     class='table-btn'
-                    @click='downloadLog(item)'
+                    @click='downloadModel(item)'
                   >
-                    下载
+                    下载模型
                   </button>
+
                   <button
                     v-else
-                    class='disabled-btn'
+                    class='table-btn disabled-btn'
                     disabled
                   >
-                    下载
+                    暂无
                   </button>
                 </td>
               </tr>
@@ -216,6 +236,7 @@ export default {
         const list = Array.isArray(result.data) ? result.data : []
         this.historyList = list.map(item => ({
           evaluationId: item.evaluationId,
+          evaluationResultId: item.evaluationResultId,
           taskName: item.taskTitle || '未知任务',
           taskMode: item.taskMode || '',
           modelName: item.modelName || '--',
@@ -223,13 +244,18 @@ export default {
           status: item.status || '--',
           opponent: item.opponentName || '无',
           result: item.resultText || '-',
+          detailedResult: item.detailedResult || '-',
+          hasLog: !!item.evaluationResultId,
           hasVideo: !!item.hasVideo && !!item.evaluationResultId,
-          hasLog: !!item.hasLog && !!item.evaluationResultId,
+          canDownloadModel: !!item.evaluationId,
           sourceApiUrl: item.evaluationResultId
             ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/video`
             : '',
           logApiUrl: item.evaluationResultId
             ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/log`
+            : '',
+          modelDownloadUrl: item.evaluationId
+            ? `${API_BASE}/evaluation-results/evaluation/${item.evaluationId}/model-package`
             : ''
         }))
       } catch (error) {
@@ -250,9 +276,6 @@ export default {
     },
     goStudentClass () {
       this.$router.push('/student/class')
-    },
-    goTournament () {
-      this.$router.push('/student/tournament')
     },
     goHistory () {
       this.$router.push('/student/history')
@@ -316,43 +339,50 @@ export default {
     },
     async downloadLog (item) {
       try {
-        const token = localStorage.getItem('auth_token')
-        if (!token) {
-          ElMessage.error('当前未登录或登录已过期，请重新登录')
-          this.$router.push('/login')
-          return
-        }
-        if (!item.logApiUrl) {
-          ElMessage.warning('该记录暂无日志文件')
-          return
-        }
-
-        const response = await fetch(item.logApiUrl, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        })
-        if (!response.ok) {
-          throw new Error(`日志下载失败（${response.status}）`)
-        }
-
-        const blob = await response.blob()
-        if (!blob || blob.size === 0) {
-          throw new Error('日志文件为空')
-        }
-
-        const objectUrl = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = objectUrl
-        link.download = `evaluation-${item.evaluationId || 'log'}.log`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(objectUrl)
+        await this.fetchAndDownload(item.logApiUrl, `${item.taskName || 'evaluation'}_log.txt`)
+        ElMessage.success('日志下载成功')
       } catch (error) {
         ElMessage.error(error.message || '日志下载失败')
       }
+    },
+    async downloadModel (item) {
+      try {
+        await this.fetchAndDownload(item.modelDownloadUrl, `${item.taskName || 'evaluation'}_model.zip`)
+        ElMessage.success('模型下载成功')
+      } catch (error) {
+        ElMessage.error(error.message || '模型下载失败')
+      }
+    },
+    async fetchAndDownload (url, filename) {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        throw new Error('当前未登录或登录已过期')
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`下载失败（${response.status}）`)
+      }
+
+      const blob = await response.blob()
+      if (!blob || blob.size === 0) {
+        throw new Error('下载文件为空')
+      }
+
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(objectUrl)
     },
     closeVideoObjectUrlOnly () {
       if (this.currentVideo.videoUrl) {
@@ -434,6 +464,7 @@ export default {
   border-bottom: 1px solid #ebeef5;
   text-align: left;
   font-size: 14px;
+  vertical-align: middle;
 }
 
 .history-table th {
@@ -447,9 +478,17 @@ export default {
   color: #909399;
 }
 
+.detail-cell {
+  min-width: 220px;
+  white-space: normal;
+  line-height: 1.6;
+  color: #606266;
+}
+
 .table-btn {
+  min-width: 84px;
   height: 34px;
-  padding: 0 14px;
+  padding: 0 12px;
   border: none;
   border-radius: 4px;
   background: #1f4e8c;
@@ -458,20 +497,17 @@ export default {
   cursor: pointer;
 }
 
-.view-btn,
-.close-btn,
-.disabled-btn {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 4px;
-  font-size: 13px;
+.table-btn:hover {
+  background: #173b69;
 }
 
 .disabled-btn {
-  border: 1px solid #dcdfe6;
-  background: #f5f7fa;
-  color: #bfc4cd;
+  background: #c0c4cc;
   cursor: not-allowed;
+}
+
+.disabled-btn:hover {
+  background: #c0c4cc;
 }
 
 .video-mask {
@@ -590,7 +626,7 @@ export default {
   }
 
   .history-table {
-    min-width: 760px;
+    min-width: 1320px;
   }
 }
 </style>

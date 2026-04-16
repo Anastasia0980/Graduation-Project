@@ -2,7 +2,7 @@
   <div class='page'>
     <AppTopbar
       :logged-in='true'
-      user-name='王老师'
+      :user-name='displayUserName'
       current-role='teacher'
       active-nav='home'
       @platform-click='goTeacherHome'
@@ -12,16 +12,7 @@
     />
 
     <div class='layout'>
-      <TeacherSidebar
-        active-menu='export-score'
-        @teacher-home-click='goTeacherHome'
-        @task-hall-click='goTaskHall'
-        @history-click='goHistory'
-        @publish-click='goPublishTask'
-        @manage-click='goTaskManage'
-        @class-data-click='goClassData'
-        @export-click='goExportScore'
-      />
+      <TeacherSidebar active-menu='export-score' />
 
       <main class='content-area'>
         <div class='page-header'>
@@ -32,23 +23,33 @@
           <div class='form-grid'>
             <div class='form-item'>
               <label>选择班级</label>
-              <select>
-                <option>人工智能 2201</option>
-                <option>人工智能 2202</option>
+              <select v-model='selectedClassId'>
+                <option value=''>请选择班级</option>
+                <option v-for='item in classOptions' :key='item.id' :value='item.id'>
+                  {{ item.name }}
+                </option>
               </select>
             </div>
 
             <div class='form-item'>
               <label>选择任务</label>
-              <select>
-                <option>井字棋对战游戏</option>
-                <option>井字棋单人测评任务</option>
+              <select v-model='selectedTaskId'>
+                <option value=''>请选择任务</option>
+                <option
+                  v-for='item in filteredTaskOptions'
+                  :key='item.id'
+                  :value='item.id'
+                >
+                  {{ item.title }}
+                </option>
               </select>
             </div>
           </div>
 
           <div class='action-row'>
-            <button class='primary-btn'>导出成绩</button>
+            <button class='primary-btn' :disabled='exporting' @click='handleExport'>
+              {{ exporting ? '导出中...' : '导出成绩' }}
+            </button>
           </div>
         </div>
 
@@ -64,7 +65,13 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for='item in pagedExportList' :key='item.id'>
+              <tr v-if='recordLoading'>
+                <td colspan='4' class='table-empty-cell'>记录加载中...</td>
+              </tr>
+              <tr v-else-if='pagedExportList.length === 0'>
+                <td colspan='4' class='table-empty-cell'>当前暂无导出记录</td>
+              </tr>
+              <tr v-else v-for='item in pagedExportList' :key='item.id'>
                 <td>{{ item.className }}</td>
                 <td>{{ item.taskName }}</td>
                 <td>{{ item.exportTime }}</td>
@@ -72,6 +79,7 @@
               </tr>
             </tbody>
           </table>
+
           <CommonPagination
             v-model:currentPage='exportPage'
             v-model:pageSize='exportPageSize'
@@ -85,9 +93,12 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+
+const API_BASE = 'http://localhost:8080'
 
 export default {
   name: 'TeacherExportScoreView',
@@ -100,40 +111,272 @@ export default {
     return {
       exportPage: 1,
       exportPageSize: 5,
-      exportList: [
-        { id: 1, className: '人工智能 2201', taskName: '井字棋对战游戏', exportTime: '2026-07-06 10:20', status: '已完成' },
-        { id: 2, className: '人工智能 2202', taskName: '井字棋对战游戏', exportTime: '2026-07-05 16:40', status: '已完成' }
-      ]
+      exporting: false,
+      recordLoading: false,
+      classOptions: [],
+      taskOptions: [],
+      exportList: [],
+      selectedClassId: '',
+      selectedTaskId: ''
     }
   },
   computed: {
+    displayUserName () {
+      return localStorage.getItem('auth_name') || '教师'
+    },
+    filteredTaskOptions () {
+      if (!this.selectedClassId) return []
+      return this.taskOptions.filter(item => String(item.classId) === String(this.selectedClassId))
+    },
     pagedExportList () {
       const start = (this.exportPage - 1) * this.exportPageSize
       const end = start + this.exportPageSize
       return this.exportList.slice(start, end)
     }
   },
+  watch: {
+    selectedClassId () {
+      if (!this.filteredTaskOptions.find(item => String(item.id) === String(this.selectedTaskId))) {
+        this.selectedTaskId = ''
+      }
+    }
+  },
+  created () {
+    this.loadClassOptions()
+    this.loadTaskOptions()
+    this.loadExportRecords()
+  },
   methods: {
+    getAuthHeaders (json = false) {
+      const token = localStorage.getItem('auth_token') || ''
+      const headers = {
+        Authorization: `Bearer ${token}`
+      }
+      if (json) headers['Content-Type'] = 'application/json'
+      return headers
+    },
+    async loadClassOptions () {
+      try {
+        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=500`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '班级数据加载失败')
+        }
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.classOptions = content.map(item => ({
+          id: item.id,
+          name: item.name
+        }))
+      } catch (error) {
+        this.classOptions = []
+        ElMessage.error(error.message || '班级数据加载失败')
+      }
+    },
+    async loadTaskOptions () {
+      try {
+        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=500`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '任务数据加载失败')
+        }
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.taskOptions = content.map(item => ({
+          id: item.id,
+          title: item.title,
+          classId: item.studentClass ? item.studentClass.id : '',
+          className: item.studentClass ? item.studentClass.name : '未分配班级',
+          mode: item.evaluationMode
+        }))
+      } catch (error) {
+        this.taskOptions = []
+        ElMessage.error(error.message || '任务数据加载失败')
+      }
+    },
+    async loadExportRecords () {
+      this.recordLoading = true
+      try {
+        const response = await fetch(`${API_BASE}/teacher/exports`, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '导出记录加载失败')
+        }
+        const list = Array.isArray(result.data) ? result.data : []
+        this.exportList = list.map(item => ({
+          id: item.id,
+          className: item.className || '未分配班级',
+          taskName: item.taskName || '未知任务',
+          exportTime: this.formatDateTime(item.exportTime),
+          status: item.status || '--'
+        }))
+      } catch (error) {
+        this.exportList = []
+        ElMessage.error(error.message || '导出记录加载失败')
+      } finally {
+        this.recordLoading = false
+      }
+    },
+    formatDateTime (value) {
+      if (!value) return '--'
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return String(value).replace('T', ' ').slice(0, 19)
+      }
+      const Y = date.getFullYear()
+      const M = String(date.getMonth() + 1).padStart(2, '0')
+      const D = String(date.getDate()).padStart(2, '0')
+      const h = String(date.getHours()).padStart(2, '0')
+      const m = String(date.getMinutes()).padStart(2, '0')
+      return `${Y}-${M}-${D} ${h}:${m}`
+    },
+    async handleExport () {
+      if (!this.selectedClassId) {
+        ElMessage.warning('请先选择班级')
+        return
+      }
+      if (!this.selectedTaskId) {
+        ElMessage.warning('请先选择任务')
+        return
+      }
+
+      this.exporting = true
+      try {
+        const response = await fetch(`${API_BASE}/teacher/exports`, {
+          method: 'POST',
+          headers: this.getAuthHeaders(true),
+          body: JSON.stringify({
+            assignmentId: this.selectedTaskId
+          })
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0 || !result.data) {
+          throw new Error(result.message || '导出失败')
+        }
+
+        this.exportExcel(result.data)
+        ElMessage.success('成绩导出成功')
+        this.loadExportRecords()
+      } catch (error) {
+        ElMessage.error(error.message || '导出失败')
+      } finally {
+        this.exporting = false
+      }
+    },
+    exportExcel (data) {
+      const filename = `${data.className || '未分配班级'}${data.taskName || '任务'}成绩汇总.xls`
+
+      let headerHtml = ''
+      let bodyHtml = ''
+
+      if (data.mode === 'SINGLE') {
+        headerHtml = `
+          <tr>
+            <th>排名</th>
+            <th>姓名</th>
+            <th>闯过关卡数</th>
+            <th>闯关时间</th>
+          </tr>
+        `
+        bodyHtml = (data.rows || []).map(item => `
+          <tr>
+            <td>${item.rank ?? ''}</td>
+            <td>${item.name ?? ''}</td>
+            <td>${item.levelCount ?? ''}</td>
+            <td>${item.clearTime ?? ''}</td>
+          </tr>
+        `).join('')
+      } else if (data.mode === 'TEAM') {
+        headerHtml = `
+          <tr>
+            <th>排名</th>
+            <th>队伍名</th>
+            <th>队长姓名</th>
+            <th>队员1姓名</th>
+            <th>队员2姓名</th>
+            <th>天梯分</th>
+            <th>总对战场次</th>
+            <th>获胜场次</th>
+            <th>失败场次</th>
+            <th>平局场次</th>
+          </tr>
+        `
+        bodyHtml = (data.rows || []).map(item => `
+          <tr>
+            <td>${item.rank ?? ''}</td>
+            <td>${item.name ?? ''}</td>
+            <td>${item.captainName ?? ''}</td>
+            <td>${item.member1Name ?? ''}</td>
+            <td>${item.member2Name ?? ''}</td>
+            <td>${item.ladderScore ?? ''}</td>
+            <td>${item.matchCount ?? ''}</td>
+            <td>${item.winCount ?? ''}</td>
+            <td>${item.loseCount ?? ''}</td>
+            <td>${item.drawCount ?? ''}</td>
+          </tr>
+        `).join('')
+      } else {
+        headerHtml = `
+          <tr>
+            <th>排名</th>
+            <th>姓名</th>
+            <th>天梯分</th>
+            <th>总对战场次</th>
+            <th>获胜场次</th>
+            <th>失败场次</th>
+            <th>平局场次</th>
+          </tr>
+        `
+        bodyHtml = (data.rows || []).map(item => `
+          <tr>
+            <td>${item.rank ?? ''}</td>
+            <td>${item.name ?? ''}</td>
+            <td>${item.ladderScore ?? ''}</td>
+            <td>${item.matchCount ?? ''}</td>
+            <td>${item.winCount ?? ''}</td>
+            <td>${item.loseCount ?? ''}</td>
+            <td>${item.drawCount ?? ''}</td>
+          </tr>
+        `).join('')
+      }
+
+      const html = `
+        <html>
+          <head>
+            <meta charset="UTF-8" />
+          </head>
+          <body>
+            <table border="1">
+              ${headerHtml}
+              ${bodyHtml}
+            </table>
+          </body>
+        </html>
+      `
+
+      const blob = new Blob(['\ufeff' + html], {
+        type: 'application/vnd.ms-excel;charset=utf-8;'
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    },
     goTeacherHome () {
       this.$router.push('/teacher/home')
-    },
-    goTaskHall () {
-      this.$router.push('/teacher/hall')
-    },
-    goHistory () {
-      this.$router.push('/teacher/history')
-    },
-    goPublishTask () {
-      this.$router.push('/teacher/publish')
-    },
-    goTaskManage () {
-      this.$router.push('/teacher/tasks')
-    },
-    goClassData () {
-      this.$router.push('/teacher/classes')
-    },
-    goExportScore () {
-      this.$router.push('/teacher/export')
     },
     switchRole () {
       sessionStorage.removeItem('mock_logged_out_view')
@@ -142,6 +385,10 @@ export default {
     },
     logout () {
       sessionStorage.setItem('mock_logged_out_view', 'true')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_role')
+      localStorage.removeItem('auth_name')
+      localStorage.removeItem('auth_email')
       this.$router.push('/')
     }
   }
@@ -245,6 +492,11 @@ export default {
   background: #173b69;
 }
 
+.primary-btn:disabled {
+  background: #a0b3c9;
+  cursor: not-allowed;
+}
+
 .common-table {
   width: 100%;
   border-collapse: collapse;
@@ -264,6 +516,11 @@ export default {
   font-weight: 700;
 }
 
+.table-empty-cell {
+  text-align: center !important;
+  color: #909399;
+}
+
 @media (max-width: 900px) {
   .layout {
     flex-direction: column;
@@ -277,7 +534,7 @@ export default {
     grid-template-columns: 1fr;
   }
 
-  .table-section {
+  .card {
     overflow-x: auto;
   }
 

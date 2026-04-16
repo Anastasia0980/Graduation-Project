@@ -257,7 +257,7 @@ export default {
         id: item.id,
         title: item.title || '未命名任务',
         desc: this.getTaskDescription(item),
-        teacher: '任课教师',
+        teacher: item.teacherName || item.teacherUsername || item.teacher || '--',
         deadline: this.formatDateTime(item.deadline),
         image: tictactoeImage,
         taskMode: this.mapTaskMode(evaluationMode),
@@ -279,7 +279,7 @@ export default {
         return '学生提交模型后可参与对战任务。'
       }
       if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') {
-        return '学生进入任务后可进行团队锦标赛相关操作。'
+        return '学生进入任务后可进行分组对战模式相关操作。'
       }
       return '学生提交模型后，在预设环境下独立完成测评。'
     },
@@ -310,7 +310,7 @@ export default {
         return '对战模式'
       }
       if (evaluationMode === 'TEAM' || evaluationMode === 'TOURNAMENT') {
-        return '团队锦标赛'
+        return '分组对战模式'
       }
       return '单人模式'
     },
@@ -344,7 +344,7 @@ export default {
       }
     },
     goHome () {
-      this.$router.push('/')
+      this.$router.replace('/')
     },
     goLogin () {
       this.$router.push('/login')

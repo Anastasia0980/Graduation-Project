@@ -12,16 +12,7 @@
     />
 
     <div class="layout">
-      <TeacherSidebar
-        active-menu="teacher-home"
-        @teacher-home-click="goTeacherHome"
-        @task-hall-click="goTaskHall"
-        @history-click="goHistory"
-        @publish-click="goPublishTask"
-        @manage-click="goTaskManage"
-        @class-data-click="goClassData"
-        @export-click="goExportScore"
-      />
+      <TeacherSidebar active-menu="teacher-home" />
 
       <main class="content-area">
         <div class="page-header">
@@ -59,19 +50,19 @@
             <div class="card-title">任务总览</div>
             <div class="summary-grid">
               <div class="summary-item">
-                <div class="summary-value">6</div>
+                <div class="summary-value">{{ summary.publishedTaskCount }}</div>
                 <div class="summary-label">已发布任务</div>
               </div>
               <div class="summary-item">
-                <div class="summary-value">128</div>
+                <div class="summary-value">{{ summary.totalSubmissionCount }}</div>
                 <div class="summary-label">学生提交次数</div>
               </div>
               <div class="summary-item">
-                <div class="summary-value">4</div>
+                <div class="summary-value">{{ summary.classCount }}</div>
                 <div class="summary-label">班级数量</div>
               </div>
               <div class="summary-item">
-                <div class="summary-value">3</div>
+                <div class="summary-value">{{ summary.pendingTaskCount }}</div>
                 <div class="summary-label">待处理任务</div>
               </div>
             </div>
@@ -89,10 +80,16 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in pagedRecentTasks" :key="item.id">
-                  <td>{{ item.name }}</td>
+                <tr v-if="recentLoading">
+                  <td colspan="4" class="table-empty-cell">数据加载中...</td>
+                </tr>
+                <tr v-else-if="pagedRecentTasks.length === 0">
+                  <td colspan="4" class="table-empty-cell">当前暂无任务</td>
+                </tr>
+                <tr v-else v-for="item in pagedRecentTasks" :key="item.assignmentId">
+                  <td>{{ item.taskName }}</td>
                   <td>{{ item.deadline }}</td>
-                  <td>{{ item.submitCount }}</td>
+                  <td>{{ item.submittedCount }}</td>
                   <td>{{ item.status }}</td>
                 </tr>
               </tbody>
@@ -270,11 +267,14 @@ export default {
       },
       taskPage: 1,
       taskPageSize: 5,
-      recentTasks: [
-        { id: 1, name: '井字棋对战游戏', deadline: '2026-07-10 23:59', submitCount: 36, status: '进行中' },
-        { id: 2, name: '井字棋对战游戏', deadline: '2026-07-15 23:59', submitCount: 28, status: '进行中' },
-        { id: 3, name: '井字棋对战游戏', deadline: '2026-06-18 23:59', submitCount: 42, status: '已结束' }
-      ]
+      recentLoading: false,
+      recentTasks: [],
+      summary: {
+        publishedTaskCount: 0,
+        totalSubmissionCount: 0,
+        classCount: 0,
+        pendingTaskCount: 0
+      }
     }
   },
   computed: {
@@ -286,6 +286,7 @@ export default {
   },
   created () {
     this.loadProfile()
+    this.loadDashboardData()
   },
   methods: {
     getAuthHeaders (withJson = false) {
@@ -329,6 +330,62 @@ export default {
         localStorage.setItem('auth_name', this.profile.name)
         localStorage.setItem('auth_email', this.profile.email)
       } catch (error) {
+      }
+    },
+    async loadDashboardData () {
+      this.recentLoading = true
+      try {
+        const [overviewRes, classRes] = await Promise.all([
+          fetch(`${API_BASE}/teacher/assignments/overview`, {
+            method: 'GET',
+            headers: this.getAuthHeaders()
+          }),
+          fetch(`${API_BASE}/class?pageNum=0&pageSize=500`, {
+            method: 'GET',
+            headers: this.getAuthHeaders()
+          })
+        ])
+
+        const overviewResult = await overviewRes.json()
+        const classResult = await classRes.json()
+
+        const overviewList =
+          overviewRes.ok && overviewResult.code === 0 && Array.isArray(overviewResult.data)
+            ? overviewResult.data
+            : []
+
+        const classContent =
+          classRes.ok && classResult.code === 0 && classResult.data && Array.isArray(classResult.data.content)
+            ? classResult.data.content
+            : []
+
+        this.recentTasks = overviewList
+          .map(item => ({
+            assignmentId: item.assignmentId,
+            taskName: item.taskName || '未知任务',
+            deadline: this.formatDateTime(item.deadline) || '--',
+            submittedCount: item.submittedCount || 0,
+            status: item.status || '--',
+            sortTime: item.deadline ? new Date(item.deadline).getTime() : 0
+          }))
+          .sort((a, b) => b.sortTime - a.sortTime)
+
+        this.summary = {
+          publishedTaskCount: overviewList.length,
+          totalSubmissionCount: overviewList.reduce((sum, item) => sum + (item.totalSubmissionCount || 0), 0),
+          classCount: classContent.length,
+          pendingTaskCount: overviewList.filter(item => item.status === '进行中').length
+        }
+      } catch (error) {
+        this.recentTasks = []
+        this.summary = {
+          publishedTaskCount: 0,
+          totalSubmissionCount: 0,
+          classCount: 0,
+          pendingTaskCount: 0
+        }
+      } finally {
+        this.recentLoading = false
       }
     },
     openEditDialog () {
@@ -434,24 +491,6 @@ export default {
     goTeacherHome () {
       this.$router.push('/teacher/home')
     },
-    goTaskHall () {
-      this.$router.push('/teacher/hall')
-    },
-    goHistory () {
-      this.$router.push('/teacher/history')
-    },
-    goPublishTask () {
-      this.$router.push('/teacher/publish')
-    },
-    goTaskManage () {
-      this.$router.push('/teacher/tasks')
-    },
-    goClassData () {
-      this.$router.push('/teacher/classes')
-    },
-    goExportScore () {
-      this.$router.push('/teacher/export')
-    },
     switchRole () {
       sessionStorage.removeItem('mock_logged_out_view')
       localStorage.setItem('mock_login_role', 'student')
@@ -522,7 +561,7 @@ export default {
 .card-title {
   font-size: 18px;
   font-weight: 700;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   color: #1f2d3d;
 }
 
@@ -535,33 +574,35 @@ export default {
 .info-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #ebeef5;
+  min-height: 28px;
 }
 
 .avatar-row {
-  align-items: center;
+  align-items: flex-start;
 }
 
 .label {
-  font-size: 14px;
+  width: 72px;
   color: #606266;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .value {
   font-size: 14px;
   color: #303133;
-  font-weight: 600;
 }
 
 .avatar-box {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  overflow: hidden;
+  width: 88px;
+  height: 88px;
   border: 1px solid #dcdfe6;
-  background: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fafafa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .avatar-image {
@@ -571,48 +612,88 @@ export default {
 }
 
 .profile-action {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  margin-top: 18px;
 }
 
-.edit-btn {
-  height: 38px;
-  min-width: 92px;
-  border: none;
+.edit-btn,
+.primary-btn,
+.secondary-btn,
+.save-btn,
+.danger-btn {
+  height: 36px;
+  padding: 0 16px;
   border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.edit-btn,
+.primary-btn {
   background: #1f4e8c;
   color: #ffffff;
-  font-size: 14px;
-  cursor: pointer;
 }
 
-.edit-btn:hover {
+.edit-btn:hover,
+.primary-btn:hover {
   background: #173b69;
+}
+
+.secondary-btn {
+  background: #ffffff;
+  color: #606266;
+  border: 1px solid #dcdfe6;
+}
+
+.secondary-btn:hover {
+  color: #1f4e8c;
+  border-color: #1f4e8c;
+}
+
+.save-btn {
+  background: #67c23a;
+  color: #ffffff;
+}
+
+.save-btn:hover {
+  background: #5daf34;
+}
+
+.danger-btn {
+  background: #f56c6c;
+  color: #ffffff;
+}
+
+.danger-btn:hover {
+  background: #dd6161;
 }
 
 .summary-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
 
 .summary-item {
-  background: #f8fafc;
+  min-height: 96px;
   border: 1px solid #ebeef5;
-  border-radius: 6px;
-  padding: 16px;
-  text-align: center;
+  border-radius: 8px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .summary-value {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
   color: #1f4e8c;
-  margin-bottom: 6px;
+  line-height: 1;
 }
 
 .summary-label {
+  margin-top: 10px;
   font-size: 14px;
   color: #606266;
 }
@@ -636,6 +717,11 @@ export default {
   font-weight: 700;
 }
 
+.table-empty-cell {
+  text-align: center !important;
+  color: #909399;
+}
+
 .dialog-mask {
   position: fixed;
   inset: 0;
@@ -648,19 +734,16 @@ export default {
 }
 
 .dialog-box {
-  width: 520px;
+  width: 560px;
   max-width: 100%;
-  max-height: calc(100vh - 40px);
   background: #ffffff;
-  border: 1px solid #dcdfe6;
   border-radius: 8px;
+  border: 1px solid #dcdfe6;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 .small-dialog {
-  width: 460px;
+  width: 420px;
 }
 
 .dialog-header {
@@ -695,23 +778,24 @@ export default {
 
 .dialog-body {
   padding: 20px;
+  font-size: 14px;
+  color: #303133;
 }
 
 .scrollable-dialog-body {
+  max-height: 60vh;
   overflow-y: auto;
-  max-height: calc(100vh - 220px);
 }
 
 .form-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .form-item label {
   font-size: 14px;
-  font-weight: 600;
   color: #606266;
 }
 
@@ -726,7 +810,6 @@ export default {
 .disabled-item input {
   background: #f5f7fa;
   color: #909399;
-  cursor: not-allowed;
 }
 
 .avatar-upload-row {
@@ -736,84 +819,22 @@ export default {
 }
 
 .dialog-avatar-image {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  width: 72px;
+  height: 72px;
   object-fit: cover;
+  border-radius: 8px;
   border: 1px solid #dcdfe6;
 }
 
 .dialog-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #ebeef5;
+  padding: 0 20px 20px;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
 .right-btn-footer {
-  justify-content: flex-end;
-}
-
-.primary-btn {
-  height: 38px;
-  min-width: 96px;
-  border: none;
-  border-radius: 4px;
-  background: #1f4e8c;
-  color: #ffffff;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.primary-btn:hover {
-  background: #173b69;
-}
-
-.save-btn {
-  height: 38px;
-  min-width: 96px;
-  border: none;
-  border-radius: 4px;
-  background: #3f8f5f;
-  color: #ffffff;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.save-btn:hover {
-  background: #32724c;
-}
-
-.secondary-btn {
-  height: 38px;
-  min-width: 96px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #606266;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.secondary-btn:hover {
-  color: #1f4e8c;
-  border-color: #1f4e8c;
-}
-
-.danger-btn {
-  height: 38px;
-  min-width: 96px;
-  border: none;
-  border-radius: 4px;
-  background: #d9534f;
-  color: #ffffff;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.danger-btn:hover {
-  background: #c9302c;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 900px) {
@@ -829,8 +850,8 @@ export default {
     grid-template-columns: 1fr;
   }
 
-  .full-width {
-    grid-column: auto;
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .card {
@@ -838,7 +859,7 @@ export default {
   }
 
   .common-table {
-    min-width: 640px;
+    min-width: 720px;
   }
 }
 </style>

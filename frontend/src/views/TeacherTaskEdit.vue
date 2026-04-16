@@ -17,8 +17,7 @@
         @teacher-home-click='goTeacherHome'
         @task-hall-click='goTaskHall'
         @history-click='goHistory'
-        @publish-click='goPublishTask'
-        @manage-click='goTaskManage'
+                @manage-click='goTaskManage'
         @class-data-click='goClassData'
         @export-click='goExportScore'
       />
@@ -76,7 +75,7 @@
                 <select v-model='taskMode'>
                   <option value='single'>单人模式</option>
                   <option value='battle'>对战模式</option>
-                  <option value='tournament'>团队锦标赛模式</option>
+                  <option value='tournament'>分组对战模式</option>
                 </select>
               </div>
             </div>
@@ -91,7 +90,7 @@
                   当前为对战模式。学生进入任务后可选择真人对战；若教师上传了任意难度的人机模型，学生端还将开放人机对战入口。
                 </template>
                 <template v-else>
-                  当前为团队锦标赛模式。学生需先完成组队，再由队伍统一提交模型，平台将按淘汰赛机制逐轮决出最终胜者。
+                  当前为分组对战模式。学生需先完成组队，再由队伍统一提交模型，平台将按异步自主挑战机制累计队伍战绩并生成分组排行榜。
                 </template>
               </div>
             </div>
@@ -207,7 +206,7 @@
           </div>
 
           <div v-if='taskMode === "tournament"' class='card section-space'>
-            <div class='card-title'>团队锦标赛配置</div>
+            <div class='card-title'>分组对战配置</div>
 
             <div class='form-grid'>
               <div class='form-item'>
@@ -228,21 +227,9 @@
                 </select>
               </div>
 
-              <div class='form-item full-width'>
-                <label>模型提交策略</label>
-                <select v-model='submitStrategy'>
-                  <option value='once'>只提交一次模型，系统自动完成全部轮次</option>
-                  <option value='round'>晋级后允许重新提交模型（当前仅做界面预留）</option>
-                </select>
-              </div>
-
-              <div class='form-item full-width'>
-                <label>淘汰赛说明</label>
-                <textarea
-                  v-model='taskForm.tournamentRule'
-                  rows='5'
-                  placeholder='请输入淘汰赛机制说明，例如晋级规则、对局轮次、决赛方式、冠军判定方式等'
-                ></textarea>
+              <div class='form-item'>
+                <label>自由组队截止时间</label>
+                <input v-model='taskForm.teamGroupDeadline' type='datetime-local' />
               </div>
             </div>
           </div>
@@ -321,7 +308,7 @@
               </div>
 
               <div class='form-item full-width'>
-                <label>学生可选模型</label>
+                <label>可用算法</label>
                 <div class='algorithm-btn-group'>
                   <button
                     v-for='item in algorithmOptions'
@@ -332,6 +319,14 @@
                     @click='toggleAlgorithm(item)'
                   >
                     {{ item }}
+                  </button>
+
+                  <button
+                    type='button'
+                    class='algorithm-add-btn'
+                    @click='openAlgorithmDialog'
+                  >
+                    + 添加算法
                   </button>
                 </div>
               </div>
@@ -428,6 +423,31 @@
       </main>
     </div>
   </div>
+    <div v-if='algorithmDialogVisible' class='dialog-mask' @click='closeAlgorithmDialog'>
+      <div class='dialog-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>添加算法标签</div>
+        </div>
+
+        <div class='dialog-body'>
+          <div class='dialog-label'>请输入算法名</div>
+          <input
+            v-model='customAlgorithmName'
+            class='dialog-input'
+            type='text'
+            maxlength='30'
+            placeholder='请输入算法名'
+            @keyup.enter='confirmAddAlgorithm'
+          />
+        </div>
+
+        <div class='dialog-footer'>
+          <button type='button' class='secondary-btn dialog-btn' @click='closeAlgorithmDialog'>取消</button>
+          <button type='button' class='primary-btn dialog-btn' @click='confirmAddAlgorithm'>确定</button>
+        </div>
+      </div>
+    </div>
+
 </template>
 
 <script>
@@ -446,14 +466,13 @@ export default {
   },
   data () {
     return {
-      teacherName: localStorage.getItem('auth_name') || '王老师',
+      teacherName: localStorage.getItem('auth_name') || '教师',
       taskId: '',
       loading: false,
       saving: false,
       taskMode: 'single',
       teamMin: '1',
       teamMax: '3',
-      submitStrategy: 'once',
       taskIconFileName: '当前未选择文件',
 
       easyBotConfigFileName: '当前未选择文件',
@@ -475,8 +494,10 @@ export default {
 
       classOptions: [],
       classMap: {},
-      algorithmOptions: ['DDPG', 'DQN', 'Qlearning', 'PPO'],
+      algorithmOptions: ['DDPG', 'DQN', 'QLearning'],
       selectedAlgorithms: [],
+      algorithmDialogVisible: false,
+      customAlgorithmName: '',
       taskIds: TASK_IDS,
       // baseline catalog（来自后端 /assignments/{id}/baseline-catalog，key: T1..T10）
       baselineCatalog: TASK_IDS.reduce((acc, taskId) => {
@@ -504,7 +525,7 @@ export default {
         actionSpace: '',
         reward: '',
         evaluation: '',
-        tournamentRule: ''
+        teamGroupDeadline: ''
       }
     }
   },
@@ -693,6 +714,7 @@ export default {
 
       this.taskMode = this.parseTaskMode(task.evaluationMode)
       this.selectedAlgorithms = this.parseAgentNames(task.agentName)
+      this.algorithmOptions = this.mergeAlgorithmOptions(config, this.selectedAlgorithms)
       this.taskForm = {
         name: task.title || '',
         classId,
@@ -704,7 +726,7 @@ export default {
         actionSpace: config.actionSpace || '',
         reward: config.rewardFunction || '',
         evaluation: config.evaluationFunction || '',
-        tournamentRule: ''
+        teamGroupDeadline: this.formatForDatetimeLocal(task.teamGroupDeadline)
       }
 
       const taskBaselineOptions = config && config.taskBaselineOptions ? config.taskBaselineOptions : null
@@ -747,6 +769,25 @@ export default {
         .split(',')
         .map(item => item.trim())
         .filter(item => item)
+    },
+    mergeAlgorithmOptions (config, selectedAlgorithms) {
+      const baseOptions = ['DDPG', 'DQN', 'QLearning']
+      const configOptions = Array.isArray(config.algorithmOptions) ? config.algorithmOptions : []
+      const merged = [...baseOptions]
+
+      configOptions.forEach(item => {
+        if (item && !merged.includes(item)) {
+          merged.push(item)
+        }
+      })
+
+      selectedAlgorithms.forEach(item => {
+        if (item && !merged.includes(item)) {
+          merged.push(item)
+        }
+      })
+
+      return merged
     },
     formatForDatetimeLocal (value) {
       if (!value) {
@@ -795,6 +836,33 @@ export default {
       } else if (level === 'hard' && fileType === 'model') {
         this.hardBotModelFileName = file.name
       }
+    },
+    openAlgorithmDialog () {
+      this.customAlgorithmName = ''
+      this.algorithmDialogVisible = true
+    },
+    closeAlgorithmDialog () {
+      this.algorithmDialogVisible = false
+      this.customAlgorithmName = ''
+    },
+    confirmAddAlgorithm () {
+      const name = this.customAlgorithmName ? this.customAlgorithmName.trim() : ''
+      if (!name) {
+        ElMessage.warning('请输入算法名')
+        return
+      }
+
+      const exists = this.algorithmOptions.some(item => item.toLowerCase() === name.toLowerCase())
+      if (!exists) {
+        this.algorithmOptions.push(name)
+      }
+
+      const actualName = this.algorithmOptions.find(item => item.toLowerCase() === name.toLowerCase()) || name
+      if (!this.selectedAlgorithms.includes(actualName)) {
+        this.selectedAlgorithms.push(actualName)
+      }
+
+      this.closeAlgorithmDialog()
     },
     toggleAlgorithm (name) {
       const index = this.selectedAlgorithms.indexOf(name)
@@ -993,11 +1061,13 @@ export default {
 
       return {
         overview: this.taskForm.intro,
-        rules: rulesText,
+        rules: this.taskForm.rule,
         observationSpace: this.taskForm.observation,
         actionSpace: this.taskForm.actionSpace,
         rewardFunction: this.taskForm.reward,
         evaluationFunction: this.taskForm.evaluation,
+        algorithmOptions: this.algorithmOptions,
+        teamMaxMembers: Number(this.teamMax || 3),
         taskBaselineOptions
       }
     },
@@ -1010,8 +1080,31 @@ export default {
         ElMessage.warning('请选择截止时间')
         return false
       }
+      if (this.taskMode === 'tournament') {
+        if (!this.taskForm.teamGroupDeadline) {
+          ElMessage.warning('请选择自由组队截止时间')
+          return false
+        }
+
+        const now = new Date()
+        const teamGroupDeadline = new Date(this.taskForm.teamGroupDeadline)
+        const taskDeadline = new Date(this.taskForm.deadline)
+
+        if (Number.isNaN(teamGroupDeadline.getTime()) || Number.isNaN(taskDeadline.getTime())) {
+          ElMessage.warning('组队截止时间或任务截止时间格式不正确')
+          return false
+        }
+        if (teamGroupDeadline <= now) {
+          ElMessage.warning('自由组队截止时间必须晚于当前时间')
+          return false
+        }
+        if (teamGroupDeadline >= taskDeadline) {
+          ElMessage.warning('自由组队截止时间必须早于任务截止时间')
+          return false
+        }
+      }
       if (this.selectedAlgorithms.length === 0) {
-        ElMessage.warning('请至少选择一个学生可选模型')
+        ElMessage.warning('请至少选择一个可用算法')
         return false
       }
       if (this.taskMode === 'single') {
@@ -1069,6 +1162,7 @@ export default {
         agentName: this.selectedAlgorithms.join(','),
         environment: this.taskForm.environmentCode,
         deadline: this.taskForm.deadline,
+        teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
         config: this.buildConfigPayload()
       }
 
@@ -1580,6 +1674,90 @@ export default {
 .secondary-btn:hover {
   color: #1f4e8c;
   border-color: #1f4e8c;
+}
+
+.algorithm-add-btn {
+  min-width: 124px;
+  height: 38px;
+  padding: 0 20px;
+  border: 1px solid #1f4e8c;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1f4e8c;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.algorithm-add-btn:hover {
+  background: #ecf5ff;
+}
+
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 3000;
+}
+
+.dialog-box {
+  width: 420px;
+  max-width: 100%;
+  background: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16);
+}
+
+.dialog-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.dialog-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.dialog-body {
+  padding: 20px;
+}
+
+.dialog-label {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #606266;
+  font-weight: 600;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  outline: none;
+  font-size: 14px;
+  color: #303133;
+  background: #ffffff;
+}
+
+.dialog-input:focus {
+  border-color: #1f4e8c;
+}
+
+.dialog-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.dialog-btn {
+  min-width: 90px;
 }
 
 @media (max-width: 900px) {

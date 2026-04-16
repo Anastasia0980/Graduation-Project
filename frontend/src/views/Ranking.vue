@@ -45,37 +45,109 @@
           <div class='toolbar'>
             <select v-model='selectedTaskId' class='task-select'>
               <option
-                v-for='task in taskOptions'
+                v-for='task in currentTaskOptions'
                 :key='task.id'
                 :value='task.id'
               >
                 {{ task.name }}
               </option>
             </select>
+
+            <div class='mode-switch'>
+              <button
+                class='mode-btn'
+                :class='{ active: currentMode === "single" }'
+                @click='switchMode("single")'
+              >
+                单人模式
+              </button>
+              <button
+                class='mode-btn'
+                :class='{ active: currentMode === "versus" }'
+                @click='switchMode("versus")'
+              >
+                对战模式
+              </button>
+              <button
+                class='mode-btn'
+                :class='{ active: currentMode === "team" }'
+                @click='switchMode("team")'
+              >
+                分组对战
+              </button>
+            </div>
           </div>
 
-          <div class='score-note'>注：分数依据为近10轮次的平均分</div>
+          <div class='score-note'>{{ currentRuleText }}</div>
 
           <div class='table-wrapper'>
             <table class='ranking-table'>
               <thead>
-                <tr>
-                  <th>名次</th>
-                  <th>学生姓名</th>
-                  <th>分数</th>
-                  <th>最后提交时间</th>
-                  <th>对局详情</th>
+                <tr v-if='currentMode === "single"'>
+                  <th>排名</th>
+                  <th>姓名</th>
+                  <th>闯过关卡数</th>
+                  <th>闯关时间</th>
+                </tr>
+                <tr v-else-if='currentMode === "team"'>
+                  <th>排名</th>
+                  <th>队伍名</th>
+                  <th>队长姓名</th>
+                  <th>队员1姓名</th>
+                  <th>队员2姓名</th>
+                  <th>天梯分</th>
+                  <th>战绩</th>
+                  <th>对战场次</th>
+                </tr>
+                <tr v-else>
+                  <th>排名</th>
+                  <th>姓名</th>
+                  <th>天梯分</th>
+                  <th>战绩</th>
+                  <th>对战场次</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for='item in pagedRankingList' :key='item.id'>
+                <tr v-if='loading'>
+                  <td :colspan='currentColspan' class='empty-cell'>加载中...</td>
+                </tr>
+
+                <tr v-else-if='pagedRankingList.length === 0'>
+                  <td :colspan='currentColspan' class='empty-cell'>当前暂无排行榜数据</td>
+                </tr>
+
+                <tr
+                  v-else-if='currentMode === "single"'
+                  v-for='item in pagedRankingList'
+                  :key='item.id'
+                >
                   <td>{{ item.rank }}</td>
                   <td>{{ item.name }}</td>
-                  <td>{{ item.score }}</td>
-                  <td>{{ item.lastSubmitTime }}</td>
-                  <td>
-                    <button class='view-btn' @click='openDetailDialog(item)'>查看</button>
-                  </td>
+                  <td>{{ item.levelCount }}</td>
+                  <td>{{ item.clearTime }}</td>
+                </tr>
+
+                <tr
+                  v-else-if='currentMode === "team"'
+                  v-for='item in pagedRankingList'
+                  :key='item.teamId || item.rank'
+                >
+                  <td>{{ item.rank }}</td>
+                  <td>{{ item.teamName }}</td>
+                  <td>{{ item.captainName }}</td>
+                  <td>{{ item.member1Name }}</td>
+                  <td>{{ item.member2Name }}</td>
+                  <td>{{ item.ladderScore }}</td>
+                  <td>{{ item.record }}</td>
+                  <td>{{ item.matchCount }}</td>
+                </tr>
+
+                <tr v-else v-for='item in pagedRankingList' :key='item.studentId'>
+                  <td>{{ item.rank }}</td>
+                  <td>{{ item.name }}</td>
+                  <td>{{ item.ladderScore }}</td>
+                  <td>{{ item.record }}</td>
+                  <td>{{ item.matchCount }}</td>
                 </tr>
               </tbody>
             </table>
@@ -90,103 +162,17 @@
         </div>
       </main>
     </div>
-
-    <div v-if='showDetailDialog' class='dialog-mask' @click='closeDetailDialog'>
-      <div class='dialog-box detail-dialog' @click.stop>
-        <div class='dialog-header'>
-          <div class='dialog-title'>近10轮详情</div>
-          <button class='close-btn' @click='closeDetailDialog'>关闭</button>
-        </div>
-
-        <div class='dialog-body'>
-          <div class='dialog-subtitle'>{{ currentDetailTitle }}</div>
-          <div class='detail-table-wrapper'>
-            <table class='detail-table'>
-              <thead>
-                <tr>
-                  <th>序号</th>
-                  <th>学生姓名</th>
-                  <th>对手</th>
-                  <th>胜负</th>
-                  <th>积分</th>
-                  <th>时间</th>
-                  <th>测评详情</th>
-                  <th>日志</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for='item in currentDetailList' :key='item.id'>
-                  <td>{{ item.index }}</td>
-                  <td>{{ item.studentName }}</td>
-                  <td>{{ item.opponent }}</td>
-                  <td>{{ item.result }}</td>
-                  <td>{{ item.score }}</td>
-                  <td>{{ item.time }}</td>
-                  <td>
-                    <button class='disabled-btn' disabled>录像回放</button>
-                  </td>
-                  <td>
-                    <button class='disabled-btn' disabled>下载</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script>
+import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 
-const rankingDataMap = {
-  task1: [
-    { id: 1, rank: 1, name: '张三', score: '0.90', lastSubmitTime: '2026-03-18 10:25:11' },
-    { id: 2, rank: 2, name: '李四', score: '0.80', lastSubmitTime: '2026-03-18 09:58:24' },
-    { id: 3, rank: 3, name: '王五', score: '0.70', lastSubmitTime: '2026-03-18 09:20:05' }
-  ],
-  task2: [
-    { id: 11, rank: 1, name: '张三', score: '95.60', lastSubmitTime: '2026-03-18 11:12:30' },
-    { id: 12, rank: 2, name: '李四', score: '91.25', lastSubmitTime: '2026-03-18 10:43:12' },
-    { id: 13, rank: 3, name: '王五', score: '88.40', lastSubmitTime: '2026-03-18 09:36:14' }
-  ],
-  task3: [
-    { id: 21, rank: 1, name: '张三', score: '1.00', lastSubmitTime: '2026-03-18 08:56:06' },
-    { id: 22, rank: 2, name: '李四', score: '0.90', lastSubmitTime: '2026-03-18 08:20:31' },
-    { id: 23, rank: 3, name: '王五', score: '0.80', lastSubmitTime: '2026-03-17 22:42:10' }
-  ]
-}
-
-const detailDataMap = {
-  张三: [
-    { id: 1, index: 1, studentName: '张三', opponent: '李四', result: '胜', score: 1, time: '2026-03-18 10:25:11' },
-    { id: 2, index: 2, studentName: '张三', opponent: '王五', result: '胜', score: 1, time: '2026-03-18 09:58:11' },
-    { id: 3, index: 3, studentName: '张三', opponent: '李四', result: '平', score: 0, time: '2026-03-18 09:26:48' },
-    { id: 4, index: 4, studentName: '张三', opponent: '王五', result: '胜', score: 1, time: '2026-03-17 20:45:06' },
-    { id: 5, index: 5, studentName: '张三', opponent: '李四', result: '负', score: 0, time: '2026-03-17 19:22:18' }
-  ],
-  李四: [
-    { id: 11, index: 1, studentName: '李四', opponent: '张三', result: '负', score: 0, time: '2026-03-18 10:12:31' },
-    { id: 12, index: 2, studentName: '李四', opponent: '王五', result: '胜', score: 1, time: '2026-03-18 09:42:19' },
-    { id: 13, index: 3, studentName: '李四', opponent: '张三', result: '平', score: 0, time: '2026-03-18 09:10:44' },
-    { id: 14, index: 4, studentName: '李四', opponent: '王五', result: '胜', score: 1, time: '2026-03-17 21:05:03' }
-  ],
-  王五: [
-    { id: 21, index: 1, studentName: '王五', opponent: '张三', result: '负', score: 0, time: '2026-03-18 09:36:14' },
-    { id: 22, index: 2, studentName: '王五', opponent: '李四', result: '负', score: 0, time: '2026-03-18 08:48:52' },
-    { id: 23, index: 3, studentName: '王五', opponent: '张三', result: '胜', score: 1, time: '2026-03-17 22:42:10' }
-  ],
-  default: [
-    { id: 101, index: 1, studentName: '张三', opponent: '李四', result: '胜', score: 1, time: '2026-03-18 11:06:31' },
-    { id: 102, index: 2, studentName: '张三', opponent: '王五', result: '平', score: 0, time: '2026-03-18 10:31:22' },
-    { id: 103, index: 3, studentName: '张三', opponent: '李四', result: '负', score: 0, time: '2026-03-18 09:48:16' }
-  ]
-}
+const API_BASE = 'http://localhost:8080'
 
 export default {
   name: 'RankingView',
@@ -200,16 +186,22 @@ export default {
     return {
       userName: localStorage.getItem('auth_name') || '',
       currentRole: localStorage.getItem('auth_role') === 'TEACHER' ? 'teacher' : 'student',
-      selectedTaskId: 'task1',
+      currentMode: 'single',
+      selectedTaskId: '',
       currentPage: 1,
       pageSize: 5,
-      showDetailDialog: false,
-      currentDetailTitle: '',
-      currentDetailList: [],
-      taskOptions: [
-        { id: 'task1', name: '井字棋对战任务' },
-        { id: 'task2', name: '小车控制单人任务' },
-        { id: 'task3', name: '多轮博弈对战任务' }
+      loading: false,
+      allTaskOptions: [],
+      versusRankingList: [],
+      teamRankingList: [],
+      singleRankingMockList: [
+        {
+          id: 1,
+          rank: 1,
+          name: '张三',
+          levelCount: 4,
+          clearTime: '2小时15分'
+        }
       ]
     }
   },
@@ -217,38 +209,231 @@ export default {
     isStudent () {
       return !this.$route.path.startsWith('/teacher')
     },
+    currentTaskOptions () {
+      if (this.currentMode === 'single') {
+        return this.allTaskOptions.filter(item => item.mode === 'SINGLE')
+      }
+      if (this.currentMode === 'team') {
+        return this.allTaskOptions.filter(item => item.mode === 'TEAM')
+      }
+      return this.allTaskOptions.filter(item => item.mode === 'VERSUS')
+    },
     currentRankingList () {
-      return rankingDataMap[this.selectedTaskId] || []
+      if (this.currentMode === 'single') {
+        if (!this.selectedTaskId) return []
+        return this.singleRankingMockList
+      }
+      if (this.currentMode === 'team') {
+        return this.teamRankingList
+      }
+      return this.versusRankingList
     },
     pagedRankingList () {
       const start = (this.currentPage - 1) * this.pageSize
       const end = start + this.pageSize
       return this.currentRankingList.slice(start, end)
+    },
+    currentRuleText () {
+      if (this.currentMode === 'single') {
+        return '注：单人模式排行榜先按闯过关卡数降序排序；若闯过关卡数相同，则按闯关时间升序排序。'
+      }
+      if (this.currentMode === 'team') {
+        return '注：分组对战排行榜按队伍天梯分降序排列；战绩与对战场次按一次挑战=一场统计，并在同一视图展示队长与队员信息。'
+      }
+      return '注：对战模式排行榜按天梯分降序排列；天梯分综合考虑基础战绩、对手强度、对战多样性与重复挑战惩罚。战绩与对战场次按一次挑战=一场统计。'
+    },
+    currentColspan () {
+      if (this.currentMode === 'single') return 4
+      if (this.currentMode === 'team') return 8
+      return 5
     }
   },
   watch: {
     selectedTaskId () {
       this.currentPage = 1
+      if (this.currentMode === 'versus' && this.selectedTaskId) {
+        this.loadVersusRanking()
+      }
+      if (this.currentMode === 'team' && this.selectedTaskId) {
+        this.loadTeamRanking()
+      }
+    },
+    '$route.query': {
+      deep: true,
+      handler () {
+        this.loadTaskOptions()
+      }
     }
   },
   created () {
-    const taskId = this.$route.query.taskId
-    if (taskId && this.taskOptions.some(item => item.id === taskId)) {
-      this.selectedTaskId = taskId
-    }
+    this.loadTaskOptions()
   },
   methods: {
-    openDetailDialog (item) {
-      const source = detailDataMap[item.name] || detailDataMap.default
-      this.currentDetailTitle = item.name + ' - 近10轮详情'
-      this.currentDetailList = source.map(detail => ({
-        ...detail,
-        studentName: item.name
-      }))
-      this.showDetailDialog = true
+    getAuthHeaders () {
+      const token = localStorage.getItem('auth_token') || ''
+      return {
+        Authorization: `Bearer ${token}`
+      }
     },
-    closeDetailDialog () {
-      this.showDetailDialog = false
+    async loadTaskOptions () {
+      this.loading = true
+      try {
+        const url = this.isStudent
+          ? `${API_BASE}/me/assignments?pageNum=0&pageSize=200`
+          : `${API_BASE}/teacher/assignments?pageNum=0&pageSize=200`
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: this.getAuthHeaders()
+        })
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '任务列表加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+
+        this.allTaskOptions = content.map(item => ({
+          id: item.id,
+          name: item.title,
+          mode: item.evaluationMode
+        }))
+
+        const queryTaskId = this.$route.query.taskId
+        const queryMode = this.$route.query.mode
+
+        if (queryMode === 'versus' || queryMode === 'single' || queryMode === 'team') {
+          this.currentMode = queryMode
+        }
+
+        this.resetSelectedTask(queryTaskId)
+      } catch (error) {
+        this.allTaskOptions = []
+        ElMessage.error(error.message || '任务列表加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    resetSelectedTask (preferredTaskId) {
+      const options = this.currentTaskOptions
+      if (options.length === 0) {
+        this.selectedTaskId = ''
+        this.versusRankingList = []
+        this.teamRankingList = []
+        return
+      }
+
+      const preferred = preferredTaskId && options.find(item => String(item.id) === String(preferredTaskId))
+      this.selectedTaskId = preferred ? preferred.id : options[0].id
+
+      if (this.currentMode === 'versus') {
+        this.loadVersusRanking()
+      }
+      if (this.currentMode === 'team') {
+        this.loadTeamRanking()
+      }
+      this.syncRouteQuery()
+    },
+    switchMode (mode) {
+      if (this.currentMode === mode) return
+      this.currentMode = mode
+      this.currentPage = 1
+      this.resetSelectedTask()
+      this.syncRouteQuery()
+    },
+    syncRouteQuery () {
+      const nextQuery = {
+        ...this.$route.query,
+        mode: this.currentMode,
+        taskId: this.selectedTaskId || undefined
+      }
+      this.$router.replace({
+        path: this.$route.path,
+        query: nextQuery
+      })
+    },
+    async loadVersusRanking () {
+      if (!this.selectedTaskId) {
+        this.versusRankingList = []
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await fetch(
+          `${API_BASE}/assignments/${this.selectedTaskId}/leaderboard?pageNum=0&pageSize=200`,
+          {
+            method: 'GET',
+            headers: this.getAuthHeaders()
+          }
+        )
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '排行榜加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+
+        this.versusRankingList = content.map(item => ({
+          rank: item.rank,
+          studentId: item.studentId,
+          name: item.nickname || '未知学生',
+          ladderScore: item.ladderScore ?? item.bestScore ?? 0,
+          record: `${item.winCount || 0}胜${item.loseCount || 0}负${item.drawCount || 0}平`,
+          matchCount: item.matchCount || 0
+        }))
+      } catch (error) {
+        this.versusRankingList = []
+        ElMessage.error(error.message || '排行榜加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    async loadTeamRanking () {
+      if (!this.selectedTaskId) {
+        this.teamRankingList = []
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await fetch(
+          `${API_BASE}/assignments/${this.selectedTaskId}/team-leaderboard?pageNum=0&pageSize=200`,
+          {
+            method: 'GET',
+            headers: this.getAuthHeaders()
+          }
+        )
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '分组排行榜加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+
+        this.teamRankingList = content.map(item => ({
+          rank: item.rank,
+          teamId: item.teamId,
+          teamName: item.teamName || '未知队伍',
+          captainName: item.captainName || '--',
+          member1Name: item.member1Name || '--',
+          member2Name: item.member2Name || '--',
+          ladderScore: item.ladderScore ?? item.bestScore ?? 0,
+          record: `${item.winCount || 0}胜${item.loseCount || 0}负${item.drawCount || 0}平`,
+          matchCount: item.matchCount || 0
+        }))
+      } catch (error) {
+        this.teamRankingList = []
+        ElMessage.error(error.message || '分组排行榜加载失败')
+      } finally {
+        this.loading = false
+      }
     },
     goHome () {
       if (this.isStudent) {
@@ -353,6 +538,11 @@ export default {
 
 .toolbar {
   margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .task-select {
@@ -366,10 +556,40 @@ export default {
   background: #ffffff;
 }
 
+.mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  height: 36px;
+  padding: 0 18px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #606266;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mode-btn:hover {
+  border-color: #1f4e8c;
+  color: #1f4e8c;
+}
+
+.mode-btn.active {
+  background: #1f4e8c;
+  border-color: #1f4e8c;
+  color: #ffffff;
+}
+
 .score-note {
   margin-bottom: 14px;
   font-size: 13px;
   color: #909399;
+  line-height: 1.7;
 }
 
 .table-wrapper {
@@ -397,117 +617,9 @@ export default {
   font-weight: 700;
 }
 
-.view-btn,
-.close-btn,
-.disabled-btn {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.view-btn {
-  border: 1px solid #1f4e8c;
-  background: #ffffff;
-  color: #1f4e8c;
-  cursor: pointer;
-}
-
-.view-btn:hover {
-  background: #ecf5ff;
-}
-
-.dialog-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 1000;
-}
-
-.dialog-box {
-  width: 100%;
-  max-width: 1100px;
-  background: #ffffff;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
-}
-
-.detail-dialog {
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.dialog-header {
-  height: 56px;
-  padding: 0 20px;
-  border-bottom: 1px solid #ebeef5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.dialog-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1f2d3d;
-}
-
-.close-btn {
-  border: 1px solid #dcdfe6;
-  background: #ffffff;
-  color: #606266;
-  cursor: pointer;
-}
-
-.dialog-body {
-  padding: 18px 20px 20px;
-  overflow: auto;
-}
-
-.dialog-subtitle {
-  margin-bottom: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.detail-table-wrapper {
-  overflow-x: auto;
-}
-
-.detail-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 960px;
-}
-
-.detail-table th,
-.detail-table td {
-  border-bottom: 1px solid #ebeef5;
-  padding: 12px 14px;
-  text-align: left;
-  font-size: 14px;
-  color: #303133;
-  white-space: nowrap;
-}
-
-.detail-table th {
-  background: #f8fafc;
-  color: #606266;
-  font-weight: 700;
-}
-
-.disabled-btn {
-  border: 1px solid #dcdfe6;
-  background: #f5f7fa;
-  color: #bfc4cd;
-  cursor: not-allowed;
+.empty-cell {
+  text-align: center !important;
+  color: #909399 !important;
 }
 
 @media (max-width: 900px) {
@@ -519,13 +631,13 @@ export default {
     padding: 16px;
   }
 
-  .table-card {
-    padding: 16px 16px 0;
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .task-select {
-    width: 100%;
-    min-width: 0;
+  .mode-switch {
+    justify-content: flex-start;
   }
 }
 </style>
