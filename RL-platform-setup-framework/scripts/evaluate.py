@@ -30,6 +30,12 @@ from pathlib import Path
 from typing import Optional
 
 from agents.dqn_agent import DQNAgent
+from agents.dqn_agents import (
+    DoubleDQNAgent,
+    DistribDQNAgent,
+    PrioritizedDoubleDQNAgent,
+    RainbowAgent,
+)
 from agents.ppo_agent import PPOAgent
 from agents.ppo_gae_agent import PPO_GAE_Agent
 from agents.ddpg_agent import DDPGAgent
@@ -37,6 +43,18 @@ from policy_wrapper import _PolicyWrapper, DQNPolicy, PPOPolicy, PPOGAEPolicy, D
 
 
 STEPS_PER_EPISODE = 1000
+
+SUPPORTED_AGENT_PREFIXES = (
+    "distribdqn",
+    "priorddqn",
+    "rainbow",
+    "ppo_gae",
+    "ppogae",
+    "ddqn",
+    "ddpg",
+    "dqn",
+    "ppo",
+)
 
 
         
@@ -125,7 +143,7 @@ def make_env(env_id: str,
 
 def load_policy(env, agent_name: str, model_path: str) -> _PolicyWrapper:
     # 按 agent_name 加载不同的策略，并统一成 act(state) 接口。
-    agent_name = agent_name.lower()
+    agent_name = normalize_agent_name(agent_name)
     obs_space = env.observation_space
     act_space = env.action_space
 
@@ -151,6 +169,31 @@ def load_policy(env, agent_name: str, model_path: str) -> _PolicyWrapper:
         agent.q_network.eval()
         return DQNPolicy(agent)
 
+    if agent_name == "ddqn":
+        agent = DoubleDQNAgent(state_dim, action_dim, epsilon=0.0)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        return DQNPolicy(agent)
+
+    if agent_name == "distribdqn":
+        agent = DistribDQNAgent(state_dim, action_dim, epsilon=0.0)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        return DQNPolicy(agent)
+
+    if agent_name == "priorddqn":
+        agent = PrioritizedDoubleDQNAgent(state_dim, action_dim, epsilon=0.0)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        return DQNPolicy(agent)
+
+    if agent_name == "rainbow":
+        agent = RainbowAgent(state_dim, action_dim)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        agent.set_training_mode(False)
+        return DQNPolicy(agent)
+
     if agent_name == "ppo":
         agent = PPOAgent(state_dim, action_dim)
         agent.policy.load_state_dict(torch.load(model_path, map_location="cpu"))
@@ -164,6 +207,30 @@ def load_policy(env, agent_name: str, model_path: str) -> _PolicyWrapper:
         return PPOGAEPolicy(agent)
 
     raise ValueError(f"Unsupported agent type: {agent_name}")
+
+
+def normalize_agent_name(agent_name: str) -> str:
+    """
+    将输入算法名归一化为评测脚本支持的基础算法：
+    - 允许输入带后缀的名字（如 ddqn_steps_50000）
+    - 允许 ppo-gae / ppo_gae / ppogae
+    """
+    text = str(agent_name or "").strip().lower()
+    if not text:
+        raise ValueError("agent name is empty")
+
+    canonical = text.replace("-", "_")
+    if canonical == "ppogae":
+        return "ppo_gae"
+
+    for prefix in SUPPORTED_AGENT_PREFIXES:
+        if canonical == prefix or canonical.startswith(prefix + "_"):
+            return "ppo_gae" if prefix in ("ppo_gae", "ppogae") else prefix
+
+    raise ValueError(
+        f"Unsupported agent type: {agent_name}. "
+        "Supported: dqn / ddqn / distribdqn / priorddqn / rainbow / ppo / ppo_gae / ddpg"
+    )
 
 
 def run_episodes(env, policy: _PolicyWrapper, num_episodes: int, max_steps = None):
@@ -253,10 +320,12 @@ def parse_args(argv=None):
         ),
     )
     parser.add_argument("--agent", required=True,
-                        help="Agent type: ddpg / dqn / ppo / ppo_gae")
+                        help="Agent type: ddpg / dqn / ddqn / distribdqn / priorddqn / rainbow / ppo / ppo_gae")
+    parser.add_argument("--baseline_agent", default=None,
+                        help="Optional baseline agent type (defaults to --agent)")
     parser.add_argument("--model_name", required=True,
                         help="Path or name of the saved model weights.")
-    parser.add_argument("--episodes", type=int, default=10,
+    parser.add_argument("--episodes", type=int, default=100,
                         help="Number of evaluation episodes.")
     parser.add_argument("--workspace", default=None,
                         help="Project root where code and models live (default: cwd).")
@@ -327,7 +396,8 @@ def main(argv=None):
                     render_video=bool(args.render_video),
                     task_id=args.task_id,
                 )
-                baseline_policy = load_policy(env_baseline, args.agent, baseline_path)
+                baseline_agent = args.baseline_agent if args.baseline_agent else args.agent
+                baseline_policy = load_policy(env_baseline, baseline_agent, baseline_path)
                 baseline_rewards = run_episodes(env_baseline, baseline_policy, args.episodes, max_steps=max_steps)
                 result["baseline_avg_reward"] = float(sum(baseline_rewards) / len(baseline_rewards)) if baseline_rewards else 0.0
                 result["baseline_rewards"] = baseline_rewards

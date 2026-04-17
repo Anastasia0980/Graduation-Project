@@ -273,7 +273,7 @@
                   <div class='baseline-upload-box'>
                     <div class='baseline-row'>
                       <span class='baseline-upload-label'>algorithm：</span>
-                      <input v-model='baselineUpload[taskId].algorithm' class='baseline-algo-input' placeholder='例如 DQN / DDQN' />
+                      <input v-model='baselineUpload[taskId].algorithm' class='baseline-algo-input' placeholder='需以实际算法名开头，例如 distribdqn_500 / priorddqn_500 / rainbow_500' />
                     </div>
                     <div class='baseline-row'>
                       <input
@@ -913,13 +913,24 @@ export default {
         fileInput.value = ''
       }
     },
+    normalizeBaselineAlgorithm (value) {
+      return String(value || '').trim().toLowerCase()
+    },
+    isValidBaselineAlgorithm (value) {
+      // 需以算法名开头，后续可追加下划线分段（如 distribdqn_500 / priorddqn_500 / rainbow_500）
+      return /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(value)
+    },
     async uploadBaselineModel (taskId) {
       const upload = this.baselineUpload[taskId] || {}
-      const algorithm = String(upload.algorithm || '').trim()
+      const algorithm = this.normalizeBaselineAlgorithm(upload.algorithm)
       const file = upload.file
 
       if (!algorithm) {
         ElMessage.warning(`请输入 ${taskId} 算法名`)
+        return
+      }
+      if (!this.isValidBaselineAlgorithm(algorithm)) {
+        ElMessage.warning('算法名格式不正确：需以实际算法名开头，例如 ddqn / distribdqn / priorddqn / rainbow')
         return
       }
       if (!file) {
@@ -957,7 +968,7 @@ export default {
         // 上传成功后刷新 catalog，并把刚上传的项加入已选列表
         await this.loadBaselineCatalog(token)
 
-        const baselineId = `${taskId}-${algorithm.toLowerCase()}`
+        const baselineId = `${taskId}-${algorithm}`
         this.addBaselineToSelection(taskId, baselineId)
 
         this.resetBaselineUpload(taskId)

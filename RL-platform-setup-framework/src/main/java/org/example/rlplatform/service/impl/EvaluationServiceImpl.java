@@ -94,7 +94,7 @@ public class EvaluationServiceImpl implements EvaluationService {
                 throw new IllegalStateException("任务未配置环境");
             }
 
-            int episodes = 10;
+            int episodes = 100;
 
             ModelFile modelFile = modelFileService.uploadModelWithConfig(model, config, studentId);
 

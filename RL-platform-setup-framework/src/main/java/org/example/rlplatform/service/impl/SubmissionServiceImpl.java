@@ -254,7 +254,7 @@ public class SubmissionServiceImpl implements SubmissionService {
     private String buildOpponentName(Evaluation evaluation, BattleParticipant participant, Integer perspectiveStudentId) {
         ExperimentAssignment as = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
         if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE) {
-            return evaluation.getBaselineId();
+            return "baseline";
         }
 
         if (participant == null) {
@@ -393,7 +393,7 @@ public class SubmissionServiceImpl implements SubmissionService {
 
             if (hasBaseline) {
                 double baselineAvgReward = root.path("baseline_avg_reward").asDouble(0.0);
-                return String.format("共%d轮，平均奖励 %.2f；基线平均奖励 %.2f", rounds, studentAvgReward, baselineAvgReward);
+                return String.format("共%d轮，学生平均奖励 %.2f；基线平均奖励 %.2f", rounds, studentAvgReward, baselineAvgReward);
             }
 
             return String.format("共%d轮，平均奖励 %.2f", rounds, studentAvgReward);

@@ -76,6 +76,7 @@ public class EvaluationExecuter {
 
         Path baselineModelPath = null;
         String agentType = null;
+        String baselineAgentType = null;
         try {
             JsonNode configRoot = objectMapper.readTree(Paths.get(configPath).toFile());
             agentType = configRoot.path("algorithm").asText(null);
@@ -96,6 +97,7 @@ public class EvaluationExecuter {
                 return;
             }
             baselineModelPath = Paths.get(baselinePath);
+            baselineAgentType = resolveBaselineAgentType(evaluation, baselineModelPath);
 
         } catch (Exception e) {
             log.warn("Evaluation id={} aborted: failed to read config path={}: {}", evalId, configPath, e.getMessage());
@@ -141,6 +143,7 @@ public class EvaluationExecuter {
                 "--episodes", String.valueOf(evaluation.getEpisodes()),
                 "--workspace", workspaceConfig,
                 "--baseline_model_path", baselineModelPath.toString(),
+                "--baseline_agent", baselineAgentType,
                 "--config_path", configPath,
                 "--task_id", taskIdNorm,
                 "--render_video"
@@ -238,21 +241,14 @@ public class EvaluationExecuter {
                         } else if (Double.isNaN(baselineReward)) {
                             evaluation.setStatus(EvaluationStatus.FAILED);
                             evaluation.setErrorMessage("baseline_avg_reward 无法解析为数值");
-                        } else if (studentReward <= baselineReward) {
-                            evaluation.setStatus(EvaluationStatus.FAILED);
-                            evaluation.setErrorMessage(
-                                    String.format(
-                                            Locale.ROOT,
-                                            "未通过当前关：学生均值 %.4f 未超过 baseline 均值 %.4f",
-                                            studentReward,
-                                            baselineReward
-                                    )
-                            );
-                        } else {
+                        } else if (studentReward > baselineReward) {
                             curriculumProgressService.recordPassedStage(
                                     evaluation.getStudentId(),
                                     evaluation.getAssignmentId(),
                                     tid);
+                        } else {
+                            log.info("Evaluation id={} not advanced: student_avg_reward={} <= baseline_avg_reward={} taskId={}",
+                                    evalId, studentReward, baselineReward, tid);
                         }
                     }
                 }
@@ -335,5 +331,33 @@ public class EvaluationExecuter {
             if (line.startsWith("{") && line.endsWith("}")) return line;
         }
         return null;
+    }
+
+    private String resolveBaselineAgentType(Evaluation evaluation, Path baselineModelPath) {
+        String fromBaselineId = extractAlgoFromBaselineId(evaluation.getBaselineId());
+        if (fromBaselineId != null && !fromBaselineId.isBlank()) {
+            return fromBaselineId.trim().toLowerCase(Locale.ROOT);
+        }
+
+        Path parent = baselineModelPath == null ? null : baselineModelPath.getParent();
+        if (parent != null && parent.getFileName() != null) {
+            String folder = parent.getFileName().toString();
+            if (!folder.isBlank()) {
+                return folder.trim().toLowerCase(Locale.ROOT);
+            }
+        }
+
+        return "dqn";
+    }
+
+    private String extractAlgoFromBaselineId(String baselineId) {
+        if (baselineId == null || baselineId.isBlank()) {
+            return null;
+        }
+        int idx = baselineId.indexOf('-');
+        if (idx < 0 || idx + 1 >= baselineId.length()) {
+            return null;
+        }
+        return baselineId.substring(idx + 1);
     }
 }

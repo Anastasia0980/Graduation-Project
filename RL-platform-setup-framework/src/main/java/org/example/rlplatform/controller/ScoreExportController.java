@@ -1,14 +1,11 @@
 package org.example.rlplatform.controller;
 
 import org.example.rlplatform.Repository.ScoreExportRecordRepository;
-import org.example.rlplatform.Repository.UserRepository;
 import org.example.rlplatform.entity.EvaluationMode;
 import org.example.rlplatform.entity.ExperimentAssignment;
 import org.example.rlplatform.entity.LeaderBoard;
 import org.example.rlplatform.entity.Result;
 import org.example.rlplatform.entity.ScoreExportRecord;
-import org.example.rlplatform.entity.User;
-import org.example.rlplatform.entity.UserRole;
 import org.example.rlplatform.service.ExperimentAssignmentService;
 import org.example.rlplatform.service.LeaderBoardService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
@@ -37,9 +34,6 @@ public class ScoreExportController {
 
     @Autowired
     private ScoreExportRecordRepository scoreExportRecordRepository;
-
-    @Autowired
-    private UserRepository userRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
@@ -78,24 +72,16 @@ public class ScoreExportController {
         List<ScoreExportRowVO> rows = new ArrayList<>();
 
         if (assignment.getEvaluationMode() == EvaluationMode.SINGLE) {
-            ScoreExportRowVO row = new ScoreExportRowVO();
-            row.setRank(1);
-
-            String displayName = "学生A";
-            if (assignment.getStudentClass() != null) {
-                List<User> students = userRepository.findByStudentClass_IdAndRoleAndIsDeletedFalse(
-                        assignment.getStudentClass().getId(),
-                        UserRole.STUDENT
-                );
-                if (!students.isEmpty() && students.get(0).getUsername() != null && !students.get(0).getUsername().isBlank()) {
-                    displayName = students.get(0).getUsername();
-                }
+            Page<LeaderBoard> page = leaderBoardService.list(assignmentId, 0, 1000);
+            List<LeaderBoard> rankingRows = page.getContent() == null ? Collections.emptyList() : page.getContent();
+            for (LeaderBoard item : rankingRows) {
+                ScoreExportRowVO row = new ScoreExportRowVO();
+                row.setRank(item.getRank());
+                row.setName(item.getNickname());
+                row.setLevelCount(item.getLevelCount() == null ? 0 : item.getLevelCount());
+                row.setClearTime(item.getClearTime() == null ? "--" : item.getClearTime());
+                rows.add(row);
             }
-
-            row.setName(displayName);
-            row.setLevelCount(4);
-            row.setClearTime("2小时15分");
-            rows.add(row);
         } else if (assignment.getEvaluationMode() == EvaluationMode.TEAM) {
             Page<LeaderBoard> page = leaderBoardService.listTeam(assignmentId, 0, 1000);
             List<LeaderBoard> rankingRows = page.getContent() == null ? Collections.emptyList() : page.getContent();

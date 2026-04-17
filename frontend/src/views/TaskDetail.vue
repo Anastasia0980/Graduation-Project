@@ -954,7 +954,7 @@ export default {
     },
 
     async loadRankingList (assignmentId) {
-      if (!assignmentId || this.taskMode === 'single') {
+      if (!assignmentId) {
         this.rankingList = []
         return
       }
@@ -982,11 +982,20 @@ export default {
         }
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
-        this.rankingList = content.map(item => ({
-          rank: item.rank,
-          displayName: this.taskMode === 'tournament' ? (item.teamName || '未知队伍') : (item.nickname || '未知学生'),
-          score: item.ladderScore ?? item.bestScore ?? 0
-        }))
+        this.rankingList = content.map(item => {
+          if (this.taskMode === 'single') {
+            return {
+              rank: item.rank,
+              displayName: item.nickname || '未知学生',
+              score: `T${item.levelCount || 0}`
+            }
+          }
+          return {
+            rank: item.rank,
+            displayName: this.taskMode === 'tournament' ? (item.teamName || '未知队伍') : (item.nickname || '未知学生'),
+            score: item.ladderScore ?? item.bestScore ?? 0
+          }
+        })
       } catch (error) {
         this.rankingList = []
       }
@@ -1003,12 +1012,9 @@ export default {
       this.openSubmitDialog('human')
     },
     goRankingDetail () {
-      if (this.taskMode === 'single') {
-        return
-      }
       const role = (localStorage.getItem('auth_role') || '').toUpperCase()
       const path = role === 'TEACHER' ? '/teacher/ranking' : '/student/ranking'
-      const mode = this.taskMode === 'tournament' ? 'team' : 'versus'
+      const mode = this.taskMode === 'tournament' ? 'team' : (this.taskMode === 'single' ? 'single' : 'versus')
       this.$router.push({
         path,
         query: {

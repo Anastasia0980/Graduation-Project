@@ -192,17 +192,10 @@ export default {
       pageSize: 5,
       loading: false,
       allTaskOptions: [],
+      singleRankingList: [],
       versusRankingList: [],
       teamRankingList: [],
-      singleRankingMockList: [
-        {
-          id: 1,
-          rank: 1,
-          name: '张三',
-          levelCount: 4,
-          clearTime: '2小时15分'
-        }
-      ]
+      singleRankingMockList: []
     }
   },
   computed: {
@@ -221,7 +214,7 @@ export default {
     currentRankingList () {
       if (this.currentMode === 'single') {
         if (!this.selectedTaskId) return []
-        return this.singleRankingMockList
+        return this.singleRankingList
       }
       if (this.currentMode === 'team') {
         return this.teamRankingList
@@ -251,6 +244,9 @@ export default {
   watch: {
     selectedTaskId () {
       this.currentPage = 1
+      if (this.currentMode === 'single' && this.selectedTaskId) {
+        this.loadSingleRanking()
+      }
       if (this.currentMode === 'versus' && this.selectedTaskId) {
         this.loadVersusRanking()
       }
@@ -320,6 +316,7 @@ export default {
       const options = this.currentTaskOptions
       if (options.length === 0) {
         this.selectedTaskId = ''
+        this.singleRankingList = []
         this.versusRankingList = []
         this.teamRankingList = []
         return
@@ -328,6 +325,9 @@ export default {
       const preferred = preferredTaskId && options.find(item => String(item.id) === String(preferredTaskId))
       this.selectedTaskId = preferred ? preferred.id : options[0].id
 
+      if (this.currentMode === 'single') {
+        this.loadSingleRanking()
+      }
       if (this.currentMode === 'versus') {
         this.loadVersusRanking()
       }
@@ -392,6 +392,57 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    async loadSingleRanking () {
+      if (!this.selectedTaskId) {
+        this.singleRankingList = []
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await fetch(
+          `${API_BASE}/assignments/${this.selectedTaskId}/leaderboard?pageNum=0&pageSize=200`,
+          {
+            method: 'GET',
+            headers: this.getAuthHeaders()
+          }
+        )
+        const result = await response.json()
+
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '单人排行榜加载失败')
+        }
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.singleRankingList = content.map(item => ({
+          rank: item.rank || 0,
+          studentId: item.studentId,
+          name: item.nickname || '未知学生',
+          levelCount: item.levelCount || 0,
+          clearTime: this.formatClearTime(item.clearTime)
+        }))
+      } catch (error) {
+        this.singleRankingList = []
+        ElMessage.error(error.message || '单人排行榜加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    formatClearTime (value) {
+      if (!value || value === '--') return '--'
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return value
+      }
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+      const second = String(date.getSeconds()).padStart(2, '0')
+      return `${year}-${month}-${day} ${hour}:${minute}:${second}`
     },
     async loadTeamRanking () {
       if (!this.selectedTaskId) {

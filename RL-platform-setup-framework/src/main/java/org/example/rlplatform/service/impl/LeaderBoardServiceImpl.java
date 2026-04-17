@@ -3,6 +3,7 @@ package org.example.rlplatform.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.rlplatform.Repository.BattleParticipantRepository;
+import org.example.rlplatform.Repository.AssignmentCurriculumProgressRepository;
 import org.example.rlplatform.Repository.TeamGroupRepository;
 import org.example.rlplatform.Repository.TeamMemberRepository;
 import org.example.rlplatform.Repository.EvaluationRepository;
@@ -10,6 +11,7 @@ import org.example.rlplatform.Repository.EvaluationResultRepository;
 import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
 import org.example.rlplatform.Repository.UserRepository;
 import org.example.rlplatform.entity.BattleParticipant;
+import org.example.rlplatform.entity.AssignmentCurriculumProgress;
 import org.example.rlplatform.entity.Evaluation;
 import org.example.rlplatform.entity.EvaluationMode;
 import org.example.rlplatform.entity.EvaluationResult;
@@ -34,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.time.LocalDateTime;
 
 @Service
 public class LeaderBoardServiceImpl implements LeaderBoardService {
@@ -59,6 +62,9 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
     @Autowired
     private TeamMemberRepository teamMemberRepository;
 
+    @Autowired
+    private AssignmentCurriculumProgressRepository assignmentCurriculumProgressRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -70,7 +76,9 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
             return new PageImpl<>(Collections.emptyList(), pageable, 0);
         }
 
-        // 这里只实现对战模式排行榜；单人模式前端先用写死数据展示
+        if (assignment.getEvaluationMode() == EvaluationMode.SINGLE) {
+            return listSingle(assignmentId, pageable);
+        }
         if (assignment.getEvaluationMode() != EvaluationMode.VERSUS) {
             return new PageImpl<>(Collections.emptyList(), pageable, 0);
         }
@@ -274,6 +282,115 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
         List<LeaderBoard> pageRows = allRows.subList(start, end);
 
         return new PageImpl<>(pageRows, pageable, total);
+    }
+
+    private Page<LeaderBoard> listSingle(Integer assignmentId, Pageable pageable) {
+        List<AssignmentCurriculumProgress> progressList = assignmentCurriculumProgressRepository.findByAssignmentId(assignmentId);
+        if (progressList == null || progressList.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, 0);
+        }
+
+        Map<Integer, AssignmentCurriculumProgress> bestByStudent = new HashMap<>();
+        for (AssignmentCurriculumProgress progress : progressList) {
+            if (progress == null || progress.getStudentId() == null) {
+                continue;
+            }
+            Integer studentId = progress.getStudentId();
+            AssignmentCurriculumProgress existing = bestByStudent.get(studentId);
+            if (existing == null) {
+                bestByStudent.put(studentId, progress);
+                continue;
+            }
+            int currentLevel = zeroIfNull(progress.getHighestPassedTaskIndex());
+            int existingLevel = zeroIfNull(existing.getHighestPassedTaskIndex());
+            if (currentLevel > existingLevel) {
+                bestByStudent.put(studentId, progress);
+                continue;
+            }
+            if (currentLevel == existingLevel) {
+                LocalDateTime currentTime = progress.getUpdateTime();
+                LocalDateTime existingTime = existing.getUpdateTime();
+                if (isEarlier(currentTime, existingTime)) {
+                    bestByStudent.put(studentId, progress);
+                }
+            }
+        }
+
+        if (bestByStudent.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, 0);
+        }
+
+        List<AssignmentCurriculumProgress> ranked = new ArrayList<>(bestByStudent.values());
+        ranked.sort((a, b) -> {
+            int levelA = zeroIfNull(a.getHighestPassedTaskIndex());
+            int levelB = zeroIfNull(b.getHighestPassedTaskIndex());
+            if (levelB != levelA) {
+                return Integer.compare(levelB, levelA);
+            }
+
+            LocalDateTime timeA = a.getUpdateTime();
+            LocalDateTime timeB = b.getUpdateTime();
+            if (timeA != null && timeB != null && !timeA.equals(timeB)) {
+                return timeA.compareTo(timeB);
+            }
+            if (timeA == null && timeB != null) {
+                return 1;
+            }
+            if (timeA != null) {
+                return -1;
+            }
+            return Integer.compare(a.getStudentId(), b.getStudentId());
+        });
+
+        List<Integer> studentIds = new ArrayList<>();
+        for (AssignmentCurriculumProgress p : ranked) {
+            studentIds.add(p.getStudentId());
+        }
+        Map<Integer, User> userMap = new HashMap<>();
+        for (User user : userRepository.findAllById(studentIds)) {
+            userMap.put(user.getId(), user);
+        }
+
+        List<LeaderBoard> allRows = new ArrayList<>();
+        for (int i = 0; i < ranked.size(); i++) {
+            AssignmentCurriculumProgress progress = ranked.get(i);
+            User user = userMap.get(progress.getStudentId());
+            String displayName = "未知学生";
+            if (user != null) {
+                if (user.getUsername() != null && !user.getUsername().isBlank()) {
+                    displayName = user.getUsername();
+                } else if (user.getNickname() != null && !user.getNickname().isBlank()) {
+                    displayName = user.getNickname();
+                }
+            }
+
+            LeaderBoard row = new LeaderBoard();
+            row.setRank(i + 1);
+            row.setStudentId(progress.getStudentId());
+            row.setNickname(displayName);
+            row.setLevelCount(zeroIfNull(progress.getHighestPassedTaskIndex()));
+            row.setClearTime(progress.getUpdateTime() == null ? "--" : progress.getUpdateTime().toString());
+            allRows.add(row);
+        }
+
+        int total = allRows.size();
+        int start = Math.min((int) pageable.getOffset(), total);
+        int end = Math.min(start + pageable.getPageSize(), total);
+        return new PageImpl<>(allRows.subList(start, end), pageable, total);
+    }
+
+    private static int zeroIfNull(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private static boolean isEarlier(LocalDateTime current, LocalDateTime existing) {
+        if (current == null) {
+            return false;
+        }
+        if (existing == null) {
+            return true;
+        }
+        return current.isBefore(existing);
     }
 
     @Override

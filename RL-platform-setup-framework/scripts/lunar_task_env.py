@@ -197,17 +197,17 @@ TASK_ENV_KWARGS = {
     # T2: wind=5, turbulence=0, height=low, velocity=0, angle=0
     "T2": dict(
         enable_wind=True,
-        wind_power=5.0,
-        turbulence_power=0.0,
-        height_scale=1.0,
-        impulse_scale=0.0,
-        initial_angle_deg=0.0,
+        wind_power=20.0,
+        turbulence_power=2.0,
+        height_scale=2.0,
+        impulse_scale=3.0,
+        initial_angle_deg=30.0,
     ),
     # T3: wind=5, turbulence=0.5, height=low, velocity=0, angle=0
     "T3": dict(
         enable_wind=True,
-        wind_power=5.0,
-        turbulence_power=0.5,
+        wind_power=15.0,
+        turbulence_power=1.5,
         height_scale=1.0,
         impulse_scale=0.0,
         initial_angle_deg=0.0,
@@ -215,8 +215,8 @@ TASK_ENV_KWARGS = {
     # T4: wind=0, turbulence=0, height=mid, velocity=0, angle=0
     "T4": dict(
         enable_wind=False,
-        wind_power=0.0,
-        turbulence_power=0.0,
+        wind_power=10.0,
+        turbulence_power=1.0,
         height_scale=1.2,
         impulse_scale=0.0,
         initial_angle_deg=0.0,
@@ -226,18 +226,18 @@ TASK_ENV_KWARGS = {
         enable_wind=True,
         wind_power=5.0,
         turbulence_power=0.5,
-        height_scale=1.2,
+        height_scale=1.0,
         impulse_scale=0.0,
         initial_angle_deg=0.0,
     ),
     # T6: wind=0, turbulence=0, height=mid, velocity=1, angle=10
     "T6": dict(
-        enable_wind=False,
-        wind_power=0.0,
-        turbulence_power=0.0,
-        height_scale=1.2,
-        impulse_scale=1.0,
-        initial_angle_deg=10.0,
+        enable_wind=True,
+        wind_power=20.0,
+        turbulence_power=2.0,
+        height_scale=3.0,
+        impulse_scale=3.0,
+        initial_angle_deg=30.0,
     ),
     # T7: wind=5, turbulence=0.5, height=mid, velocity=1, angle=10
     "T7": dict(

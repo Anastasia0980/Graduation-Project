@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 基于 JWT 的认证过滤器：
@@ -30,6 +31,7 @@ import java.util.Map;
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private static final long SESSION_TTL_HOURS = 1L;
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
@@ -72,13 +74,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Integer userId = (Integer) claims.get("id");
                 String tokenVersion = (String) claims.get("tokenVersion");
 
-                if (userId != null || tokenVersion != null) {
+                if (userId != null && tokenVersion != null) {
                     String key = "login:version:" + userId;
                     String currentVersion = stringRedisTemplate.opsForValue().get(key);
                     if (currentVersion == null || !currentVersion.equals(tokenVersion)) {
                         SecurityContextHolder.clearContext();
                         throw new RuntimeException("token version is invalid");
                     }
+                    // 认证通过后刷新 Redis 会话 TTL，实现“最后活跃后 1 小时失效”。
+                    stringRedisTemplate.expire(key, SESSION_TTL_HOURS, TimeUnit.HOURS);
                 }
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {

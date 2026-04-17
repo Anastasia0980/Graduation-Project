@@ -159,6 +159,9 @@
           <div class="video-meta">
             <div class="video-task-name">{{ currentVideo.taskName }}</div>
             <div class="video-model-name">模型文件：{{ currentVideo.modelName }}</div>
+            <div v-if='currentVideo.taskMode.includes("单人")' class='video-hint'>
+              视频左侧为 student，右侧 baseline，视频仅展示小部分轮次
+            </div>
           </div>
 
           <div v-if="videoLoading" class="video-loading-box">
@@ -209,6 +212,7 @@ export default {
       videoVisible: false,
       videoLoading: false,
       videoError: '',
+      taskMode: '',
       currentVideo: {
         taskName: '',
         modelName: '',
@@ -266,6 +270,7 @@ export default {
           studentId: item.studentId,
           studentName: item.studentName || '--',
           taskName: item.taskTitle || '未知任务',
+          taskMode: item.taskMode || '',
           modelName: item.modelName || '--',
           submitTime: item.submitTime || '--',
           status: item.status || '--',
@@ -323,6 +328,7 @@ export default {
       this.currentVideo = {
         taskName: item.taskName,
         modelName: item.modelName,
+        taskMode: item.taskMode || '',
         videoUrl: '',
         sourceApiUrl: item.sourceApiUrl
       }
@@ -422,6 +428,7 @@ export default {
       this.closeVideoObjectUrlOnly()
 
       this.currentVideo = {
+        taskMode: '',
         taskName: '',
         modelName: '',
         videoUrl: '',
@@ -628,6 +635,12 @@ export default {
 .video-model-name {
   font-size: 14px;
   color: #606266;
+}
+
+.video-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #909399;
 }
 
 .video-player {
