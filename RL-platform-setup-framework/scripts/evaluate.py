@@ -27,6 +27,7 @@ import torch
 import ffmpeg
 import glob
 from pathlib import Path
+from typing import Optional
 
 from agents.dqn_agent import DQNAgent
 from agents.ppo_agent import PPOAgent
@@ -67,7 +68,7 @@ def make_env(env_id: str,
              model_name: str,
              realtime_render: bool = False,
              render_video: bool = False,
-             task_id: str | None = None):
+             task_id: Optional[str] = None):
     """
     统一的环境创建函数，支持三种模式：
     - 实时渲染（human）

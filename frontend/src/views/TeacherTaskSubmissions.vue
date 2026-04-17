@@ -20,7 +20,7 @@
         <div class="page-header">
           <div class="header-left">
             <button class="back-btn" @click="goBack">返回</button>
-            <h2>学生提交情况</h2>
+            <h2>提交详情</h2>
           </div>
         </div>
 

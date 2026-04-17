@@ -1190,7 +1190,9 @@ export default {
 
         this.showSubmitDialog = false
         const role = (localStorage.getItem('auth_role') || '').toUpperCase()
-        this.$router.push(role === 'TEACHER' ? '/teacher/history' : '/student/history')
+        if (role === 'TEACHER' && assignmentId) {
+          this.$router.push(`/teacher/task-submissions/${assignmentId}`)
+        }
 
         if (this.currentSubmitMode === 'human') {
           await this.loadMyBattleModels()

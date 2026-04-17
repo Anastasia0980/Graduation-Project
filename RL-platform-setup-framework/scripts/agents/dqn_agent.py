@@ -57,7 +57,7 @@ class ReplayBuffer:
 
 class QNetwork(nn.Module):
     """ Q值网络 """
-    def __init__(self, state_dim, action_dim, hidden_dim=128):
+    def __init__(self, state_dim, action_dim, hidden_dim=256):
         """
         初始化Q网络
         :param state_dim: 状态空间的维度
