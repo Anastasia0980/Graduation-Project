@@ -101,34 +101,37 @@ def make_env(env_id: str,
     result_dir = None
 
     render_mode = "human" if realtime_render else ("rgb_array" if render_video else None)
-    spec_path = (stage_spec_path or "").strip()
-    if spec_path:
-        try:
-            import lunar_task_env  # type: ignore
-        except ImportError as e:
-            raise ImportError(
-                "找不到 lunar_task_env.py。"
-                "请确认 --workspace 指向包含该文件的目录。"
-            ) from e
-        abs_spec = os.path.abspath(spec_path)
-        with open(abs_spec, encoding="utf-8") as f:
-            spec = json.load(f)
-        if not isinstance(spec, dict):
-            raise ValueError("stage_spec JSON 必须是对象")
-        env = lunar_task_env.make_lunar_env_from_spec(spec, render_mode=render_mode)
-    else:
-        normalized_task_id = (task_id or "").strip().upper()
-        if not normalized_task_id:
-            raise ValueError("闯关模式要求传入 --task_id（T1...T10）或 --stage_spec_path")
-        try:
-            import lunar_task_env  # type: ignore
+    if env_id == "LunarLander-v3":
+        spec_path = (stage_spec_path or "").strip()
+        if spec_path:
+            try:
+                import lunar_task_env  # type: ignore
+            except ImportError as e:
+                raise ImportError(
+                    "找不到 lunar_task_env.py。"
+                    "请确认 --workspace 指向包含该文件的目录。"
+                ) from e
+            abs_spec = os.path.abspath(spec_path)
+            with open(abs_spec, encoding="utf-8") as f:
+                spec = json.load(f)
+            if not isinstance(spec, dict):
+                raise ValueError("stage_spec JSON 必须是对象")
+            env = lunar_task_env.make_lunar_env_from_spec(spec, render_mode=render_mode)
+        else:
+            normalized_task_id = (task_id or "").strip().upper()
+            if not normalized_task_id:
+                raise ValueError("闯关模式要求传入 --task_id（T1...T10）或 --stage_spec_path")
+            try:
+                import lunar_task_env  # type: ignore
 
-            env = lunar_task_env.make_lunar_env(normalized_task_id, render_mode=render_mode)
-        except ImportError as e:
-            raise ImportError(
-                "找不到 lunar_task_env.py。"
-                "请确认 --workspace 指向包含该文件的目录。"
-            ) from e
+                env = lunar_task_env.make_lunar_env(normalized_task_id, render_mode=render_mode)
+            except ImportError as e:
+                raise ImportError(
+                    "找不到 lunar_task_env.py。"
+                    "请确认 --workspace 指向包含该文件的目录。"
+                ) from e
+    else:
+        raise ValueError(f"Unsupported environment: {env_id}")
 
     if render_video:
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")

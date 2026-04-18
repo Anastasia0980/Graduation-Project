@@ -423,7 +423,7 @@
         </div>
 
         <div class='bottom-action-row'>
-          <button class='secondary-btn' type='button'>保存草稿</button>
+          <!-- <button class='secondary-btn' type='button'>保存草稿</button> -->
           <button class='primary-btn' type='button' :disabled='publishing' @click='handlePublishTask'>
             {{ publishing ? '发布中...' : '发布任务' }}
           </button>
@@ -1578,6 +1578,78 @@ export default {
   color: #1f4e8c;
   font-size: 14px;
   cursor: pointer;
+}
+
+.algorithm-add-btn:hover {
+  background: #ecf5ff;
+}
+
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 3000;
+}
+
+.dialog-box {
+  width: 420px;
+  max-width: 100%;
+  background: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16);
+}
+
+.dialog-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.dialog-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.dialog-body {
+  padding: 20px;
+}
+
+.dialog-label {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #606266;
+  font-weight: 600;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  outline: none;
+  font-size: 14px;
+  color: #303133;
+  background: #ffffff;
+}
+
+.dialog-input:focus {
+  border-color: #1f4e8c;
+}
+
+.dialog-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.dialog-btn {
+  min-width: 90px;
 }
 
 @media (max-width: 900px) {
