@@ -29,4 +29,9 @@ public class ExperimentConfig {
      * - value: 当前关唯一 baseline
      */
     private Map<String, BaselineOption> taskBaselineOptions;
+
+    /**
+     * 有序闯关关卡（推荐使用）。非空时优先于 {@link #taskBaselineOptions} 固定 T1–T10 模式。
+     */
+    private List<CurriculumStageConfig> curriculumStages;
 }

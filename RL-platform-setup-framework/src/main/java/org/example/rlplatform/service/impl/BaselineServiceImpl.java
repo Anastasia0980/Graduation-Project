@@ -16,6 +16,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class BaselineServiceImpl implements BaselineService {
@@ -23,17 +26,14 @@ public class BaselineServiceImpl implements BaselineService {
     @Autowired
     private BaselineRepository baselineRepository;
 
-    // 例如：E:/.../saved_models
     @Value("${evaluation.baselineRoot:}")
     private String baselineRoot;
 
-    private static final List<String> TASK_IDS = Arrays.asList("T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10");
+    private static final Pattern TASK_KEY_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{1,64}$");
 
     @Override
     public Map<String, List<BaselineOption>> getBaselineCatalogByEnvironment(String environment) {
-        Map<String, List<BaselineOption>> catalog = new HashMap<>();
-        TASK_IDS.forEach(t -> catalog.put(t, new ArrayList<>()));
-
+        Map<String, List<BaselineOption>> catalog = new LinkedHashMap<>();
         if (baselineRoot == null || baselineRoot.isBlank() || environment == null || environment.isBlank()) {
             return catalog;
         }
@@ -43,12 +43,21 @@ public class BaselineServiceImpl implements BaselineService {
             return catalog;
         }
 
-        for (String taskId : TASK_IDS) {
-            Path taskDir = envBase.resolve(taskId);
-            if (!Files.exists(taskDir) || !Files.isDirectory(taskDir)) {
-                continue;
-            }
+        List<String> taskIds;
+        try (Stream<Path> stream = Files.list(envBase)) {
+            taskIds = stream
+                    .filter(Files::isDirectory)
+                    .map(p -> p.getFileName().toString())
+                    .filter(name -> !name.startsWith("."))
+                    .sorted()
+                    .collect(Collectors.toList());
+        } catch (IOException e) {
+            return catalog;
+        }
 
+        for (String taskId : taskIds) {
+            catalog.putIfAbsent(taskId, new ArrayList<>());
+            Path taskDir = envBase.resolve(taskId);
             try (DirectoryStream<Path> algoDirs = Files.newDirectoryStream(taskDir)) {
                 for (Path algoDir : algoDirs) {
                     if (!Files.isDirectory(algoDir)) continue;
@@ -62,7 +71,6 @@ public class BaselineServiceImpl implements BaselineService {
 
                     String modelPath = environment + "/" + taskId + "/" + algoDirName + "/baseline.pth";
 
-                    // upsert baseline record（但保留 isDeleted 语义：catalog 只返回未删除的资源）
                     Baseline record = baselineRepository
                             .findByEnvironmentAndTaskIdAndAlgorithm(environment, taskId, algoKey)
                             .orElse(null);
@@ -97,7 +105,7 @@ public class BaselineServiceImpl implements BaselineService {
                     catalog.get(taskId).add(option);
                 }
             } catch (IOException ignored) {
-                // catalog 兜底：出错时返回已收集的数据（更利于线上不因目录扫描中断）
+                // catalog 兜底
             }
 
             catalog.get(taskId).sort(Comparator.comparing(BaselineOption::getLabel, String.CASE_INSENSITIVE_ORDER));
@@ -108,7 +116,6 @@ public class BaselineServiceImpl implements BaselineService {
 
     private static String normalizeAlgorithmId(String algorithm) {
         if (algorithm == null) return "";
-        // baseline 表/目录统一用小写算法名，避免大小写导致查找不到
         return algorithm.trim().toLowerCase();
     }
 
@@ -128,9 +135,9 @@ public class BaselineServiceImpl implements BaselineService {
         }
 
         String env = environment.trim();
-        String task = taskId.trim().toUpperCase(Locale.ROOT);
-        if (!task.matches("T(10|[1-9])")) {
-            throw new IllegalArgumentException("taskId 非法，仅支持 T1..T10");
+        String task = taskId.trim();
+        if (!TASK_KEY_PATTERN.matcher(task).matches()) {
+            throw new IllegalArgumentException("taskId 非法：1-64 位字母数字下划线或连字符");
         }
         String algo = normalizeAlgorithmId(algorithm);
 
@@ -150,7 +157,6 @@ public class BaselineServiceImpl implements BaselineService {
 
         Path baselineFile = algoDir.resolve("baseline.pth");
         try {
-            // MultipartFile.transferTo 会覆盖同路径文件（不同实现有差异，这里尽量确保写入）
             model.transferTo(baselineFile.toFile());
         } catch (IOException e) {
             throw new RuntimeException("baseline 文件写入失败", e);
@@ -195,9 +201,9 @@ public class BaselineServiceImpl implements BaselineService {
         }
 
         String env = environment.trim();
-        String task = taskId.trim().toUpperCase(Locale.ROOT);
-        if (!task.matches("T(10|[1-9])")) {
-            throw new IllegalArgumentException("taskId 非法，仅支持 T1..T10");
+        String task = taskId.trim();
+        if (!TASK_KEY_PATTERN.matcher(task).matches()) {
+            throw new IllegalArgumentException("taskId 非法：1-64 位字母数字下划线或连字符");
         }
         String algo = normalizeAlgorithmId(algorithm);
 
@@ -213,4 +219,3 @@ public class BaselineServiceImpl implements BaselineService {
         baselineRepository.save(record);
     }
 }
-

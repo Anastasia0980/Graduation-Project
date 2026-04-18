@@ -299,6 +299,30 @@ def register_lunar_tasks() -> None:
     _LUNAR_TASKS_REGISTERED = True
 
 
+def make_lunar_env_from_spec(
+    env_spec: dict,
+    *,
+    render_mode: Optional[str] = None,
+) -> gym.Env:
+    """
+    由 JSON 描述构造 LunarLanderTask（A2），键名与 TASK_ENV_KWARGS 中条目一致。
+    """
+    defaults = dict(
+        enable_wind=False,
+        wind_power=0.0,
+        turbulence_power=0.0,
+        height_scale=1.0,
+        impulse_scale=0.0,
+        initial_angle_deg=0.0,
+    )
+    kw = dict(defaults)
+    for key, val in env_spec.items():
+        if key in defaults:
+            kw[key] = val
+    env = LunarLanderTask(render_mode=render_mode, **kw)
+    return TimeLimit(env, max_episode_steps=LUNAR_MAX_EPISODE_STEPS)
+
+
 def make_lunar_env(
     task: str,
     *,

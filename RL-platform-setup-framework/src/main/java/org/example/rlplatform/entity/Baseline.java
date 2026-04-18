@@ -17,7 +17,8 @@ public class Baseline {
     @Column(nullable = false)
     private String environment;
 
-    @Column(name = "task_id", nullable = false, length = 16)
+    /** 与闯关 stageId 一致，最长 64（见 ExperimentAssignmentImpl 校验） */
+    @Column(name = "task_id", nullable = false, length = 64)
     private String taskId;
 
     @Column(nullable = false)

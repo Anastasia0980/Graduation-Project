@@ -97,10 +97,20 @@
                 <span>{{ curriculumPassedText }}</span>
               </div>
               <div class='mini-bot-row'>
+                <span>总关卡</span>
+                <span>{{ curriculumTotalStages > 0 ? curriculumTotalStages : '--' }}</span>
+              </div>
+              <div class='mini-bot-row'>
                 <span>当前挑战</span>
                 <span :class='curriculumNextTaskId ? "status-ok" : "status-off"'>
-                  {{ curriculumNextTaskId || '加载中' }}
+                  {{ curriculumNextTaskDisplayLabel || '加载中' }}
                 </span>
+              </div>
+              <div v-if='curriculumPublicationStatus === "DRAFT"' class='curriculum-tip curriculum-tip-warning'>
+                该任务仍为草稿，学生无法提交评测。
+              </div>
+              <div class='curriculum-tip'>
+                通过条件：你的 mean reward 严格大于该关 baseline mean reward。
               </div>
               <div v-if='curriculumLoadError' class='curriculum-tip curriculum-tip-warning'>
                 {{ curriculumLoadError }}
@@ -328,7 +338,7 @@
           <div v-if='currentSubmitMode === "single"' class='form-item'>
             <label>当前闯关说明</label>
             <div class='baseline-tip'>
-              本次将提交到 {{ curriculumNextTaskId || '当前关卡' }}，并由后端自动使用该关卡对应 baseline 进行评测。
+              本次将提交到 {{ curriculumNextTaskDisplayLabel || '当前关卡' }}，并由后端自动使用该关卡对应 baseline 进行评测。
             </div>
           </div>
 
@@ -658,6 +668,10 @@ export default {
       evaluationId: null,
       curriculumHighestPassedTaskIndex: 0,
       curriculumNextTaskId: '',
+      /** 作业 config.curriculumStages 顺序（仅 stageId），用于 T1=第1关 与真实 stageId 对应 */
+      curriculumStagesOrdered: [],
+      curriculumTotalStages: 0,
+      curriculumPublicationStatus: 'PUBLISHED',
       curriculumLoadError: '',
       selectedFiles: {
         config: null,
@@ -717,12 +731,37 @@ export default {
       return '单人测评'
     },
     singleSubmitButtonText () {
-      return this.curriculumNextTaskId ? `提交当前关（${this.curriculumNextTaskId}）` : '提交当前关'
+      return this.curriculumNextTaskId ? `提交当前关（${this.curriculumNextTaskDisplayLabel}）` : '提交当前关'
+    },
+    /**
+     * 学生端展示：有 curriculumStages 时，T1/T2…= 配置中第 1/2…关（按下标），与 stageId 是否为 T* 无关；
+     * 无列表时（legacy）直接显示接口返回的 nextTaskId（通常为 T1…T10）。
+     */
+    curriculumNextTaskDisplayLabel () {
+      const raw = this.curriculumNextTaskId
+      if (!raw) return ''
+      const key = String(raw).trim()
+      const ordered = this.curriculumStagesOrdered || []
+      if (ordered.length > 0) {
+        const idx = ordered.findIndex(x => x.stageId === key)
+        if (idx >= 0) {
+          return `T${idx + 1}`
+        }
+        const h = Number(this.curriculumHighestPassedTaskIndex || 0)
+        const total = Number(this.curriculumTotalStages || ordered.length || 1)
+        const ord = Math.min(Math.max(1, h + 1), Math.max(1, total))
+        return `T${ord}`
+      }
+      return key.toUpperCase()
     },
     curriculumPassedText () {
       const n = Number(this.curriculumHighestPassedTaskIndex || 0)
+      const total = Number(this.curriculumTotalStages || 0)
+      if (total > 0) {
+        return `${Math.min(n, total)} / ${total} 关`
+      }
       if (!n || n <= 0) return '暂无'
-      return `T1 ~ T${Math.min(10, n)}`
+      return `${n} 关`
     },
     submitFeedbackClass () {
       return this.submitMessage.startsWith('提交失败') || this.submitMessage.startsWith('请')
@@ -883,6 +922,8 @@ export default {
         const progress = result.data || {}
         this.curriculumHighestPassedTaskIndex = Number(progress.highestPassedTaskIndex || 0)
         this.curriculumNextTaskId = progress.nextTaskId || ''
+        this.curriculumTotalStages = Number(progress.totalStages || 0)
+        this.curriculumPublicationStatus = progress.publicationStatus || 'PUBLISHED'
       } catch (error) {
         this.curriculumLoadError = `${error.message || '闯关进度加载失败'}，提交时将由后端自动判定当前关卡。`
       }
@@ -907,6 +948,20 @@ export default {
       this.rewardText = config.rewardFunction || '当前暂无奖励说明。'
       this.evaluationText = config.evaluationFunction || '当前暂无评测说明。'
       this.algorithmTags = this.parseAgentNames(task.agentName)
+
+      this.curriculumPublicationStatus = task.publicationStatus || 'PUBLISHED'
+      const stages = config && config.curriculumStages
+      if (Array.isArray(stages) && stages.length > 0) {
+        this.curriculumTotalStages = stages.length
+        this.curriculumStagesOrdered = stages
+          .map(s => ({ stageId: String(s.stageId != null ? s.stageId : '').trim() }))
+          .filter(s => s.stageId)
+      } else {
+        this.curriculumStagesOrdered = []
+        if (config && config.taskBaselineOptions) {
+          this.curriculumTotalStages = 10
+        }
+      }
     },
     parseTaskConfig (task) {
       if (task.config && typeof task.config === 'object') {
@@ -1059,6 +1114,10 @@ export default {
     handleSingleSubmitClick () {
       if (this.isTaskEnded) {
         this.showEndedDialog = true
+        return
+      }
+      if (this.curriculumPublicationStatus === 'DRAFT') {
+        ElMessage.warning('该任务尚未发布，无法提交单人评测')
         return
       }
       this.openSubmitDialog('single')

@@ -20,6 +20,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
@@ -125,36 +127,91 @@ public class EvaluationExecuter {
             saveEvaluationResult(evaluation, null, null);
             return;
         }
-        String taskIdNorm = rawTaskId.trim().toUpperCase(Locale.ROOT);
-        if (!taskIdNorm.matches("T(10|[1-9])")) {
-            log.warn("Evaluation id={} aborted: invalid task_id={}", evalId, rawTaskId);
+
+        String stageSpecRel = evaluation.getStageSpecPath();
+        boolean useStageSpec = stageSpecRel != null && !stageSpecRel.isBlank();
+        String taskIdForScript;
+        if (useStageSpec) {
+            String tid = rawTaskId.trim();
+            if (!tid.matches("^[a-zA-Z0-9_.-]{1,80}$")) {
+                log.warn("Evaluation id={} aborted: invalid stage task_id={}", evalId, rawTaskId);
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage("invalid task_id for curriculum stage: " + rawTaskId);
+                saveEvaluationResult(evaluation, null, null);
+                return;
+            }
+            taskIdForScript = tid;
+            evaluation.setTaskId(tid);
+        } else {
+            String taskIdNorm = rawTaskId.trim().toUpperCase(Locale.ROOT);
+            if (!taskIdNorm.matches("T(10|[1-9])")) {
+                log.warn("Evaluation id={} aborted: invalid task_id={}", evalId, rawTaskId);
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage("invalid task_id (expect T1…T10): " + rawTaskId);
+                saveEvaluationResult(evaluation, null, null);
+                return;
+            }
+            taskIdForScript = taskIdNorm;
+            evaluation.setTaskId(taskIdNorm);
+        }
+
+        if (useStageSpec && (workspaceConfig == null || workspaceConfig.isBlank())) {
+            log.warn("Evaluation id={} aborted: workspace not set but stage_spec_path present", evalId);
             evaluation.setStatus(EvaluationStatus.FAILED);
-            evaluation.setErrorMessage("invalid task_id (expect T1…T10): " + rawTaskId);
+            evaluation.setErrorMessage("workspace not set for stage_spec_path");
             saveEvaluationResult(evaluation, null, null);
             return;
         }
-        evaluation.setTaskId(taskIdNorm);
 
-        ProcessBuilder pb = new ProcessBuilder(
-                pythonCmd, script.toString(),
-                "--env", evaluation.getEnvironment(),
-                "--agent", agentType,
-                "--model_name", modelName,
-                "--episodes", String.valueOf(evaluation.getEpisodes()),
-                "--workspace", workspaceConfig,
-                "--baseline_model_path", baselineModelPath.toString(),
-                "--baseline_agent", baselineAgentType,
-                "--config_path", configPath,
-                "--task_id", taskIdNorm,
-                "--render_video"
-                // "--realtime_render"
-        );
+        Path stageSpecAbs = null;
+        if (useStageSpec) {
+            Path rel = Paths.get(stageSpecRel.trim());
+            stageSpecAbs = rel.isAbsolute()
+                    ? rel.normalize()
+                    : Paths.get(workspaceConfig.trim()).resolve(rel).normalize();
+            if (!stageSpecAbs.toFile().exists()) {
+                log.warn("Evaluation id={} aborted: stage_spec not found path={}", evalId, stageSpecAbs);
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage("stage_spec file not found: " + stageSpecAbs);
+                saveEvaluationResult(evaluation, null, null);
+                return;
+            }
+        }
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add(pythonCmd);
+        cmd.add(script.toString());
+        cmd.add("--env");
+        cmd.add(evaluation.getEnvironment());
+        cmd.add("--agent");
+        cmd.add(agentType);
+        cmd.add("--model_name");
+        cmd.add(modelName);
+        cmd.add("--episodes");
+        cmd.add(String.valueOf(evaluation.getEpisodes()));
+        cmd.add("--workspace");
+        cmd.add(workspaceConfig);
+        cmd.add("--baseline_model_path");
+        cmd.add(baselineModelPath.toString());
+        cmd.add("--baseline_agent");
+        cmd.add(baselineAgentType);
+        cmd.add("--config_path");
+        cmd.add(configPath);
+        cmd.add("--task_id");
+        cmd.add(taskIdForScript);
+        if (useStageSpec) {
+            cmd.add("--stage_spec_path");
+            cmd.add(stageSpecAbs.toString());
+        }
+        cmd.add("--render_video");
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
 
         pb.redirectErrorStream(true);
         pb.directory(cwd.toFile());
 
-        log.info("Evaluation id={} spawning process python={} script={} cwd={} agent={} modelName={} taskId={}",
-                evalId, pythonCmd, script, cwd, agentType, modelName, taskIdNorm);
+        log.info("Evaluation id={} spawning process python={} script={} cwd={} agent={} modelName={} taskId={} stageSpec={}",
+                evalId, pythonCmd, script, cwd, agentType, modelName, taskIdForScript, useStageSpec ? stageSpecAbs : "-");
 
         StringBuilder output = new StringBuilder();
         long processStartMs = System.currentTimeMillis();
@@ -245,7 +302,7 @@ public class EvaluationExecuter {
                             curriculumProgressService.recordPassedStage(
                                     evaluation.getStudentId(),
                                     evaluation.getAssignmentId(),
-                                    tid);
+                                    tid.trim());
                         } else {
                             log.info("Evaluation id={} not advanced: student_avg_reward={} <= baseline_avg_reward={} taskId={}",
                                     evalId, studentReward, baselineReward, tid);

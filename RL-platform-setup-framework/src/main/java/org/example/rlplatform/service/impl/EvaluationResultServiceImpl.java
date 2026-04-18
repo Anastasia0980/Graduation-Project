@@ -171,10 +171,10 @@ public class EvaluationResultServiceImpl implements EvaluationResultService {
 
                 double studentAvgReward = root.path("student_avg_reward").asDouble(0.0);
                 sb.append("测评轮数：").append(rounds).append("\n");
-                sb.append("平均奖励：").append(String.format("%.4f", studentAvgReward)).append("\n");
+                sb.append("学生平均奖励：").append(String.format("%.4f", studentAvgReward)).append("\n");
 
                 if (root.has("student_rewards") && root.path("student_rewards").isArray()) {
-                    sb.append("各轮奖励：").append(root.path("student_rewards").toString()).append("\n");
+                    sb.append("学生各轮奖励：").append(root.path("student_rewards").toString()).append("\n");
                 }
 
                 boolean hasBaseline = root.has("baseline_rewards")
@@ -184,6 +184,7 @@ public class EvaluationResultServiceImpl implements EvaluationResultService {
                 if (hasBaseline) {
                     double baselineAvgReward = root.path("baseline_avg_reward").asDouble(0.0);
                     sb.append("基线平均奖励：").append(String.format("%.4f", baselineAvgReward)).append("\n");
+                    sb.append("基线各轮奖励：").append(root.path("baseline_rewards").toString()).append("\n");
                     Integer winner = root.has("winner") ? root.path("winner").asInt() : null;
                     if (winner != null) {
                         sb.append("对比结果：").append(winner == 1 ? "学生模型优于基线" : "基线优于学生模型").append("\n");

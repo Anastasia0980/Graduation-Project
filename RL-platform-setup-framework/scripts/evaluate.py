@@ -86,7 +86,8 @@ def make_env(env_id: str,
              model_name: str,
              realtime_render: bool = False,
              render_video: bool = False,
-             task_id: Optional[str] = None):
+             task_id: Optional[str] = None,
+             stage_spec_path: Optional[str] = None):
     """
     统一的环境创建函数，支持三种模式：
     - 实时渲染（human）
@@ -100,18 +101,34 @@ def make_env(env_id: str,
     result_dir = None
 
     render_mode = "human" if realtime_render else ("rgb_array" if render_video else None)
-    normalized_task_id = (task_id or "").strip().upper()
-    if not normalized_task_id:
-        raise ValueError("闯关模式要求必须传入 --task_id（T1...T10）")
-    try:
-        import lunar_task_env  # type: ignore
+    spec_path = (stage_spec_path or "").strip()
+    if spec_path:
+        try:
+            import lunar_task_env  # type: ignore
+        except ImportError as e:
+            raise ImportError(
+                "找不到 lunar_task_env.py。"
+                "请确认 --workspace 指向包含该文件的目录。"
+            ) from e
+        abs_spec = os.path.abspath(spec_path)
+        with open(abs_spec, encoding="utf-8") as f:
+            spec = json.load(f)
+        if not isinstance(spec, dict):
+            raise ValueError("stage_spec JSON 必须是对象")
+        env = lunar_task_env.make_lunar_env_from_spec(spec, render_mode=render_mode)
+    else:
+        normalized_task_id = (task_id or "").strip().upper()
+        if not normalized_task_id:
+            raise ValueError("闯关模式要求传入 --task_id（T1...T10）或 --stage_spec_path")
+        try:
+            import lunar_task_env  # type: ignore
 
-        env = lunar_task_env.make_lunar_env(normalized_task_id, render_mode=render_mode)
-    except ImportError as e:
-        raise ImportError(
-            "找不到 lunar_task_env.py。"
-            "请确认 --workspace 指向包含该文件的目录。"
-        ) from e
+            env = lunar_task_env.make_lunar_env(normalized_task_id, render_mode=render_mode)
+        except ImportError as e:
+            raise ImportError(
+                "找不到 lunar_task_env.py。"
+                "请确认 --workspace 指向包含该文件的目录。"
+            ) from e
 
     if render_video:
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -337,8 +354,10 @@ def parse_args(argv=None):
                         help="Optional baseline model path")
     parser.add_argument("--config_path", default=None,
                         help="Optional config file path associated with model")
-    parser.add_argument("--task_id", required=True,
-                        help="Curriculum task id, e.g. T1 ... T10")
+    parser.add_argument("--task_id", default="",
+                        help="Curriculum task id（legacy: T1…T10）；与 --stage_spec_path 二选一或同时用于标注")
+    parser.add_argument("--stage_spec_path", default="",
+                        help="关卡环境参数 JSON 文件路径（A2，与 lunar_task_env.make_lunar_env_from_spec 对齐）")
     return parser.parse_args(argv)
 
 
@@ -347,6 +366,10 @@ def main(argv=None):
 
     args = parse_args(argv)
 
+    if not (args.stage_spec_path or "").strip() and not (args.task_id or "").strip():
+        print(json.dumps({"status": "FAILED", "error": "需要 --stage_spec_path 或 --task_id"}, ensure_ascii=False))
+        return 1
+
     workspace = os.path.abspath(args.workspace or os.getcwd())
     if workspace not in sys.path:
         sys.path.insert(0, workspace)
@@ -354,7 +377,7 @@ def main(argv=None):
 
     result = {
         "status": "FINISHED",
-        "task_id": (args.task_id.strip().upper() if args.task_id else None),
+        "task_id": (args.task_id.strip() if args.task_id else None),
         "student_avg_reward": 0.0,
         "student_rewards": [],
         "baseline_avg_reward": 0.0,
@@ -370,6 +393,7 @@ def main(argv=None):
             realtime_render=bool(args.realtime_render),
             render_video=bool(args.render_video),
             task_id=args.task_id,
+            stage_spec_path=args.stage_spec_path,
         )
 
         # HalfCheetah 等连续环境默认给一个步数上限
@@ -395,6 +419,7 @@ def main(argv=None):
                     realtime_render=bool(args.realtime_render),
                     render_video=bool(args.render_video),
                     task_id=args.task_id,
+                    stage_spec_path=args.stage_spec_path,
                 )
                 baseline_agent = args.baseline_agent if args.baseline_agent else args.agent
                 baseline_policy = load_policy(env_baseline, baseline_agent, baseline_path)

@@ -57,8 +57,15 @@ public class ExperimentAssignmentController {
 
     @PostMapping("class/{classId}/assignments")
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
-    public Result<Void> create(@PathVariable Integer classId, @RequestBody ExperimentAssignment experimentAssignment) {
-        experimentAssignmentService.create(classId, experimentAssignment);
+    public Result<Integer> create(@PathVariable Integer classId, @RequestBody ExperimentAssignment experimentAssignment) {
+        Integer id = experimentAssignmentService.create(classId, experimentAssignment);
+        return Result.success(id);
+    }
+
+    @PostMapping("assignments/{assignmentId}/publish")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<Void> publish(@PathVariable Integer assignmentId) {
+        experimentAssignmentService.publish(assignmentId);
         return Result.success();
     }
 

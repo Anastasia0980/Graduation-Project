@@ -18,6 +18,9 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
@@ -56,6 +59,9 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Value("${evaluation.baselineRoot:}")
     private String baselineRoot;
 
+    @Value("${evaluation.workspace:}")
+    private String workspaceConfig;
+
     @Override
     public void createEvaluation(Evaluation evaluation) {
         evaluation.setCreateTime(now());
@@ -84,6 +90,9 @@ public class EvaluationServiceImpl implements EvaluationService {
             if (assignment == null) {
                 throw new IllegalArgumentException("任务不存在");
             }
+            if (assignment.getEffectivePublicationStatus() != PublicationStatus.PUBLISHED) {
+                throw new IllegalStateException("任务尚未发布，无法进行单人评测");
+            }
 
             if (assignment.getEvaluationMode() != EvaluationMode.SINGLE) {
                 throw new IllegalStateException("当前任务不是单人模式，不能进行单人评测");
@@ -100,7 +109,6 @@ public class EvaluationServiceImpl implements EvaluationService {
 
             String taskId = curriculumProgressService.resolveNextTaskId(studentId, assignmentId);
 
-            // 从任务配置中解析 baselineOptions
             ExperimentConfig taskConfig = null;
             if (assignment.getConfigJson() != null && !assignment.getConfigJson().isBlank()) {
                 try {
@@ -109,7 +117,7 @@ public class EvaluationServiceImpl implements EvaluationService {
                     taskConfig = null;
                 }
             }
-            BaselineOption chosen = selectBaselineForTask(taskConfig, taskId);
+            BaselineOption chosen = selectBaselineForAssignment(taskConfig, taskId);
 
             if (chosen.getModelPath() == null || chosen.getModelPath().isBlank()) {
                 throw new IllegalStateException("baseline 选项未配置 modelPath");
@@ -132,10 +140,29 @@ public class EvaluationServiceImpl implements EvaluationService {
             evaluation.setBaselineId(chosen.getId());
             evaluation.setBaselineModelPath(baselineModelPath);
             evaluation.setTaskId(taskId);
+            evaluation.setStageSpecPath(null);
             evaluation.setStatus(EvaluationStatus.PENDING);
             evaluation.setCreateTime(now());
             evaluation.setUpdateTime(now());
             evaluationRepository.save(evaluation);
+
+            if (taskConfig != null && taskConfig.getCurriculumStages() != null && !taskConfig.getCurriculumStages().isEmpty()) {
+                if (workspaceConfig == null || workspaceConfig.isBlank()) {
+                    throw new IllegalStateException("evaluation.workspace 未配置，无法写入关卡 envSpec");
+                }
+                CurriculumStageConfig stage = findStageById(taskConfig.getCurriculumStages(), taskId);
+                if (stage == null || stage.getEnvSpec() == null) {
+                    throw new IllegalStateException("未找到关卡配置或 envSpec 为空: " + taskId);
+                }
+                Path ws = Paths.get(workspaceConfig.trim());
+                Path dir = ws.resolve("stage_specs");
+                Files.createDirectories(dir);
+                Path specFile = dir.resolve(evaluation.getId() + ".json");
+                objectMapper.writeValue(specFile.toFile(), stage.getEnvSpec());
+                evaluation.setStageSpecPath("stage_specs/" + evaluation.getId() + ".json");
+                evaluation.setUpdateTime(now());
+                evaluationRepository.save(evaluation);
+            }
 
             evaluationRunner.runAsync(evaluation.getId());
 
@@ -152,12 +179,20 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
     }
 
-    private BaselineOption selectBaselineForTask(ExperimentConfig taskConfig, String taskId) {
-        String normalizedTaskId = taskId == null ? "" : taskId.trim().toUpperCase(Locale.ROOT);
-        if (normalizedTaskId.isBlank()) {
-            throw new IllegalStateException("无法确定当前闯关 taskId");
+    private BaselineOption selectBaselineForAssignment(ExperimentConfig taskConfig, String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalStateException("无法确定当前闯关关卡");
+        }
+        String key = taskId.trim();
+        if (taskConfig != null && taskConfig.getCurriculumStages() != null && !taskConfig.getCurriculumStages().isEmpty()) {
+            CurriculumStageConfig stage = findStageById(taskConfig.getCurriculumStages(), key);
+            if (stage != null && stage.getBaseline() != null) {
+                return stage.getBaseline();
+            }
+            throw new IllegalStateException("任务未配置当前关卡 baseline（stageId=" + key + "）");
         }
 
+        String normalizedTaskId = key.toUpperCase(Locale.ROOT);
         BaselineOption selected = (taskConfig != null && taskConfig.getTaskBaselineOptions() != null)
                 ? taskConfig.getTaskBaselineOptions().get(normalizedTaskId)
                 : null;
@@ -166,6 +201,19 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
 
         throw new IllegalStateException("任务未配置当前关卡 baseline（taskId=" + normalizedTaskId + "）");
+    }
+
+    private static CurriculumStageConfig findStageById(List<CurriculumStageConfig> stages, String stageId) {
+        if (stages == null || stageId == null) {
+            return null;
+        }
+        String k = stageId.trim();
+        for (CurriculumStageConfig s : stages) {
+            if (s != null && s.getStageId() != null && s.getStageId().trim().equals(k)) {
+                return s;
+            }
+        }
+        return null;
     }
 
 //    @Override
