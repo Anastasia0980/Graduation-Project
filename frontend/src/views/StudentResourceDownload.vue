@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='displayUserName'
       current-role='student'
       active-nav='home'
@@ -13,7 +13,7 @@
 
     <div class='layout'>
       <StudentSidebar
-        :logged-in='true'
+        :logged-in='isLoggedIn'
         active-menu='resource'
         :task-menu-open='false'
         @profile-click='goProfile'
@@ -120,6 +120,7 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
 
 export default {
   name: 'StudentResourceDownloadView',
@@ -147,6 +148,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     displayUserName () {
       return localStorage.getItem('auth_name') || '学生'
     },
@@ -188,9 +192,7 @@ export default {
       this.$router.push('/teacher/home')
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
       this.$router.push('/')
     }

@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <AppTopbar
-      :logged-in="true"
+      :logged-in="isLoggedIn"
       :user-name="teacherName"
       current-role="teacher"
       active-nav="home"
@@ -102,6 +102,8 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -125,6 +127,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     pagedOverviewList () {
       const start = (this.currentPage - 1) * this.pageSize
       const end = start + this.pageSize
@@ -135,24 +140,16 @@ export default {
     this.loadOverviewList()
   },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token') || ''
-      return {
-        Authorization: `Bearer ${token}`
-      }
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadOverviewList () {
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/teacher/assignments/overview`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
+        const result = await this.requestApi(`${API_BASE}/teacher/assignments/overview`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '提交概览加载失败')
-        }
+        if (!result) return
 
         const list = Array.isArray(result.data) ? result.data : []
         this.overviewList = list.map(item => ({
@@ -206,9 +203,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
+      clearAuthState()
       this.$router.push('/')
     }
   }

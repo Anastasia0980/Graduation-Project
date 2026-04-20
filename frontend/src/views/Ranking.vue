@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='userName'
       :current-role='currentRole'
       active-nav='home'
@@ -13,7 +13,7 @@
     <div class='layout'>
       <StudentSidebar
         v-if='isStudent'
-        :logged-in='true'
+        :logged-in='isLoggedIn'
         active-menu='ranking'
         :task-menu-open='false'
         @profile-click='goProfile'
@@ -171,6 +171,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -199,6 +201,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     isStudent () {
       return !this.$route.path.startsWith('/teacher')
     },
@@ -265,11 +270,8 @@ export default {
     this.loadTaskOptions()
   },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token') || ''
-      return {
-        Authorization: `Bearer ${token}`
-      }
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadTaskOptions () {
       this.loading = true
@@ -278,15 +280,8 @@ export default {
           ? `${API_BASE}/me/assignments?pageNum=0&pageSize=200`
           : `${API_BASE}/teacher/assignments?pageNum=0&pageSize=200`
 
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
-        })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务列表加载失败')
-        }
+        const result = await this.requestApi(url, { method: 'GET' })
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -362,18 +357,13 @@ export default {
 
       this.loading = true
       try {
-        const response = await fetch(
+        const result = await this.requestApi(
           `${API_BASE}/assignments/${this.selectedTaskId}/leaderboard?pageNum=0&pageSize=200`,
           {
-            method: 'GET',
-            headers: this.getAuthHeaders()
+            method: 'GET'
           }
         )
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '排行榜加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -401,18 +391,13 @@ export default {
 
       this.loading = true
       try {
-        const response = await fetch(
+        const result = await this.requestApi(
           `${API_BASE}/assignments/${this.selectedTaskId}/leaderboard?pageNum=0&pageSize=200`,
           {
-            method: 'GET',
-            headers: this.getAuthHeaders()
+            method: 'GET'
           }
         )
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '单人排行榜加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -452,18 +437,13 @@ export default {
 
       this.loading = true
       try {
-        const response = await fetch(
+        const result = await this.requestApi(
           `${API_BASE}/assignments/${this.selectedTaskId}/team-leaderboard?pageNum=0&pageSize=200`,
           {
-            method: 'GET',
-            headers: this.getAuthHeaders()
+            method: 'GET'
           }
         )
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '分组排行榜加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -537,9 +517,7 @@ export default {
       this.$router.push('/teacher/export')
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
+      clearAuthState()
       this.$router.push('/')
     }
   }

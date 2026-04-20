@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='displayUserName'
       current-role='teacher'
       active-nav='home'
@@ -97,6 +97,8 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -121,6 +123,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     displayUserName () {
       return localStorage.getItem('auth_name') || '教师'
     },
@@ -147,24 +152,13 @@ export default {
     this.loadExportRecords()
   },
   methods: {
-    getAuthHeaders (json = false) {
-      const token = localStorage.getItem('auth_token') || ''
-      const headers = {
-        Authorization: `Bearer ${token}`
-      }
-      if (json) headers['Content-Type'] = 'application/json'
-      return headers
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadClassOptions () {
       try {
-        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=500`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
-        })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '班级数据加载失败')
-        }
+        const result = await this.requestApi(`${API_BASE}/class?pageNum=0&pageSize=500`, { method: 'GET' })
+        if (!result) return
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
         this.classOptions = content.map(item => ({
@@ -178,14 +172,8 @@ export default {
     },
     async loadTaskOptions () {
       try {
-        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=500`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
-        })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务数据加载失败')
-        }
+        const result = await this.requestApi(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=500`, { method: 'GET' })
+        if (!result) return
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
         this.taskOptions = content.map(item => ({
@@ -203,14 +191,8 @@ export default {
     async loadExportRecords () {
       this.recordLoading = true
       try {
-        const response = await fetch(`${API_BASE}/teacher/exports`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
-        })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '导出记录加载失败')
-        }
+        const result = await this.requestApi(`${API_BASE}/teacher/exports`, { method: 'GET' })
+        if (!result) return
         const list = Array.isArray(result.data) ? result.data : []
         this.exportList = list.map(item => ({
           id: item.id,
@@ -251,15 +233,17 @@ export default {
 
       this.exporting = true
       try {
-        const response = await fetch(`${API_BASE}/teacher/exports`, {
+        const result = await this.requestApi(`${API_BASE}/teacher/exports`, {
           method: 'POST',
-          headers: this.getAuthHeaders(true),
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({
             assignmentId: this.selectedTaskId
           })
         })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0 || !result.data) {
+        if (!result) return
+        if (result.code !== 0 || !result.data) {
           throw new Error(result.message || '导出失败')
         }
 
@@ -384,11 +368,8 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
       this.$router.push('/')
     }
   }

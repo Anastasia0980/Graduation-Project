@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <AppTopbar
-      :logged-in="true"
+      :logged-in="isLoggedIn"
       :user-name="teacherName"
       current-role="teacher"
       active-nav="home"
@@ -93,6 +93,8 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -116,6 +118,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     pagedTaskList () {
       const start = (this.taskPage - 1) * this.taskPageSize
       const end = start + this.taskPageSize
@@ -128,19 +133,15 @@ export default {
       .catch(() => this.loadTaskList())
   },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token') || ''
-      return {
-        Authorization: `Bearer ${token}`
-      }
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadClassMap () {
-      const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=500`, {
-        method: 'GET',
-        headers: this.getAuthHeaders()
+      const result = await this.requestApi(`${API_BASE}/class?pageNum=0&pageSize=500`, {
+        method: 'GET'
       })
-      const result = await response.json()
-      if (!response.ok || result.code !== 0) {
+      if (!result) return
+      if (result.code !== 0) {
         throw new Error(result.message || '班级数据加载失败')
       }
       const pageData = result.data || {}
@@ -153,15 +154,10 @@ export default {
     async loadTaskList () {
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=500`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
+        const result = await this.requestApi(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=500`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务数据加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -215,12 +211,11 @@ export default {
     async confirmDelete () {
       if (!this.currentTask) return
       try {
-        const response = await fetch(`${API_BASE}/assignments/${this.currentTask.id}`, {
-          method: 'DELETE',
-          headers: this.getAuthHeaders()
+        const result = await this.requestApi(`${API_BASE}/assignments/${this.currentTask.id}`, {
+          method: 'DELETE'
         })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
+        if (!result) return
+        if (result.code !== 0) {
           throw new Error(result.message || '删除任务失败')
         }
         ElMessage.success('删除任务成功')
@@ -236,9 +231,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
+      clearAuthState()
       this.$router.push('/')
     }
   }

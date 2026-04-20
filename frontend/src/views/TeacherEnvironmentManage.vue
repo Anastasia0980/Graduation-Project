@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='teacherName'
       current-role='teacher'
       active-nav='home'
@@ -31,6 +31,7 @@
 <script>
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
 
 export default {
   name: 'TeacherEnvironmentManageView',
@@ -43,6 +44,11 @@ export default {
       teacherName: localStorage.getItem('auth_name') || '教师'
     }
   },
+  computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    }
+  },
   methods: {
     goTaskHall () {
       this.$router.push('/teacher/hall')
@@ -53,6 +59,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
       this.$router.push('/')
     }

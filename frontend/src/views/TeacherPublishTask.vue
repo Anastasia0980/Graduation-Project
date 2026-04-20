@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='teacherName'
       current-role='teacher'
       active-nav='home'
@@ -462,6 +462,8 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 const DEFAULT_ENV_SPEC_JSON = JSON.stringify({
@@ -525,22 +527,27 @@ export default {
     'taskForm.environmentCode': {
       immediate: true,
       handler () {
-        const token = localStorage.getItem('auth_token')
-        if (!token) return
+        if (!hasAuthToken()) return
 
         this.curriculumStages.forEach(s => {
           s.selectedBaselineId = null
         })
-        this.loadBaselineCatalog(token)
+        this.loadBaselineCatalog()
       }
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     isLunarEnvironment () {
       return (this.taskForm.environmentCode || '').trim() === 'LunarLander-v3'
     }
   },
   methods: {
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
+    },
     newStageRow (title) {
       return {
         stageId: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
@@ -584,23 +591,11 @@ export default {
       stage.selectedBaselineId = null
     },
     async loadClassOptions () {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        return
-      }
-
       try {
-        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=100`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        const result = await this.requestApi(`${API_BASE}/class?pageNum=0&pageSize=100`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          return
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -650,7 +645,7 @@ export default {
         }
       }
     },
-    async uploadSystemBotFiles (assignmentId, token) {
+    async uploadSystemBotFiles (assignmentId) {
       const uploadOne = async (difficulty, configRef, modelRef) => {
         const configInput = this.$refs[configRef]
         const modelInput = this.$refs[modelRef]
@@ -669,17 +664,12 @@ export default {
         formData.append('config', configFile)
         formData.append('model', modelFile)
 
-        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/system-bots/${difficulty}`, {
+        const result = await this.requestApi(`${API_BASE}/assignments/${assignmentId}/system-bots/${difficulty}`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
           body: formData
         })
-
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || `${difficulty}难度人机模型上传失败`)
+        if (!result) {
+          throw new Error(`${difficulty}难度人机模型上传失败`)
         }
       }
 
@@ -722,21 +712,13 @@ export default {
         this.selectedAlgorithms.push(name)
       }
     },
-    async loadBaselineCatalog (token) {
+    async loadBaselineCatalog () {
       try {
         const environment = this.taskForm.environmentCode
-        const response = await fetch(`${API_BASE}/baselines/catalog?environment=${encodeURIComponent(environment)}`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        const result = await this.requestApi(`${API_BASE}/baselines/catalog?environment=${encodeURIComponent(environment)}`, {
+          method: 'GET'
         })
-
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
-          ElMessage.warning(result.message || 'Baseline catalog 加载失败')
-          return
-        }
+        if (!result) return
 
         this.globalBaselineCatalog = result.data && typeof result.data === 'object' ? result.data : {}
       } catch (error) {
@@ -799,12 +781,6 @@ export default {
         return
       }
 
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
-        return
-      }
-
       try {
         const formData = new FormData()
         formData.append('environment', this.taskForm.environmentCode || 'tictactoe_v3')
@@ -812,22 +788,15 @@ export default {
         formData.append('algorithm', algorithm)
         formData.append('model', file)
 
-        const response = await fetch(`${API_BASE}/baselines/upload`, {
+        const result = await this.requestApi(`${API_BASE}/baselines/upload`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
           body: formData
         })
-
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || 'baseline 上传失败')
-        }
+        if (!result) return
 
         ElMessage.success('baseline 上传成功')
 
-        await this.loadBaselineCatalog(token)
+        await this.loadBaselineCatalog()
 
         const baselineId = `${stage.stageId}-${algorithm}`
         this.addBaselineToStage(stage, baselineId)
@@ -838,12 +807,6 @@ export default {
       }
     },
     async softDeleteBaselineFromCatalog (taskId, opt) {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
-        return
-      }
-
       const baselineId = opt && opt.id ? opt.id : ''
       const algorithm = opt && (opt.algorithm || opt.label)
         ? String(opt.algorithm || opt.label)
@@ -875,17 +838,10 @@ export default {
       })
 
       try {
-        const response = await fetch(`${API_BASE}/baselines/soft-delete?${params.toString()}`, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        const result = await this.requestApi(`${API_BASE}/baselines/soft-delete?${params.toString()}`, {
+          method: 'DELETE'
         })
-
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || 'baseline 删除失败')
-        }
+        if (!result) return
 
         ElMessage.success('baseline 已删除')
         if (baselineId) {
@@ -895,7 +851,7 @@ export default {
             }
           })
         }
-        await this.loadBaselineCatalog(token)
+        await this.loadBaselineCatalog()
       } catch (error) {
         ElMessage.error(error.message || 'baseline 删除失败，请检查后端是否已启动')
       }
@@ -1031,12 +987,6 @@ export default {
         return
       }
 
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
-        return
-      }
-
       const payload = {
         title: this.taskForm.name.trim(),
         evaluationMode: this.getEvaluationModeValue(),
@@ -1056,40 +1006,30 @@ export default {
 
       this.publishing = true
       try {
-        const response = await fetch(`${API_BASE}/class/${this.taskForm.classId}/assignments`, {
+        const result = await this.requestApi(`${API_BASE}/class/${this.taskForm.classId}/assignments`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify(bodyPayload)
         })
-
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          ElMessage.error(result.message || '发布任务失败')
-          return
-        }
+        if (!result) return
 
         const assignmentId = result.data
         if (assignmentId != null) {
-          const pubResp = await fetch(`${API_BASE}/assignments/${assignmentId}/publish`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
+          const pubJson = await this.requestApi(`${API_BASE}/assignments/${assignmentId}/publish`, {
+            method: 'POST'
           })
-          const pubJson = await pubResp.json()
-          if (!pubResp.ok || pubJson.code !== 0) {
-            ElMessage.error(pubJson.message || '任务已创建为草稿，但发布失败，请在任务管理中手动发布')
+          if (!pubJson) return
+          if (!pubJson.code || pubJson.code !== 0) {
+            ElMessage.error('任务已创建为草稿，但发布失败，请在任务管理中手动发布')
             this.$router.push('/teacher/tasks')
             return
           }
         }
 
         if (this.taskMode === 'battle' && assignmentId) {
-          await this.uploadSystemBotFiles(assignmentId, token)
+          await this.uploadSystemBotFiles(assignmentId)
         }
 
         ElMessage.success('任务创建并发布成功')
@@ -1127,6 +1067,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
       this.$router.push('/')
     }

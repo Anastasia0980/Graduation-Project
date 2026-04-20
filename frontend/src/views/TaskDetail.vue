@@ -1,7 +1,7 @@
 <template>
   <div class='detail-page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='displayUserName'
       current-role='student'
       active-nav='home'
@@ -88,7 +88,7 @@
 
           <template v-if='taskMode === "single"'>
             <div class='side-desc'>
-              当前任务为闯关单人模式。通过条件：战胜当前关卡基线模型。
+              当前任务为闯关单人模式。通过条件：战胜当前关卡基线模型。提交示例可参考提交说明。
             </div>
             <div class='curriculum-info-box'>
               <div class='mini-bot-title'>闯关进度</div>
@@ -110,7 +110,7 @@
                 该任务仍为草稿，学生无法提交评测。
               </div>
               <div class='curriculum-tip'>
-                通过条件：你的 mean reward 严格大于该关 baseline mean reward。
+                通过条件：你的平均 reward 严格大于该关基线平均 reward。
               </div>
               <div v-if='curriculumLoadError' class='curriculum-tip curriculum-tip-warning'>
                 {{ curriculumLoadError }}
@@ -127,7 +127,7 @@
 
           <template v-else-if='taskMode === "battle"'>
             <div class='side-desc'>
-              当前任务为对战模式。请先上传自己的对战模型，上传成功后可在“已提交模型”中选择自己的模型，再选择其他同学已上传的模型发起异步挑战。
+              当前任务为对战模式。请先上传自己的对战模型，上传成功后可在“已提交模型”中选择自己的模型，再选择其他同学已上传的模型发起异步挑战。提交示例可参考提交说明。
             </div>
             <button
               class='primary-btn submit-action-btn'
@@ -620,6 +620,8 @@
 import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import tictactoeImage from '../assets/tictactoe.png'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { notifyAuthExpiredAndRedirect } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -779,6 +781,9 @@ export default {
         ? 'error-box'
         : 'success-box'
     },
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     displayUserName () {
       return localStorage.getItem('auth_name') || ''
     }
@@ -829,7 +834,8 @@ export default {
     async loadTaskDetail (assignmentId) {
       const token = localStorage.getItem('auth_token')
       if (!token) {
-        ElMessage.error('当前未登录或登录已过期，请重新登录')
+        clearAuthState()
+        notifyAuthExpiredAndRedirect(this.$router)
         return
       }
 
@@ -846,6 +852,11 @@ export default {
             Authorization: `Bearer ${token}`
           }
         })
+        if (response.status === 401) {
+          clearAuthState()
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
         const result = await response.json()
 
         if (!response.ok || result.code !== 0) {
@@ -905,6 +916,8 @@ export default {
       const token = localStorage.getItem('auth_token')
       if (!token) {
         this.curriculumLoadError = '未获取到进度信息，提交时将由后端自动判定当前关卡。'
+        clearAuthState()
+        notifyAuthExpiredAndRedirect(this.$router)
         return
       }
 
@@ -915,6 +928,11 @@ export default {
             Authorization: `Bearer ${token}`
           }
         })
+        if (response.status === 401) {
+          clearAuthState()
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
         const result = await response.json()
         if (!response.ok || result.code !== 0) {
           throw new Error(result.message || '闯关进度加载失败')
@@ -1198,6 +1216,8 @@ export default {
       const token = localStorage.getItem('auth_token')
       if (!token) {
         this.submitMessage = '当前未登录或登录已过期，请重新登录'
+        clearAuthState()
+        notifyAuthExpiredAndRedirect(this.$router, this.submitMessage)
         return
       }
 
@@ -1235,6 +1255,11 @@ export default {
           body: form
         })
 
+        if (resp.status === 401) {
+          clearAuthState()
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
         const res = await resp.json()
 
         if (!resp.ok || res.code !== 0) {
@@ -1633,11 +1658,7 @@ export default {
       this.$router.push('/teacher/home')
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
-      sessionStorage.removeItem('mock_logged_out_view')
+      clearAuthState()
       this.$router.replace('/')
     }
   }

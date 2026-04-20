@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <AppTopbar
-      :logged-in="true"
+      :logged-in="isLoggedIn"
       :user-name="displayUserName"
       current-role="teacher"
       active-nav="home"
@@ -193,6 +193,8 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest, notifyAuthExpiredAndRedirect } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -222,6 +224,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     displayUserName () {
       return localStorage.getItem('auth_name') || '教师'
     },
@@ -244,24 +249,16 @@ export default {
     this.loadSubmissionList()
   },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token') || ''
-      return {
-        Authorization: `Bearer ${token}`
-      }
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadSubmissionList () {
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/assignments/${this.taskId}/submissions`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
+        const result = await this.requestApi(`${API_BASE}/assignments/${this.taskId}/submissions`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '提交记录加载失败')
-        }
+        if (!result) return
 
         const list = Array.isArray(result.data) ? result.data : []
         this.submissionList = list.map(item => ({
@@ -313,9 +310,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
+      clearAuthState()
       this.$router.push('/')
     },
     goStudentDetail (studentId) {
@@ -334,12 +329,12 @@ export default {
       }
       this.videoError = ''
       this.videoLoading = true
-      this.videoVisible = true
 
       try {
         const token = localStorage.getItem('auth_token')
         if (!token) {
-          throw new Error('当前未登录或登录已过期')
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
         }
 
         const response = await fetch(item.sourceApiUrl, {
@@ -349,6 +344,10 @@ export default {
           }
         })
 
+        if (response.status === 401) {
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
         if (!response.ok) {
           throw new Error(`视频加载失败（${response.status}）`)
         }
@@ -360,8 +359,10 @@ export default {
 
         const objectUrl = URL.createObjectURL(blob)
         this.currentVideo.videoUrl = objectUrl
+        this.videoVisible = true
       } catch (error) {
         this.videoError = error.message || '视频加载失败'
+        ElMessage.error(this.videoError)
       } finally {
         this.videoLoading = false
       }
@@ -385,7 +386,8 @@ export default {
     async fetchAndDownload (url, filename) {
       const token = localStorage.getItem('auth_token')
       if (!token) {
-        throw new Error('当前未登录或登录已过期')
+        notifyAuthExpiredAndRedirect(this.$router)
+        throw new Error('登录信息已失效，请重新登录')
       }
 
       const response = await fetch(url, {
@@ -395,6 +397,10 @@ export default {
         }
       })
 
+      if (response.status === 401) {
+        notifyAuthExpiredAndRedirect(this.$router)
+        throw new Error('登录信息已失效，请重新登录')
+      }
       if (!response.ok) {
         throw new Error(`下载失败（${response.status}）`)
       }
