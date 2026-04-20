@@ -146,7 +146,10 @@ public class EvaluationServiceImpl implements EvaluationService {
             evaluation.setUpdateTime(now());
             evaluationRepository.save(evaluation);
 
-            if (taskConfig != null && taskConfig.getCurriculumStages() != null && !taskConfig.getCurriculumStages().isEmpty()) {
+            if (isLunarEnvironment(environment)
+                    && taskConfig != null
+                    && taskConfig.getCurriculumStages() != null
+                    && !taskConfig.getCurriculumStages().isEmpty()) {
                 if (workspaceConfig == null || workspaceConfig.isBlank()) {
                     throw new IllegalStateException("evaluation.workspace 未配置，无法写入关卡 envSpec");
                 }
@@ -214,6 +217,10 @@ public class EvaluationServiceImpl implements EvaluationService {
             }
         }
         return null;
+    }
+
+    private static boolean isLunarEnvironment(String environment) {
+        return environment != null && "LunarLander-v3".equalsIgnoreCase(environment.trim());
     }
 
 //    @Override

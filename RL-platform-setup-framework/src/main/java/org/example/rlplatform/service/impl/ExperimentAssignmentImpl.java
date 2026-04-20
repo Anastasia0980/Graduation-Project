@@ -71,7 +71,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
 
         ExperimentConfig config = experimentAssignment.getConfig();
         if (config != null) {
-            validateConfigByMode(experimentAssignment.getEvaluationMode(), config);
+            validateConfigByMode(experimentAssignment.getEvaluationMode(), config, experimentAssignment.getEnvironment());
             try {
                 experimentAssignment.setConfigJson(objectMapper.writeValueAsString(config));
             } catch (JsonProcessingException e) {
@@ -98,7 +98,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
                 throw new IllegalStateException("任务缺少配置，无法发布");
             }
         } else {
-            validateConfigByMode(db.getEvaluationMode(), cfg);
+            validateConfigByMode(db.getEvaluationMode(), cfg, db.getEnvironment());
         }
         db.setPublicationStatus(PublicationStatus.PUBLISHED);
         db.setUpdateTime(LocalDateTime.now());
@@ -145,7 +145,10 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
 
         ExperimentConfig config = dbassignment.getConfig();
         if (config != null) {
-            validateConfigByMode(dbassignment.getEvaluationMode(), config);
+            String envForValidation = experimentAssignment.getEnvironment() != null
+                    ? experimentAssignment.getEnvironment()
+                    : dbassignment.getEnvironment();
+            validateConfigByMode(dbassignment.getEvaluationMode(), config, envForValidation);
             try {
                 dbassignment.setConfigJson(objectMapper.writeValueAsString(config));
             } catch (JsonProcessingException e) {
@@ -218,7 +221,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         return config.getCurriculumStages() != null && !config.getCurriculumStages().isEmpty();
     }
 
-    private void validateConfigByMode(EvaluationMode mode, ExperimentConfig config) {
+    private void validateConfigByMode(EvaluationMode mode, ExperimentConfig config, String environment) {
         if (mode != EvaluationMode.SINGLE) {
             return;
         }
@@ -233,7 +236,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         }
 
         if (usesCurriculumStages(config)) {
-            validateCurriculumStages(config);
+            validateCurriculumStages(config, isLunarEnvironment(environment));
             return;
         }
 
@@ -273,7 +276,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         }
     }
 
-    private void validateCurriculumStages(ExperimentConfig config) {
+    private void validateCurriculumStages(ExperimentConfig config, boolean lunarEnvironment) {
         List<CurriculumStageConfig> stages = config.getCurriculumStages();
         if (stages == null || stages.isEmpty()) {
             throw new IllegalArgumentException("curriculumStages 不能为空");
@@ -292,14 +295,16 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
                 throw new IllegalArgumentException("stageId 重复: " + sid);
             }
             JsonNode spec = s.getEnvSpec();
-            if (spec == null || spec.isNull() || !spec.isObject() || spec.size() == 0) {
-                throw new IllegalArgumentException("关卡 " + sid + " 的 envSpec 必须为非空 JSON 对象");
-            }
-            var fieldNames = spec.fieldNames();
-            while (fieldNames.hasNext()) {
-                String fn = fieldNames.next();
-                if (!ALLOWED_ENV_SPEC_KEYS.contains(fn)) {
-                    throw new IllegalArgumentException("关卡 " + sid + " envSpec 含非法字段: " + fn);
+            if (lunarEnvironment) {
+                if (spec == null || spec.isNull() || !spec.isObject() || spec.size() == 0) {
+                    throw new IllegalArgumentException("LunarLander 关卡 " + sid + " 的 envSpec 必须为非空 JSON 对象");
+                }
+                var fieldNames = spec.fieldNames();
+                while (fieldNames.hasNext()) {
+                    String fn = fieldNames.next();
+                    if (!ALLOWED_ENV_SPEC_KEYS.contains(fn)) {
+                        throw new IllegalArgumentException("关卡 " + sid + " envSpec 含非法字段: " + fn);
+                    }
                 }
             }
             BaselineOption baseline = s.getBaseline();
@@ -347,6 +352,10 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
             out.set("taskBaselineOptions", tbo);
         }
         return out;
+    }
+
+    private static boolean isLunarEnvironment(String environment) {
+        return environment != null && "LunarLander-v3".equalsIgnoreCase(environment.trim());
     }
 
     private boolean modelPathExistsUnderBaselineRoot(String modelPath) {

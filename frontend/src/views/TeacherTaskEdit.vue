@@ -263,7 +263,7 @@
                     <span class='baseline-upload-label'>标题</span>
                     <input v-model='stage.title' class='baseline-algo-input' :disabled='publicationStatus === "PUBLISHED"' placeholder='关卡名称' />
                   </div>
-                  <div class='baseline-row' style='align-items:flex-start'>
+                  <div v-if='isLunarEnvironment' class='baseline-row' style='align-items:flex-start'>
                     <span class='baseline-upload-label'>envSpec</span>
                     <textarea
                       v-model='stage.envSpecText'
@@ -565,6 +565,9 @@ export default {
     }
   },
   computed: {
+    isLunarEnvironment () {
+      return (this.taskForm.environmentCode || '').trim() === 'LunarLander-v3'
+    },
     easyBotStatusText () {
       return this.easyBotConfigured ? '已配置' : '未配置'
     },
@@ -1171,12 +1174,6 @@ export default {
 
       const env = this.taskForm.environmentCode || 'tictactoe_v3'
       const curriculumStages = this.curriculumStages.map(s => {
-        let envSpec
-        try {
-          envSpec = JSON.parse(s.envSpecText || '{}')
-        } catch (e) {
-          throw new Error('envSpec JSON 解析失败：' + (s.stageId || ''))
-        }
         const selectedId = s.selectedBaselineId
         if (!selectedId) {
           throw new Error('关卡未选择 baseline：' + (s.stageId || ''))
@@ -1196,12 +1193,21 @@ export default {
             modelPath: `${env}/${s.stageId}/${algoKey}/baseline.pth`
           }
         }
-        return {
+        const stagePayload = {
           stageId: String(s.stageId || '').trim(),
           title: s.title || '',
-          envSpec,
           baseline
         }
+        if (this.isLunarEnvironment) {
+          let envSpec
+          try {
+            envSpec = JSON.parse(s.envSpecText || '{}')
+          } catch (e) {
+            throw new Error('envSpec JSON 解析失败：' + (s.stageId || ''))
+          }
+          stagePayload.envSpec = envSpec
+        }
+        return stagePayload
       })
 
       return { ...base, curriculumStages }
@@ -1248,11 +1254,13 @@ export default {
           return false
         }
         for (const s of this.curriculumStages) {
-          try {
-            JSON.parse(s.envSpecText || '{}')
-          } catch (e) {
-            ElMessage.warning(`关卡 ${s.stageId} 的 envSpec 不是合法 JSON`)
-            return false
+          if (this.isLunarEnvironment) {
+            try {
+              JSON.parse(s.envSpecText || '{}')
+            } catch (e) {
+              ElMessage.warning(`关卡 ${s.stageId} 的 envSpec 不是合法 JSON`)
+              return false
+            }
           }
           if (!s.selectedBaselineId) {
             ElMessage.warning(`请为关卡 ${s.stageId} 选择 baseline`)
