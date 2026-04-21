@@ -82,7 +82,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         throw new RuntimeException("token version is invalid");
                     }
                     // 认证通过后刷新 Redis 会话 TTL，实现“最后活跃后 1 小时失效”。
-                    stringRedisTemplate.expire(key, SESSION_TTL_HOURS, TimeUnit.MINUTES);
+                    stringRedisTemplate.expire(key, SESSION_TTL_HOURS, TimeUnit.HOURS);
                 }
 
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
