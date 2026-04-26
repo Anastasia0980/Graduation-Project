@@ -35,7 +35,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
     private ObjectMapper objectMapper;
 
     @Override
-    public void create(Integer classId, ExperimentAssignment experimentAssignment) {
+    public ExperimentAssignment create(Integer classId, ExperimentAssignment experimentAssignment) {
         Map<String, Object> claims = ThreadLocalUtil.get();
         Integer userId = (Integer) claims.get("id");
         experimentAssignment.setTeacherId(userId);
@@ -53,11 +53,11 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
             }
         }
 
-        experimentAssignmentRepository.save(experimentAssignment);
+        return experimentAssignmentRepository.save(experimentAssignment);
     }
 
     @Override
-    public void update(Integer assignmentId, ExperimentAssignment experimentAssignment) {
+    public ExperimentAssignment update(Integer assignmentId, ExperimentAssignment experimentAssignment) {
         ExperimentAssignment dbassignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
         System.out.println(dbassignment);
         if (dbassignment == null) {
@@ -68,6 +68,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         dbassignment.setEvaluationMode(experimentAssignment.getEvaluationMode());
         dbassignment.setAgentName(experimentAssignment.getAgentName());
         dbassignment.setEnvironment(experimentAssignment.getEnvironment());
+        dbassignment.setTaskIcon(experimentAssignment.getTaskIcon());
         dbassignment.setDeadline(experimentAssignment.getDeadline());
         dbassignment.setTeamGroupDeadline(experimentAssignment.getTeamGroupDeadline());
         dbassignment.setUpdateTime(LocalDateTime.now());
@@ -82,7 +83,7 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
             }
         }
 
-        experimentAssignmentRepository.save(dbassignment);
+        return experimentAssignmentRepository.save(dbassignment);
     }
 
     @Override

@@ -233,6 +233,13 @@ import defaultAvatar from '../assets/logo.png'
 
 const API_BASE = 'http://localhost:8080'
 
+function normalizeFileUrl (url) {
+  if (!url) return ''
+  if (/^https?:\/\//.test(url)) return url
+  if (url.startsWith('/')) return `${API_BASE}${url}`
+  return `${API_BASE}/${url}`
+}
+
 export default {
   name: 'TeacherHomeView',
   components: {
@@ -255,6 +262,7 @@ export default {
         name: '',
         email: ''
       },
+      selectedAvatarFile: null,
       showEditDialog: false,
       showDeleteDialog: false,
       showPwdDialog: false,
@@ -320,7 +328,7 @@ export default {
         }
 
         const userInfo = result.data
-        this.profile.avatar = userInfo.userPic || defaultAvatar
+        this.profile.avatar = userInfo.userPic ? normalizeFileUrl(userInfo.userPic) : defaultAvatar
         this.profile.name = userInfo.username || '教师'
         this.profile.email = userInfo.email || ''
         this.profile.role = this.formatRole(userInfo.role)
@@ -394,15 +402,18 @@ export default {
         name: this.profile.name,
         email: this.profile.email
       }
+      this.selectedAvatarFile = null
       this.showEditDialog = true
     },
     closeEditDialog () {
       this.showEditDialog = false
       this.showDeleteDialog = false
+      this.selectedAvatarFile = null
     },
     handleAvatarChange (event) {
       const file = event.target.files && event.target.files[0]
       if (!file) return
+      this.selectedAvatarFile = file
       this.editForm.avatar = URL.createObjectURL(file)
     },
     async saveProfileChanges () {
@@ -429,11 +440,29 @@ export default {
           return
         }
 
+        if (this.selectedAvatarFile) {
+          const avatarFormData = new FormData()
+          avatarFormData.append('file', this.selectedAvatarFile)
+          const avatarResponse = await fetch(`${API_BASE}/user/avatar`, {
+            method: 'POST',
+            headers: this.getAuthHeaders(),
+            body: avatarFormData
+          })
+          const avatarResult = await avatarResponse.json()
+          if (!avatarResponse.ok || avatarResult.code !== 0) {
+            this.resultMessage = avatarResult.message || '头像上传失败。'
+            this.showResultDialog = true
+            return
+          }
+          this.profile.avatar = avatarResult.data ? normalizeFileUrl(avatarResult.data) : this.editForm.avatar
+        }
+
         this.profile.name = this.editForm.name
         this.profile.email = this.editForm.email
         localStorage.setItem('auth_name', this.profile.name)
         localStorage.setItem('auth_email', this.profile.email)
         await this.loadProfile()
+        this.selectedAvatarFile = null
         this.showEditDialog = false
         this.resultMessage = '个人信息修改完成。'
         this.showResultDialog = true

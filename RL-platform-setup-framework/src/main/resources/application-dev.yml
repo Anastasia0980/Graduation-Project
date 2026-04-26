@@ -7,6 +7,11 @@ spring:
     password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+    servlet:
+      multipart:
+        max-file-size: 200MB
+        max-request-size: 200MB
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -36,3 +41,15 @@ battle:
 
 system:
   bot-root: "E:/system_model"
+
+conda:
+  executable: "E:/Anaconda/Scripts/conda.exe"
+  envs-root: "E:/Anaconda/envs"
+
+battle-env:
+  root: "E:/RL_Result/battle_envs"
+  python-version: "3.9"
+
+platform:
+  upload:
+    base-dir: "uploads"

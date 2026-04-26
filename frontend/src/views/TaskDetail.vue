@@ -50,7 +50,7 @@
               </div>
 
               <div class='intro-image-box'>
-                <img :src='tictactoeImage' alt='井字棋环境示意图' class='intro-image' />
+                <img :src='taskImage' alt='任务图标' class='intro-image' />
               </div>
             </div>
           </section>
@@ -590,6 +590,13 @@ import tictactoeImage from '../assets/tictactoe.png'
 
 const API_BASE = 'http://localhost:8080'
 
+function normalizeFileUrl (url) {
+  if (!url) return ''
+  if (/^https?:\/\//.test(url)) return url
+  if (url.startsWith('/')) return `${API_BASE}${url}`
+  return `${API_BASE}/${url}`
+}
+
 export default {
   name: 'TaskDetailView',
   components: {
@@ -597,7 +604,7 @@ export default {
   },
   data () {
     return {
-      tictactoeImage,
+      taskImage: tictactoeImage,
       loadingPage: false,
       loadingSubmit: false,
       taskTitle: '井字棋任务',
@@ -841,6 +848,7 @@ export default {
       this.rewardText = config.rewardFunction || '当前暂无奖励说明。'
       this.evaluationText = config.evaluationFunction || '当前暂无评测说明。'
       this.algorithmTags = this.parseAgentNames(task.agentName)
+      this.taskImage = task.taskIcon ? normalizeFileUrl(task.taskIcon) : tictactoeImage
     },
     parseTaskConfig (task) {
       if (task.config && typeof task.config === 'object') {

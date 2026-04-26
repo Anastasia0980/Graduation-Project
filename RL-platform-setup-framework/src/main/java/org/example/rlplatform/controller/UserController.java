@@ -8,6 +8,7 @@ import org.example.rlplatform.entity.StudentClass;
 import org.example.rlplatform.entity.User;
 import org.example.rlplatform.entity.UserRole;
 import org.example.rlplatform.service.UserService;
+import org.example.rlplatform.service.impl.LocalFileStorageService;
 import org.example.rlplatform.utils.JwtUtil;
 import org.example.rlplatform.utils.Md5Util;
 import org.example.rlplatform.utils.ThreadLocalUtil;
@@ -18,6 +19,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -34,6 +36,9 @@ public class UserController {
 
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+
+    @Autowired
+    private LocalFileStorageService localFileStorageService;
 
     @PostMapping("/register")
     public Result register(
@@ -107,6 +112,13 @@ public class UserController {
     public Result updateAvatar(@RequestParam @URL String avatarUrl){
         userService.updateAvatar(avatarUrl);
         return Result.success();
+    }
+
+    @PostMapping("/avatar")
+    public Result<String> uploadAvatar(@RequestParam("file") MultipartFile file){
+        String avatarUrl = localFileStorageService.storeImage(file, "avatars");
+        userService.updateAvatar(avatarUrl);
+        return Result.success(avatarUrl);
     }
 
     @PatchMapping("/updatePwd")

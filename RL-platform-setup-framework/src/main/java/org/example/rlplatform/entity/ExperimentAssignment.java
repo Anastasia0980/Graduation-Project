@@ -40,6 +40,9 @@ public class ExperimentAssignment {
     @Column(nullable = false)
     private String environment;
 
+    @Column(name = "task_icon")
+    private String taskIcon;
+
     @Column(nullable = false)
     private LocalDateTime deadline;
 

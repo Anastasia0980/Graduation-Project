@@ -146,6 +146,13 @@ import tictactoeImage from '../assets/tictactoe.png'
 
 const API_BASE = 'http://localhost:8080'
 
+function normalizeFileUrl (url) {
+  if (!url) return ''
+  if (/^https?:\/\//.test(url)) return url
+  if (url.startsWith('/')) return `${API_BASE}${url}`
+  return `${API_BASE}/${url}`
+}
+
 export default {
   name: 'HomeView',
   components: {
@@ -259,7 +266,7 @@ export default {
         desc: this.getTaskDescription(item),
         teacher: item.teacherName || item.teacherUsername || item.teacher || '--',
         deadline: this.formatDateTime(item.deadline),
-        image: tictactoeImage,
+        image: item.taskIcon ? normalizeFileUrl(item.taskIcon) : tictactoeImage,
         taskMode: this.mapTaskMode(evaluationMode),
         modeLabel: this.mapModeLabel(evaluationMode),
         hasEasyBot: false,

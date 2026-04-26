@@ -171,6 +171,13 @@ import defaultAvatar from '../assets/logo.png'
 
 const API_BASE = 'http://localhost:8080'
 
+function normalizeFileUrl (url) {
+  if (!url) return ''
+  if (/^https?:\/\//.test(url)) return url
+  if (url.startsWith('/')) return `${API_BASE}${url}`
+  return `${API_BASE}/${url}`
+}
+
 export default {
   name: 'TeacherStudentDetailView',
   components: {
@@ -248,7 +255,7 @@ export default {
         if (!targetStudent) return
 
         this.student = {
-          avatar: targetStudent.userPic || defaultAvatar,
+          avatar: targetStudent.userPic ? normalizeFileUrl(targetStudent.userPic) : defaultAvatar,
           name: targetStudent.username || '—',
           email: targetStudent.email || '—'
         }

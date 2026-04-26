@@ -10,9 +10,9 @@ public interface ExperimentAssignmentService {
 
     Page<ExperimentAssignment> listStuAssignments(Integer pageNum, Integer pageSize);
 
-    void create(Integer classId, ExperimentAssignment experimentAssignment);
+    ExperimentAssignment create(Integer classId, ExperimentAssignment experimentAssignment);
 
-    void update(Integer assignmentId, ExperimentAssignment experimentAssignment);
+    ExperimentAssignment update(Integer assignmentId, ExperimentAssignment experimentAssignment);
 
     Page<ExperimentAssignment> listTeaAssignments(Integer pageNum, Integer pageSize);
 

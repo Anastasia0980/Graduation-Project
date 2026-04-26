@@ -170,7 +170,10 @@ import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 
-const API_BASE = 'http://localhost:8080'
+const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:8080`
+    : 'http://localhost:8080')
 
 export default {
   name: 'StudentHistoryView',

@@ -30,31 +30,37 @@
         </div>
 
         <div class='table-card'>
-          <table class='resource-table'>
+          <div v-if='loading' class='empty-cell loading-box'>正在加载可下载内容...</div>
+          <table v-else class='resource-table'>
             <thead>
               <tr>
-                <th>环境名称</th>
+                <th>名称</th>
+                <th>内容说明</th>
                 <th>发布时间</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if='pagedResourceList.length === 0'>
-                <td colspan='3' class='empty-cell'>当前暂无可下载环境</td>
+                <td colspan='4' class='empty-cell'>当前暂无可下载内容</td>
               </tr>
-              <tr v-else v-for='item in pagedResourceList' :key='item.id'>
-                <td>{{ item.envName }}</td>
+              <tr v-else v-for='item in pagedResourceList' :key='`${item.itemType}_${item.id}`'>
+                <td>{{ item.name }}</td>
                 <td>
-                  <span class='publish-time'>{{ item.publishTime }}</span>
+                  <span class='resource-subtitle'>{{ item.subtitle || '--' }}</span>
                 </td>
                 <td>
-                  <button class='table-btn' @click='openDownloadDialog(item)'>下载</button>
+                  <span class='publish-time'>{{ formatDateTime(item.createTime) }}</span>
+                </td>
+                <td>
+                  <button class='table-btn' @click='downloadItem(item)'>下载</button>
                 </td>
               </tr>
             </tbody>
           </table>
 
           <CommonPagination
+            v-if='!loading'
             v-model:currentPage='currentPage'
             v-model:pageSize='pageSize'
             :total='resourceList.length'
@@ -62,55 +68,6 @@
           />
         </div>
       </main>
-    </div>
-
-    <div v-if='dialogVisible' class='dialog-mask' @click='closeDialog'>
-      <div class='dialog-box' @click.stop>
-        <div class='dialog-header'>
-          <div class='dialog-title'>{{ currentResource.envName }}</div>
-          <button class='close-btn' @click='closeDialog'>关闭</button>
-        </div>
-
-        <div class='dialog-body'>
-          <div class='resource-item'>
-            <div class='resource-main'>
-              <div class='resource-name'>环境依赖（requirements.txt）</div>
-            </div>
-            <button class='download-btn' @click='handleDownload("requirements")'>下载</button>
-          </div>
-
-          <div class='resource-item'>
-            <div class='resource-main'>
-              <div class='resource-name'>算法模板文件（template.py）</div>
-            </div>
-            <button class='download-btn' @click='handleDownload("template")'>下载</button>
-          </div>
-
-          <div class='resource-item'>
-            <div class='resource-main'>
-              <div class='resource-name'>简单 AI</div>
-              <div class='resource-sub'>包含 model.pt、config.json</div>
-            </div>
-            <button class='download-btn' @click='handleDownload("easy")'>下载</button>
-          </div>
-
-          <div class='resource-item'>
-            <div class='resource-main'>
-              <div class='resource-name'>中等 AI</div>
-              <div class='resource-sub'>包含 model.pt、config.json</div>
-            </div>
-            <button class='download-btn' @click='handleDownload("medium")'>下载</button>
-          </div>
-
-          <div class='resource-item'>
-            <div class='resource-main'>
-              <div class='resource-name'>困难 AI</div>
-              <div class='resource-sub'>包含 model.pt、config.json</div>
-            </div>
-            <button class='download-btn' @click='handleDownload("hard")'>下载</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -120,6 +77,11 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+
+const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:8080`
+    : 'http://localhost:8080')
 
 export default {
   name: 'StudentResourceDownloadView',
@@ -132,18 +94,8 @@ export default {
     return {
       currentPage: 1,
       pageSize: 5,
-      dialogVisible: false,
-      currentResource: {
-        id: null,
-        envName: ''
-      },
-      resourceList: [
-        {
-          id: 1,
-          envName: '井字棋对战环境（tictactoe_v3）',
-          publishTime: '2026-03-30 10:00'
-        }
-      ]
+      loading: false,
+      resourceList: []
     }
   },
   computed: {
@@ -156,16 +108,69 @@ export default {
       return this.resourceList.slice(start, end)
     }
   },
+  created () {
+    this.loadResourceList()
+  },
   methods: {
-    openDownloadDialog (item) {
-      this.currentResource = { ...item }
-      this.dialogVisible = true
+    tokenHeader () {
+      const token = localStorage.getItem('auth_token')
+      return token ? { Authorization: `Bearer ${token}` } : {}
     },
-    closeDialog () {
-      this.dialogVisible = false
+    async loadResourceList () {
+      this.loading = true
+      try {
+        const response = await fetch(`${API_BASE}/battle-environments/student-downloads`, {
+          method: 'GET',
+          headers: this.tokenHeader()
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '可下载内容加载失败')
+        }
+        this.resourceList = Array.isArray(result.data) ? result.data : []
+      } catch (error) {
+        this.resourceList = []
+        ElMessage.error(error.message || '可下载内容加载失败')
+      } finally {
+        this.loading = false
+      }
     },
-    handleDownload () {
-      ElMessage.info('下载功能后续接入')
+    async downloadItem (item) {
+      try {
+        const response = await fetch(`${API_BASE}${item.downloadUrl}`, {
+          method: 'GET',
+          headers: this.tokenHeader()
+        })
+        if (!response.ok) {
+          let message = '下载失败'
+          try {
+            const result = await response.json()
+            message = result.message || message
+          } catch (_) {}
+          throw new Error(message)
+        }
+        const blob = await response.blob()
+        this.triggerBrowserDownload(blob, item.downloadName || item.name || 'download')
+      } catch (error) {
+        ElMessage.error(error.message || '下载失败')
+      }
+    },
+    triggerBrowserDownload (blob, filename) {
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename || 'download'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    },
+    formatDateTime (value) {
+      if (!value) {
+        return '--'
+      }
+      const text = String(value).replace('T', ' ')
+      return text.length > 19 ? text.slice(0, 19) : text
     },
     goHomeOpenTasks () {
       this.$router.push({ path: '/', query: { tab: 'open' } })
@@ -258,20 +263,20 @@ export default {
   font-weight: 600;
 }
 
-.publish-time {
+.publish-time,
+.resource-subtitle {
   font-size: 13px;
-  color: #909399;
+  color: #606266;
 }
 
+.loading-box,
 .empty-cell {
   text-align: center;
   color: #909399;
   padding: 24px 0;
 }
 
-.table-btn,
-.download-btn,
-.close-btn {
+.table-btn {
   height: 34px;
   padding: 0 14px;
   border-radius: 4px;
@@ -279,91 +284,5 @@ export default {
   background: #1f4e8c;
   color: #ffffff;
   cursor: pointer;
-  font-size: 14px;
-}
-
-.table-btn:hover,
-.download-btn:hover,
-.close-btn:hover {
-  opacity: 0.92;
-}
-
-.dialog-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  z-index: 3000;
-}
-
-.dialog-box {
-  width: 560px;
-  max-width: 100%;
-  background: #ffffff;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16);
-}
-
-.dialog-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #ebeef5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.dialog-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1f2d3d;
-}
-
-.dialog-body {
-  padding: 20px;
-}
-
-.resource-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 0;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.resource-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.resource-main {
-  min-width: 0;
-}
-
-.resource-name {
-  font-size: 15px;
-  color: #303133;
-  font-weight: 600;
-}
-
-.resource-sub {
-  margin-top: 6px;
-  font-size: 13px;
-  color: #909399;
-}
-
-@media (max-width: 900px) {
-  .layout {
-    flex-direction: column;
-  }
-
-  .resource-item {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }
 </style>

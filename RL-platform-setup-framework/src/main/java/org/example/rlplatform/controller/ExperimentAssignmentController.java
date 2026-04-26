@@ -10,6 +10,7 @@ import org.example.rlplatform.entity.UserRole;
 import org.example.rlplatform.service.EvaluationService;
 import org.example.rlplatform.service.ExperimentAssignmentService;
 import org.example.rlplatform.service.UserService;
+import org.example.rlplatform.service.impl.LocalFileStorageService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.example.rlplatform.vo.TaskOverviewVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,11 +46,14 @@ public class ExperimentAssignmentController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private LocalFileStorageService localFileStorageService;
+
     @PostMapping("class/{classId}/assignments")
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
-    public Result<Void> create(@PathVariable Integer classId, @RequestBody ExperimentAssignment experimentAssignment) {
-        experimentAssignmentService.create(classId, experimentAssignment);
-        return Result.success();
+    public Result<Integer> create(@PathVariable Integer classId, @RequestBody ExperimentAssignment experimentAssignment) {
+        ExperimentAssignment created = experimentAssignmentService.create(classId, experimentAssignment);
+        return Result.success(created == null ? null : created.getId());
     }
 
     @PatchMapping("assignments/{assignmentId}")
@@ -57,6 +61,13 @@ public class ExperimentAssignmentController {
     public Result<Void> update(@PathVariable Integer assignmentId, @RequestBody ExperimentAssignment experimentAssignment) {
         experimentAssignmentService.update(assignmentId, experimentAssignment);
         return Result.success();
+    }
+
+
+    @PostMapping("assignments/icon")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<String> uploadTaskIcon(@RequestParam("file") MultipartFile file) {
+        return Result.success(localFileStorageService.storeImage(file, "task-icons"));
     }
 
     @GetMapping("me/assignments")

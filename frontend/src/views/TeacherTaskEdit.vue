@@ -241,8 +241,24 @@
               <div class='form-item full-width'>
                 <label>模型环境</label>
                 <select v-model='taskForm.environmentCode'>
-                  <option value='tictactoe_v3'>tictactoe_v3</option>
-                  <option value='connect_four_v3'>connect_four_v3</option>
+                  <template v-if='isBattleLikeMode'>
+                    <option
+                      v-for='item in battleEnvironmentOptions'
+                      :key='item.code'
+                      :value='item.code'
+                    >
+                      {{ item.code }}
+                    </option>
+                  </template>
+                  <template v-else>
+                    <option
+                      v-for='item in singleEnvironmentOptions'
+                      :key='item.code'
+                      :value='item.code'
+                    >
+                      {{ item.code }}
+                    </option>
+                  </template>
                 </select>
               </div>
 
@@ -411,6 +427,8 @@ export default {
       taskMode: 'single',
       teamMin: '1',
       teamMax: '3',
+      taskIconUrl: '',
+      selectedTaskIconFile: null,
       taskIconFileName: '当前未选择文件',
 
       easyBotConfigFileName: '当前未选择文件',
@@ -434,12 +452,20 @@ export default {
       classMap: {},
       algorithmOptions: ['DDPG', 'DQN', 'QLearning'],
       selectedAlgorithms: [],
+      envOptions: [],
+      fixedBattleEnvironmentOptions: [
+        { code: 'tictactoe_v3' }
+      ],
+      singleEnvironmentOptions: [
+        { code: 'LunarLander-v3' },
+        { code: 'HalfCheetah-v2' }
+      ],
       algorithmDialogVisible: false,
       customAlgorithmName: '',
       taskForm: {
         name: '',
         classId: '',
-        environmentCode: 'tictactoe_v3',
+        environmentCode: 'LunarLander-v3',
         deadline: '',
         intro: '',
         rule: '',
@@ -452,6 +478,26 @@ export default {
     }
   },
   computed: {
+    isBattleLikeMode () {
+      return this.taskMode === 'battle' || this.taskMode === 'tournament'
+    },
+    battleEnvironmentOptions () {
+      const merged = []
+      const seen = new Set()
+      const allOptions = []
+        .concat(this.fixedBattleEnvironmentOptions || [])
+        .concat(this.envOptions || [])
+
+      allOptions.forEach(item => {
+        if (!item || !item.code || seen.has(item.code)) {
+          return
+        }
+        seen.add(item.code)
+        merged.push(item)
+      })
+
+      return merged
+    },
     easyBotStatusText () {
       return this.easyBotConfigured ? '已配置' : '未配置'
     },
@@ -466,6 +512,11 @@ export default {
     this.taskId = this.$route.params.taskId
     this.initTaskData()
   },
+  watch: {
+    taskMode () {
+      this.ensureEnvironmentSelectedByMode()
+    }
+  },
   methods: {
     async initTaskData () {
       const token = localStorage.getItem('auth_token')
@@ -478,6 +529,7 @@ export default {
       this.loading = true
       try {
         await this.loadClassOptions(token)
+        await this.loadBattleEnvironmentOptions(token)
 
         const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`, {
           method: 'GET',
@@ -544,6 +596,49 @@ export default {
         this.classMap = {}
       }
     },
+    async loadBattleEnvironmentOptions (token) {
+      try {
+        const response = await fetch(`${API_BASE}/battle-environments/ready`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          this.envOptions = []
+          return
+        }
+        this.envOptions = Array.isArray(result.data) ? result.data : []
+        this.ensureEnvironmentSelectedByMode()
+      } catch (error) {
+        this.envOptions = []
+      }
+    },
+    ensureEnvironmentSelectedByMode () {
+      if (this.isBattleLikeMode) {
+        if (this.battleEnvironmentOptions.length === 0) {
+          return
+        }
+        const exists = this.battleEnvironmentOptions.some(item => item.code === this.taskForm.environmentCode)
+        if (!exists && this.taskForm.environmentCode) {
+          this.envOptions = [{ code: this.taskForm.environmentCode }].concat(this.envOptions)
+          return
+        }
+        if (!exists) {
+          this.taskForm.environmentCode = this.battleEnvironmentOptions[0].code
+        }
+        return
+      }
+
+      if (this.singleEnvironmentOptions.length === 0) {
+        return
+      }
+      const exists = this.singleEnvironmentOptions.some(item => item.code === this.taskForm.environmentCode)
+      if (!exists) {
+        this.taskForm.environmentCode = this.singleEnvironmentOptions[0].code
+      }
+    },
     async loadBotStatus () {
       const token = localStorage.auth_token
         ? `Bearer ${localStorage.auth_token}`
@@ -594,6 +689,10 @@ export default {
       this.taskMode = this.parseTaskMode(task.evaluationMode)
       this.selectedAlgorithms = this.parseAgentNames(task.agentName)
       this.algorithmOptions = this.mergeAlgorithmOptions(config, this.selectedAlgorithms)
+      this.selectedTaskIconFile = null
+      this.taskIconUrl = task.taskIcon || ''
+      this.taskIconFileName = task.taskIcon ? this.extractFileName(task.taskIcon) : '当前未选择文件'
+
       this.taskForm = {
         name: task.title || '',
         classId,
@@ -607,6 +706,7 @@ export default {
         evaluation: config.evaluationFunction || '',
         teamGroupDeadline: this.formatForDatetimeLocal(task.teamGroupDeadline)
       }
+      this.ensureEnvironmentSelectedByMode()
     },
     parseTaskConfig (task) {
       if (task.config && typeof task.config === 'object') {
@@ -688,6 +788,7 @@ export default {
     },
     handleTaskIconChange (event) {
       const file = event.target.files && event.target.files[0]
+      this.selectedTaskIconFile = file || null
       this.taskIconFileName = file ? file.name : this.taskIconFileName
     },
     handleBotFileChange (event, level, fileType) {
@@ -804,6 +905,36 @@ export default {
       }
       return true
     },
+
+    extractFileName (value) {
+      if (!value) return '当前未选择文件'
+      const normalized = String(value).split('?')[0]
+      const parts = normalized.split('/')
+      return parts[parts.length - 1] || '当前未选择文件'
+    },
+    async uploadTaskIcon (token) {
+      if (!this.selectedTaskIconFile) {
+        return this.taskIconUrl || null
+      }
+
+      const formData = new FormData()
+      formData.append('file', this.selectedTaskIconFile)
+
+      const response = await fetch(`${API_BASE}/assignments/icon`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData
+      })
+
+      const result = await response.json()
+      if (!response.ok || result.code !== 0) {
+        throw new Error(result.message || '任务图标上传失败')
+      }
+
+      return result.data || this.taskIconUrl || null
+    },
     async uploadBotPair (level, token) {
       const pair = this.botFiles[level]
       if (!pair.config || !pair.model) {
@@ -843,18 +974,21 @@ export default {
         return
       }
 
-      const payload = {
-        title: this.taskForm.name.trim(),
-        evaluationMode: this.getEvaluationModeValue(),
-        agentName: this.selectedAlgorithms.join(','),
-        environment: this.taskForm.environmentCode,
-        deadline: this.taskForm.deadline,
-        teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
-        config: this.buildConfigPayload()
-      }
-
       this.saving = true
       try {
+        const taskIcon = await this.uploadTaskIcon(token)
+
+        const payload = {
+          title: this.taskForm.name.trim(),
+          evaluationMode: this.getEvaluationModeValue(),
+          agentName: this.selectedAlgorithms.join(','),
+          environment: this.taskForm.environmentCode,
+          taskIcon,
+          deadline: this.taskForm.deadline,
+          teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
+          config: this.buildConfigPayload()
+        }
+
         const response = await fetch(`${API_BASE}/assignments/${this.taskId}`, {
           method: 'PATCH',
           headers: {
@@ -876,10 +1010,10 @@ export default {
           await this.loadBotStatus()
         }
 
-        ElMessage.success('保存修改成功')
+        ElMessage.success('任务修改成功')
         this.$router.push('/teacher/tasks')
       } catch (error) {
-        ElMessage.error(error.message || '保存修改失败，请检查后端是否已启动')
+        ElMessage.error(error.message || '保存修改失败，请检查后端服务')
       } finally {
         this.saving = false
       }

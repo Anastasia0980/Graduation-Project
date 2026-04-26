@@ -12,6 +12,7 @@ import org.example.rlplatform.battle.BattleRunner;
 import org.example.rlplatform.entity.*;
 import org.example.rlplatform.service.BattleService;
 import org.example.rlplatform.service.SystemBotService;
+import org.example.rlplatform.service.BattleEnvironmentService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.example.rlplatform.vo.BattleModelOptionVO;
 import org.example.rlplatform.vo.BattleTaskDetailVO;
@@ -43,6 +44,7 @@ public class BattleServiceImpl implements BattleService {
     private final UserRepository userRepository;
     private final TeamGroupRepository teamGroupRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final BattleEnvironmentService battleEnvironmentService;
 
     @Value("${evaluation.workspace:}")
     private String workspace;
@@ -57,7 +59,8 @@ public class BattleServiceImpl implements BattleService {
             SystemBotService systemBotService,
             UserRepository userRepository,
             TeamGroupRepository teamGroupRepository,
-            TeamMemberRepository teamMemberRepository
+            TeamMemberRepository teamMemberRepository,
+            BattleEnvironmentService battleEnvironmentService
     ) {
         this.evaluationRepository = evaluationRepository;
         this.evaluationResultRepository = evaluationResultRepository;
@@ -69,6 +72,7 @@ public class BattleServiceImpl implements BattleService {
         this.userRepository = userRepository;
         this.teamGroupRepository = teamGroupRepository;
         this.teamMemberRepository = teamMemberRepository;
+        this.battleEnvironmentService = battleEnvironmentService;
     }
 
     @Override
@@ -106,7 +110,7 @@ public class BattleServiceImpl implements BattleService {
                 return Result.error("任务未配置环境");
             }
 
-            String rel = saveStudentFiles(studentId, model, config);
+            String rel = saveStudentFiles(studentId, assignment.getEnvironment(), model, config);
 
             BattleModelSubmission submission = new BattleModelSubmission();
             submission.setAssignmentId(assignmentId);
@@ -282,7 +286,7 @@ public class BattleServiceImpl implements BattleService {
                 return Result.error("任务未配置环境");
             }
 
-            String rel = saveStudentFiles(studentId, model, config);
+            String rel = saveStudentFiles(studentId, assignment.getEnvironment(), model, config);
 
             String botAbsDir = systemBotService.getBotAbsoluteDir(assignmentId, difficulty);
             Path botPath = Paths.get(botAbsDir);
@@ -455,10 +459,13 @@ public class BattleServiceImpl implements BattleService {
         return currentUserId.longValue();
     }
 
-    private String saveStudentFiles(Long studentId, MultipartFile model, MultipartFile config) throws Exception {
-        String baseDir = (workspace != null && !workspace.isBlank())
+    private String saveStudentFiles(Long studentId, String environmentCode, MultipartFile model, MultipartFile config) throws Exception {
+        String resolvedWorkspace = battleEnvironmentService.resolveWorkspace(environmentCode);
+        String baseDir = (resolvedWorkspace != null && !resolvedWorkspace.isBlank())
+                ? resolvedWorkspace
+                : ((workspace != null && !workspace.isBlank())
                 ? workspace
-                : Paths.get(System.getProperty("user.dir")).toString();
+                : Paths.get(System.getProperty("user.dir")).toString());
 
         String uuid = UUID.randomUUID().toString().replace("-", "");
         Path studentDir = Paths.get(baseDir, "uploads", String.valueOf(studentId), uuid);

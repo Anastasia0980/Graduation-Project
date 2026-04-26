@@ -232,8 +232,24 @@
             <div class='form-item full-width'>
               <label>模型环境</label>
               <select v-model='taskForm.environmentCode'>
-                <option value='tictactoe_v3'>tictactoe_v3</option>
-                <option value='connect_four_v3'>connect_four_v3</option>
+                <template v-if='isBattleLikeMode'>
+                  <option
+                    v-for='item in battleEnvironmentOptions'
+                    :key='item.code'
+                    :value='item.code'
+                  >
+                    {{ item.code }}
+                  </option>
+                </template>
+                <template v-else>
+                  <option
+                    v-for='item in singleEnvironmentOptions'
+                    :key='item.code'
+                    :value='item.code'
+                  >
+                    {{ item.code }}
+                  </option>
+                </template>
               </select>
             </div>
 
@@ -399,6 +415,7 @@ export default {
       taskMode: 'single',
       teamMin: '1',
       teamMax: '3',
+      selectedTaskIconFile: null,
       taskIconFileName: '当前未选择文件',
       easyBotConfigFileName: '当前未选择文件',
       easyBotModelFileName: '当前未选择文件',
@@ -409,12 +426,20 @@ export default {
       classOptions: [],
       algorithmOptions: ['DDPG', 'DQN', 'QLearning'],
       selectedAlgorithms: [],
+      envOptions: [],
+      fixedBattleEnvironmentOptions: [
+        { code: 'tictactoe_v3' }
+      ],
+      singleEnvironmentOptions: [
+        { code: 'LunarLander-v3' },
+        { code: 'HalfCheetah-v2' }
+      ],
       algorithmDialogVisible: false,
       customAlgorithmName: '',
       taskForm: {
         name: '',
         classId: '',
-        environmentCode: 'tictactoe_v3',
+        environmentCode: 'LunarLander-v3',
         deadline: '',
         intro: '',
         rule: '',
@@ -426,8 +451,36 @@ export default {
       }
     }
   },
+  computed: {
+    isBattleLikeMode () {
+      return this.taskMode === 'battle' || this.taskMode === 'tournament'
+    },
+    battleEnvironmentOptions () {
+      const merged = []
+      const seen = new Set()
+      const allOptions = []
+        .concat(this.fixedBattleEnvironmentOptions || [])
+        .concat(this.envOptions || [])
+
+      allOptions.forEach(item => {
+        if (!item || !item.code || seen.has(item.code)) {
+          return
+        }
+        seen.add(item.code)
+        merged.push(item)
+      })
+
+      return merged
+    }
+  },
   created () {
     this.loadClassOptions()
+    this.loadBattleEnvironmentOptions()
+  },
+  watch: {
+    taskMode () {
+      this.ensureEnvironmentSelectedByMode()
+    }
   },
   methods: {
     async loadClassOptions () {
@@ -463,6 +516,49 @@ export default {
         this.classOptions = []
       }
     },
+    async loadBattleEnvironmentOptions () {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        return
+      }
+      try {
+        const response = await fetch(`${API_BASE}/battle-environments/ready`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          this.envOptions = []
+          return
+        }
+        this.envOptions = Array.isArray(result.data) ? result.data : []
+        this.ensureEnvironmentSelectedByMode()
+      } catch (error) {
+        this.envOptions = []
+      }
+    },
+    ensureEnvironmentSelectedByMode () {
+      if (this.isBattleLikeMode) {
+        if (this.battleEnvironmentOptions.length === 0) {
+          return
+        }
+        const exists = this.battleEnvironmentOptions.some(item => item.code === this.taskForm.environmentCode)
+        if (!exists) {
+          this.taskForm.environmentCode = this.battleEnvironmentOptions[0].code
+        }
+        return
+      }
+
+      if (this.singleEnvironmentOptions.length === 0) {
+        return
+      }
+      const exists = this.singleEnvironmentOptions.some(item => item.code === this.taskForm.environmentCode)
+      if (!exists) {
+        this.taskForm.environmentCode = this.singleEnvironmentOptions[0].code
+      }
+    },
     triggerFileInput (refName) {
       const input = this.$refs[refName]
       if (input) {
@@ -471,6 +567,7 @@ export default {
     },
     handleTaskIconChange (event) {
       const file = event.target.files && event.target.files[0]
+      this.selectedTaskIconFile = file || null
       this.taskIconFileName = file ? file.name : '当前未选择文件'
     },
     handleBotFileChange (event, level, type) {
@@ -496,6 +593,30 @@ export default {
           this.hardBotModelFileName = fileName
         }
       }
+    },
+
+    async uploadTaskIcon (token) {
+      if (!this.selectedTaskIconFile) {
+        return null
+      }
+
+      const formData = new FormData()
+      formData.append('file', this.selectedTaskIconFile)
+
+      const response = await fetch(`${API_BASE}/assignments/icon`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: formData
+      })
+
+      const result = await response.json()
+      if (!response.ok || result.code !== 0) {
+        throw new Error(result.message || '任务图标上传失败')
+      }
+
+      return result.data || null
     },
     async uploadSystemBotFiles (assignmentId, token) {
       const uploadOne = async (difficulty, configRef, modelRef) => {
@@ -643,18 +764,21 @@ export default {
         return
       }
 
-      const payload = {
-        title: this.taskForm.name.trim(),
-        evaluationMode: this.getEvaluationModeValue(),
-        agentName: this.selectedAlgorithms.join(','),
-        environment: this.taskForm.environmentCode,
-        deadline: this.taskForm.deadline,
-        teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
-        config: this.buildConfigPayload()
-      }
-
       this.publishing = true
       try {
+        const taskIcon = await this.uploadTaskIcon(token)
+
+        const payload = {
+          title: this.taskForm.name.trim(),
+          evaluationMode: this.getEvaluationModeValue(),
+          agentName: this.selectedAlgorithms.join(','),
+          environment: this.taskForm.environmentCode,
+          taskIcon,
+          deadline: this.taskForm.deadline,
+          teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
+          config: this.buildConfigPayload()
+        }
+
         const response = await fetch(`${API_BASE}/class/${this.taskForm.classId}/assignments`, {
           method: 'POST',
           headers: {
@@ -679,7 +803,7 @@ export default {
         ElMessage.success('任务发布成功')
         this.$router.push('/teacher/tasks')
       } catch (error) {
-        ElMessage.error('发布任务失败，请检查后端是否已启动')
+        ElMessage.error(error.message || '发布任务失败，请检查后端是否已启动')
       } finally {
         this.publishing = false
       }

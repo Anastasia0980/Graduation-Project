@@ -41,7 +41,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
         // 登录、注册接口不需要解析 token
-        if (path.startsWith("/user/login") || path.startsWith("/user/register")) {
+        // uploads 静态资源也不需要解析 token，否则图片请求会 401
+        if (path.startsWith("/user/login")
+                || path.startsWith("/user/register")
+                || path.startsWith("/uploads/")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -51,7 +54,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
         }
-
 
         try {
             if (token != null && !token.isBlank()) {
@@ -99,4 +101,3 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 }
-
