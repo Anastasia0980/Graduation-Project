@@ -20,6 +20,7 @@ import StudentClassJoin from '../views/StudentClassJoin.vue'
 import StudentTournament from '../views/StudentTournament.vue'
 import StudentResourceDownload from '../views/StudentResourceDownload.vue'
 import TeacherEnvironmentManage from '../views/TeacherEnvironmentManage.vue'
+import AdminHome from '../views/AdminHome.vue'
 import { isAuthExpiredPendingConfirm } from '../utils/http'
 
 const routes = [
@@ -127,6 +128,12 @@ const routes = [
     path: '/teacher/environment',
     name: 'teacherEnvironment',
     component: TeacherEnvironmentManage
+  },
+
+  {
+    path: '/admin/home',
+    name: 'adminHome',
+    component: AdminHome
   },
   {
     path: '/teacher/student-detail/:studentId',

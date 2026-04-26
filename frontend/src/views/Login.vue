@@ -114,7 +114,9 @@ export default {
         localStorage.setItem('auth_email', userInfo.email || '')
         localStorage.setItem('auth_role', userInfo.role || '')
 
-        if (userInfo.role === 'TEACHER') {
+        if (userInfo.role === 'ADMIN') {
+          this.$router.push('/admin/home')
+        } else if (userInfo.role === 'TEACHER') {
           this.$router.push('/teacher/home')
         } else {
           this.$router.push('/')
