@@ -5,7 +5,7 @@
 - 支持 LunarLander (DQN / PPO / PPO-GAE)
 - 统一输出 JSON 到 stdout，便于后端调用。
 - 调用示例：
-    python evaluate.py --env LunarLander-v3 --agent dqn --model_name dqn_episode_500.pth --episodes 10 --workspace E:\2025-2026\GP\LunarLander-RL-Comparison --render_video --baseline_model_path LunarLander\dqn\dqn_episode_100.pth
+    python evaluate.py --env LunarLander-v3 --agent dqn --model_name DDQN_LLdV2_250.pth --episodes 10 --workspace E:\2025-2026\GP\LunarLander-RL-Comparison --render_video --baseline_model_path LunarLander-v3\easy\dqn\dqn_episode_100.pth
 
 """
 
@@ -23,13 +23,19 @@ try:
 except ImportError:  # pragma: no cover - 运行环境中若无 gymnasium 则退回 gym
     import gym
 
-from sympy.core.numbers import I
 import torch
 import ffmpeg
 import glob
 from pathlib import Path
+from typing import Optional
 
 from agents.dqn_agent import DQNAgent
+from agents.dqn_agents import (
+    DoubleDQNAgent,
+    DistribDQNAgent,
+    PrioritizedDoubleDQNAgent,
+    RainbowAgent,
+)
 from agents.ppo_agent import PPOAgent
 from agents.ppo_gae_agent import PPO_GAE_Agent
 from agents.ddpg_agent import DDPGAgent
@@ -37,6 +43,21 @@ from policy_wrapper import _PolicyWrapper, DQNPolicy, PPOPolicy, PPOGAEPolicy, D
 
 
 STEPS_PER_EPISODE = 1000
+
+SUPPORTED_AGENT_PREFIXES = (
+    "distribdqn",
+    "priorddqn",
+    "rainbow",
+    "ppo_gae",
+    "ppogae",
+    "ddqn",
+    "ddpg",
+    "dqn",
+    "ppo",
+)
+
+
+        
 # seed = 42  # 设置随机种子以复现结果
 
 # # 设置随机种子
@@ -64,7 +85,9 @@ def _maybe_add_mujoco_dll_directory() -> None:
 def make_env(env_id: str,
              model_name: str,
              realtime_render: bool = False,
-             render_video: bool = False):
+             render_video: bool = False,
+             task_id: Optional[str] = None,
+             stage_spec_path: Optional[str] = None):
     """
     统一的环境创建函数，支持三种模式：
     - 实时渲染（human）
@@ -77,12 +100,38 @@ def make_env(env_id: str,
     """
     result_dir = None
 
-    if realtime_render:
-        env = gym.make(env_id, render_mode="human")
-    elif render_video:
-        env = gym.make(env_id, render_mode="rgb_array")
+    render_mode = "human" if realtime_render else ("rgb_array" if render_video else None)
+    if env_id == "LunarLander-v3":
+        spec_path = (stage_spec_path or "").strip()
+        if spec_path:
+            try:
+                import lunar_task_env  # type: ignore
+            except ImportError as e:
+                raise ImportError(
+                    "找不到 lunar_task_env.py。"
+                    "请确认 --workspace 指向包含该文件的目录。"
+                ) from e
+            abs_spec = os.path.abspath(spec_path)
+            with open(abs_spec, encoding="utf-8") as f:
+                spec = json.load(f)
+            if not isinstance(spec, dict):
+                raise ValueError("stage_spec JSON 必须是对象")
+            env = lunar_task_env.make_lunar_env_from_spec(spec, render_mode=render_mode)
+        else:
+            normalized_task_id = (task_id or "").strip().upper()
+            if not normalized_task_id:
+                raise ValueError("闯关模式要求传入 --task_id（T1...T10）或 --stage_spec_path")
+            try:
+                import lunar_task_env  # type: ignore
+
+                env = lunar_task_env.make_lunar_env(normalized_task_id, render_mode=render_mode)
+            except ImportError as e:
+                raise ImportError(
+                    "找不到 lunar_task_env.py。"
+                    "请确认 --workspace 指向包含该文件的目录。"
+                ) from e
     else:
-        env = gym.make(env_id, render_mode=None)
+        raise ValueError(f"Unsupported environment: {env_id}")
 
     if render_video:
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -114,7 +163,7 @@ def make_env(env_id: str,
 
 def load_policy(env, agent_name: str, model_path: str) -> _PolicyWrapper:
     # 按 agent_name 加载不同的策略，并统一成 act(state) 接口。
-    agent_name = agent_name.lower()
+    agent_name = normalize_agent_name(agent_name)
     obs_space = env.observation_space
     act_space = env.action_space
 
@@ -140,6 +189,31 @@ def load_policy(env, agent_name: str, model_path: str) -> _PolicyWrapper:
         agent.q_network.eval()
         return DQNPolicy(agent)
 
+    if agent_name == "ddqn":
+        agent = DoubleDQNAgent(state_dim, action_dim, epsilon=0.0)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        return DQNPolicy(agent)
+
+    if agent_name == "distribdqn":
+        agent = DistribDQNAgent(state_dim, action_dim, epsilon=0.0)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        return DQNPolicy(agent)
+
+    if agent_name == "priorddqn":
+        agent = PrioritizedDoubleDQNAgent(state_dim, action_dim, epsilon=0.0)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        return DQNPolicy(agent)
+
+    if agent_name == "rainbow":
+        agent = RainbowAgent(state_dim, action_dim)
+        agent.q_network.load_state_dict(torch.load(model_path, map_location="cpu"))
+        agent.q_network.eval()
+        agent.set_training_mode(False)
+        return DQNPolicy(agent)
+
     if agent_name == "ppo":
         agent = PPOAgent(state_dim, action_dim)
         agent.policy.load_state_dict(torch.load(model_path, map_location="cpu"))
@@ -153,6 +227,30 @@ def load_policy(env, agent_name: str, model_path: str) -> _PolicyWrapper:
         return PPOGAEPolicy(agent)
 
     raise ValueError(f"Unsupported agent type: {agent_name}")
+
+
+def normalize_agent_name(agent_name: str) -> str:
+    """
+    将输入算法名归一化为评测脚本支持的基础算法：
+    - 允许输入带后缀的名字（如 ddqn_steps_50000）
+    - 允许 ppo-gae / ppo_gae / ppogae
+    """
+    text = str(agent_name or "").strip().lower()
+    if not text:
+        raise ValueError("agent name is empty")
+
+    canonical = text.replace("-", "_")
+    if canonical == "ppogae":
+        return "ppo_gae"
+
+    for prefix in SUPPORTED_AGENT_PREFIXES:
+        if canonical == prefix or canonical.startswith(prefix + "_"):
+            return "ppo_gae" if prefix in ("ppo_gae", "ppogae") else prefix
+
+    raise ValueError(
+        f"Unsupported agent type: {agent_name}. "
+        "Supported: dqn / ddqn / distribdqn / priorddqn / rainbow / ppo / ppo_gae / ddpg"
+    )
 
 
 def run_episodes(env, policy: _PolicyWrapper, num_episodes: int, max_steps = None):
@@ -233,12 +331,21 @@ def video_side_by_side(student_video: str, baseline_video: str, output_path: str
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Unified RL evaluation: run episodes and output JSON.")
-    parser.add_argument("--env", required=True, help="Gym/Gymnasium environment id, e.g. HalfCheetah-v2 or LunarLander-v3")
+    parser.add_argument(
+        "--env",
+        required=True,
+        help=(
+            "Gym/Gymnasium 环境 id，例如 HalfCheetah-v2、LunarLander-v3，"
+            "或课程任务 LunarLander-T1-v0 … LunarLander-T6-v0（需 workspace 含 lunar_task_env.py）"
+        ),
+    )
     parser.add_argument("--agent", required=True,
-                        help="Agent type: ddpg / dqn / ppo / ppo_gae")
+                        help="Agent type: ddpg / dqn / ddqn / distribdqn / priorddqn / rainbow / ppo / ppo_gae")
+    parser.add_argument("--baseline_agent", default=None,
+                        help="Optional baseline agent type (defaults to --agent)")
     parser.add_argument("--model_name", required=True,
                         help="Path or name of the saved model weights.")
-    parser.add_argument("--episodes", type=int, default=10,
+    parser.add_argument("--episodes", type=int, default=100,
                         help="Number of evaluation episodes.")
     parser.add_argument("--workspace", default=None,
                         help="Project root where code and models live (default: cwd).")
@@ -250,6 +357,10 @@ def parse_args(argv=None):
                         help="Optional baseline model path")
     parser.add_argument("--config_path", default=None,
                         help="Optional config file path associated with model")
+    parser.add_argument("--task_id", default="",
+                        help="Curriculum task id（legacy: T1…T10）；与 --stage_spec_path 二选一或同时用于标注")
+    parser.add_argument("--stage_spec_path", default="",
+                        help="关卡环境参数 JSON 文件路径（A2，与 lunar_task_env.make_lunar_env_from_spec 对齐）")
     return parser.parse_args(argv)
 
 
@@ -258,13 +369,18 @@ def main(argv=None):
 
     args = parse_args(argv)
 
+    if not (args.stage_spec_path or "").strip() and not (args.task_id or "").strip():
+        print(json.dumps({"status": "FAILED", "error": "需要 --stage_spec_path 或 --task_id"}, ensure_ascii=False))
+        return 1
+
     workspace = os.path.abspath(args.workspace or os.getcwd())
-    if args.workspace and workspace not in sys.path:
+    if workspace not in sys.path:
         sys.path.insert(0, workspace)
     os.chdir(workspace)
 
     result = {
         "status": "FINISHED",
+        "task_id": (args.task_id.strip() if args.task_id else None),
         "student_avg_reward": 0.0,
         "student_rewards": [],
         "baseline_avg_reward": 0.0,
@@ -279,6 +395,8 @@ def main(argv=None):
             model_name=args.model_name,
             realtime_render=bool(args.realtime_render),
             render_video=bool(args.render_video),
+            task_id=args.task_id,
+            stage_spec_path=args.stage_spec_path,
         )
 
         # HalfCheetah 等连续环境默认给一个步数上限
@@ -303,20 +421,27 @@ def main(argv=None):
                     model_name=baseline_model_name,
                     realtime_render=bool(args.realtime_render),
                     render_video=bool(args.render_video),
+                    task_id=args.task_id,
+                    stage_spec_path=args.stage_spec_path,
                 )
-                baseline_policy = load_policy(env_baseline, args.agent, baseline_path)
+                baseline_agent = args.baseline_agent if args.baseline_agent else args.agent
+                baseline_policy = load_policy(env_baseline, baseline_agent, baseline_path)
                 baseline_rewards = run_episodes(env_baseline, baseline_policy, args.episodes, max_steps=max_steps)
                 result["baseline_avg_reward"] = float(sum(baseline_rewards) / len(baseline_rewards)) if baseline_rewards else 0.0
                 result["baseline_rewards"] = baseline_rewards
                 baseline_used = True
                 env_baseline.close()
                 videoConcat(result_dir_baseline)
+        else:
+            print("Warning: No baseline model path provided")
 
         if baseline_used:
             if (result["student_avg_reward"] > result["baseline_avg_reward"]):
                 result["winner"] = 1
             else:
                 result["winner"] = 0
+        else:
+            print("Warning: No baseline model used")
 
         if baseline_used and args.render_video and result_dir is not None and result_dir_baseline is not None:
             student_video_path = result_dir + ".mp4"

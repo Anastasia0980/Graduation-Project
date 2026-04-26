@@ -32,6 +32,23 @@ public class Evaluation {
     @Column(nullable = false)
     private Integer episodes;
 
+    @Column(name = "baseline_difficulty")
+    private String baselineDifficulty;
+
+    @Column(name = "baseline_id")
+    private String baselineId;
+
+    @Column(name = "baseline_model_path", columnDefinition = "TEXT")
+    private String baselineModelPath;
+
+    /** 闯关关卡 id：兼容 T1…T10 或自定义 stageId */
+    @Column(name = "task_id", length = 80)
+    private String taskId;
+
+    /** 相对 {@code evaluation.workspace} 的关卡环境 JSON 路径，或绝对路径（由执行器解析） */
+    @Column(name = "stage_spec_path", length = 512)
+    private String stageSpecPath;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EvaluationStatus status = EvaluationStatus.PENDING;

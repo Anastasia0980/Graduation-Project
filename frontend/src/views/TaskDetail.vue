@@ -1,7 +1,7 @@
 <template>
   <div class='detail-page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='displayUserName'
       current-role='student'
       active-nav='home'
@@ -88,20 +88,46 @@
 
           <template v-if='taskMode === "single"'>
             <div class='side-desc'>
-              当前任务为单人模式。学生提交模型后，平台将在预设环境中独立完成测评。
+              当前任务为闯关单人模式。通过条件：战胜当前关卡基线模型。提交示例可参考提交说明。
+            </div>
+            <div class='curriculum-info-box'>
+              <div class='mini-bot-title'>闯关进度</div>
+              <div class='mini-bot-row'>
+                <span>已通过</span>
+                <span>{{ curriculumPassedText }}</span>
+              </div>
+              <div class='mini-bot-row'>
+                <span>总关卡</span>
+                <span>{{ curriculumTotalStages > 0 ? curriculumTotalStages : '--' }}</span>
+              </div>
+              <div class='mini-bot-row'>
+                <span>当前挑战</span>
+                <span :class='curriculumNextTaskId ? "status-ok" : "status-off"'>
+                  {{ curriculumNextTaskDisplayLabel || '加载中' }}
+                </span>
+              </div>
+              <div v-if='curriculumPublicationStatus === "DRAFT"' class='curriculum-tip curriculum-tip-warning'>
+                该任务仍为草稿，学生无法提交评测。
+              </div>
+              <div class='curriculum-tip'>
+                通过条件：你的平均 reward 严格大于该关基线平均 reward。
+              </div>
+              <div v-if='curriculumLoadError' class='curriculum-tip curriculum-tip-warning'>
+                {{ curriculumLoadError }}
+              </div>
             </div>
             <button
               class='primary-btn submit-action-btn'
               :class='{ "ended-submit-btn": isTaskEnded }'
               @click='handleSingleSubmitClick'
             >
-              提交单人测评
+              {{ singleSubmitButtonText }}
             </button>
           </template>
 
           <template v-else-if='taskMode === "battle"'>
             <div class='side-desc'>
-              当前任务为对战模式。请先上传自己的对战模型，上传成功后可在“已提交模型”中选择自己的模型，再选择其他同学已上传的模型发起异步挑战。
+              当前任务为对战模式。请先上传自己的对战模型，上传成功后可在“已提交模型”中选择自己的模型，再选择其他同学已上传的模型发起异步挑战。提交示例可参考提交说明。
             </div>
             <button
               class='primary-btn submit-action-btn'
@@ -308,6 +334,13 @@
         </div>
         <div class='dialog-body'>
           <div class='dialog-tip submit-mode-tip'>当前提交方式：{{ submitModeText }}</div>
+
+          <div v-if='currentSubmitMode === "single"' class='form-item'>
+            <label>当前闯关说明</label>
+            <div class='baseline-tip'>
+              本次将提交到 {{ curriculumNextTaskDisplayLabel || '当前关卡' }}，并由后端自动使用该关卡对应 baseline 进行评测。
+            </div>
+          </div>
 
           <div class='form-item'>
             <label>Config</label>
@@ -587,6 +620,8 @@
 import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import tictactoeImage from '../assets/tictactoe.png'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { notifyAuthExpiredAndRedirect } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -610,7 +645,7 @@ export default {
       taskTitle: '井字棋任务',
       taskMode: 'single',
       modeLabelText: '单人模式',
-      taskSubtitle: 'PettingZoo 环境下的强化学习测评任务',
+      taskSubtitle: '强化学习测评任务',
       taskStatusText: '开放中',
       environmentText: 'tictactoe_v3',
       deadlineText: '--',
@@ -640,6 +675,13 @@ export default {
       submitMessage: '',
       queryMessage: '',
       evaluationId: null,
+      curriculumHighestPassedTaskIndex: 0,
+      curriculumNextTaskId: '',
+      /** 作业 config.curriculumStages 顺序（仅 stageId），用于 T1=第1关 与真实 stageId 对应 */
+      curriculumStagesOrdered: [],
+      curriculumTotalStages: 0,
+      curriculumPublicationStatus: 'PUBLISHED',
+      curriculumLoadError: '',
       selectedFiles: {
         config: null,
         model: null
@@ -697,6 +739,39 @@ export default {
       }
       return '单人测评'
     },
+    singleSubmitButtonText () {
+      return this.curriculumNextTaskId ? `提交当前关（${this.curriculumNextTaskDisplayLabel}）` : '提交当前关'
+    },
+    /**
+     * 学生端展示：有 curriculumStages 时，T1/T2…= 配置中第 1/2…关（按下标），与 stageId 是否为 T* 无关；
+     * 无列表时（legacy）直接显示接口返回的 nextTaskId（通常为 T1…T10）。
+     */
+    curriculumNextTaskDisplayLabel () {
+      const raw = this.curriculumNextTaskId
+      if (!raw) return ''
+      const key = String(raw).trim()
+      const ordered = this.curriculumStagesOrdered || []
+      if (ordered.length > 0) {
+        const idx = ordered.findIndex(x => x.stageId === key)
+        if (idx >= 0) {
+          return `T${idx + 1}`
+        }
+        const h = Number(this.curriculumHighestPassedTaskIndex || 0)
+        const total = Number(this.curriculumTotalStages || ordered.length || 1)
+        const ord = Math.min(Math.max(1, h + 1), Math.max(1, total))
+        return `T${ord}`
+      }
+      return key.toUpperCase()
+    },
+    curriculumPassedText () {
+      const n = Number(this.curriculumHighestPassedTaskIndex || 0)
+      const total = Number(this.curriculumTotalStages || 0)
+      if (total > 0) {
+        return `${Math.min(n, total)} / ${total} 关`
+      }
+      if (!n || n <= 0) return '暂无'
+      return `${n} 关`
+    },
     submitFeedbackClass () {
       return this.submitMessage.startsWith('提交失败') || this.submitMessage.startsWith('请')
         ? 'error-box'
@@ -712,6 +787,9 @@ export default {
       return this.opponentModelsMessage.startsWith('发起失败') || this.opponentModelsMessage.startsWith('加载失败')
         ? 'error-box'
         : 'success-box'
+    },
+    isLoggedIn () {
+      return hasAuthToken()
     },
     displayUserName () {
       return localStorage.getItem('auth_name') || ''
@@ -740,6 +818,9 @@ export default {
 
       if (assignmentId) {
         await this.loadTaskDetail(assignmentId)
+        if (this.taskMode === 'single') {
+          await this.loadCurriculumProgress(assignmentId)
+        }
         if (this.taskMode === 'battle') {
           await this.loadBotStatus(assignmentId)
         }
@@ -760,7 +841,8 @@ export default {
     async loadTaskDetail (assignmentId) {
       const token = localStorage.getItem('auth_token')
       if (!token) {
-        ElMessage.error('当前未登录或登录已过期，请重新登录')
+        clearAuthState()
+        notifyAuthExpiredAndRedirect(this.$router)
         return
       }
 
@@ -777,6 +859,11 @@ export default {
             Authorization: `Bearer ${token}`
           }
         })
+        if (response.status === 401) {
+          clearAuthState()
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
         const result = await response.json()
 
         if (!response.ok || result.code !== 0) {
@@ -828,6 +915,44 @@ export default {
         this.hasHardBot = false
       }
     },
+    async loadCurriculumProgress (assignmentId) {
+      this.curriculumLoadError = ''
+      this.curriculumHighestPassedTaskIndex = 0
+      this.curriculumNextTaskId = ''
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        this.curriculumLoadError = '未获取到进度信息，提交时将由后端自动判定当前关卡。'
+        clearAuthState()
+        notifyAuthExpiredAndRedirect(this.$router)
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/assignments/${assignmentId}/curriculum-progress`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        if (response.status === 401) {
+          clearAuthState()
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
+        const result = await response.json()
+        if (!response.ok || result.code !== 0) {
+          throw new Error(result.message || '闯关进度加载失败')
+        }
+        const progress = result.data || {}
+        this.curriculumHighestPassedTaskIndex = Number(progress.highestPassedTaskIndex || 0)
+        this.curriculumNextTaskId = progress.nextTaskId || ''
+        this.curriculumTotalStages = Number(progress.totalStages || 0)
+        this.curriculumPublicationStatus = progress.publicationStatus || 'PUBLISHED'
+      } catch (error) {
+        this.curriculumLoadError = `${error.message || '闯关进度加载失败'}，提交时将由后端自动判定当前关卡。`
+      }
+    },
     fillTaskDetail (task) {
       const config = this.parseTaskConfig(task)
       const taskMode = this.mapTaskMode(task.evaluationMode)
@@ -849,6 +974,20 @@ export default {
       this.evaluationText = config.evaluationFunction || '当前暂无评测说明。'
       this.algorithmTags = this.parseAgentNames(task.agentName)
       this.taskImage = task.taskIcon ? normalizeFileUrl(task.taskIcon) : tictactoeImage
+
+      this.curriculumPublicationStatus = task.publicationStatus || 'PUBLISHED'
+      const stages = config && config.curriculumStages
+      if (Array.isArray(stages) && stages.length > 0) {
+        this.curriculumTotalStages = stages.length
+        this.curriculumStagesOrdered = stages
+          .map(s => ({ stageId: String(s.stageId != null ? s.stageId : '').trim() }))
+          .filter(s => s.stageId)
+      } else {
+        this.curriculumStagesOrdered = []
+        if (config && config.taskBaselineOptions) {
+          this.curriculumTotalStages = 10
+        }
+      }
     },
     parseTaskConfig (task) {
       if (task.config && typeof task.config === 'object') {
@@ -885,7 +1024,7 @@ export default {
     applyTaskModeInfo (taskMode) {
       if (taskMode === 'single') {
         this.modeLabelText = '单人模式'
-        this.taskSubtitle = 'PettingZoo 环境下的单模型独立测评任务'
+        this.taskSubtitle = '单模型独立测评任务'
       } else if (taskMode === 'battle') {
         this.modeLabelText = '对战模式'
         this.taskSubtitle = '学生先上传模型保存，再从已提交模型中选择自己的模型并指定对手发起挑战'
@@ -896,7 +1035,7 @@ export default {
     },
 
     async loadRankingList (assignmentId) {
-      if (!assignmentId || this.taskMode === 'single') {
+      if (!assignmentId) {
         this.rankingList = []
         return
       }
@@ -924,11 +1063,20 @@ export default {
         }
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
-        this.rankingList = content.map(item => ({
-          rank: item.rank,
-          displayName: this.taskMode === 'tournament' ? (item.teamName || '未知队伍') : (item.nickname || '未知学生'),
-          score: item.ladderScore ?? item.bestScore ?? 0
-        }))
+        this.rankingList = content.map(item => {
+          if (this.taskMode === 'single') {
+            return {
+              rank: item.rank,
+              displayName: item.nickname || '未知学生',
+              score: `T${item.levelCount || 0}`
+            }
+          }
+          return {
+            rank: item.rank,
+            displayName: this.taskMode === 'tournament' ? (item.teamName || '未知队伍') : (item.nickname || '未知学生'),
+            score: item.ladderScore ?? item.bestScore ?? 0
+          }
+        })
       } catch (error) {
         this.rankingList = []
       }
@@ -945,12 +1093,9 @@ export default {
       this.openSubmitDialog('human')
     },
     goRankingDetail () {
-      if (this.taskMode === 'single') {
-        return
-      }
       const role = (localStorage.getItem('auth_role') || '').toUpperCase()
       const path = role === 'TEACHER' ? '/teacher/ranking' : '/student/ranking'
-      const mode = this.taskMode === 'tournament' ? 'team' : 'versus'
+      const mode = this.taskMode === 'tournament' ? 'team' : (this.taskMode === 'single' ? 'single' : 'versus')
       this.$router.push({
         path,
         query: {
@@ -995,6 +1140,10 @@ export default {
     handleSingleSubmitClick () {
       if (this.isTaskEnded) {
         this.showEndedDialog = true
+        return
+      }
+      if (this.curriculumPublicationStatus === 'DRAFT') {
+        ElMessage.warning('该任务尚未发布，无法提交单人评测')
         return
       }
       this.openSubmitDialog('single')
@@ -1075,6 +1224,8 @@ export default {
       const token = localStorage.getItem('auth_token')
       if (!token) {
         this.submitMessage = '当前未登录或登录已过期，请重新登录'
+        clearAuthState()
+        notifyAuthExpiredAndRedirect(this.$router, this.submitMessage)
         return
       }
 
@@ -1112,6 +1263,11 @@ export default {
           body: form
         })
 
+        if (resp.status === 401) {
+          clearAuthState()
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
         const res = await resp.json()
 
         if (!resp.ok || res.code !== 0) {
@@ -1125,6 +1281,15 @@ export default {
           this.evaluationId = payload.evaluationId
         } else if (payload.id) {
           this.evaluationId = payload.id
+        }
+        if (this.currentSubmitMode === 'single') {
+          this.submitMessage = `${this.submitMessage}，可在历史记录中查看本关是否通过。`
+        }
+
+        this.showSubmitDialog = false
+        const role = (localStorage.getItem('auth_role') || '').toUpperCase()
+        if (role === 'TEACHER' && assignmentId) {
+          this.$router.push(`/teacher/task-submissions/${assignmentId}`)
         }
 
         if (this.currentSubmitMode === 'human') {
@@ -1501,11 +1666,7 @@ export default {
       this.$router.push('/teacher/home')
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
-      sessionStorage.removeItem('mock_logged_out_view')
+      clearAuthState()
       this.$router.replace('/')
     }
   }
@@ -1852,6 +2013,23 @@ function titleSafe (value, fallback) {
   border-top: 1px solid #ebeef5;
 }
 
+.curriculum-info-box {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #ebeef5;
+}
+
+.curriculum-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #909399;
+}
+
+.curriculum-tip-warning {
+  color: #e6a23c;
+}
+
 .status-ok {
   color: #1f4e8c;
   font-weight: 700;
@@ -2169,6 +2347,46 @@ function titleSafe (value, fallback) {
   margin-bottom: 16px;
   color: #1f4e8c;
   font-size: 14px;
+}
+
+.baseline-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.baseline-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.baseline-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 600;
+}
+
+.baseline-row select {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #303133;
+  font-size: 14px;
+}
+
+.baseline-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.7;
 }
 
 .action-btn-group {

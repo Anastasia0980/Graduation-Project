@@ -12,6 +12,14 @@ public class LeaderBoard {
     private Integer rank;
     private Integer studentId;
     private String nickname;
+    /**
+     * 单人模式：已通过关卡数（T1~T10）
+     */
+    private Integer levelCount;
+    /**
+     * 单人模式：达到当前最高关卡的时间（ISO 文本）
+     */
+    private String clearTime;
 
     /**
      * 分组对战扩展字段

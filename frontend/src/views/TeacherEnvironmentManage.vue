@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='teacherName'
       current-role='teacher'
       active-nav='home'
@@ -245,6 +245,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
 
 const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
   (typeof window !== 'undefined'
@@ -292,6 +293,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     pagedEnvList () {
       const start = (this.envCurrentPage - 1) * this.envPageSize
       return this.envList.slice(start, start + this.envPageSize)
@@ -672,6 +676,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
       this.$router.push('/')
     }

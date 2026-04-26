@@ -15,7 +15,7 @@
     <div class="layout">
       <StudentSidebar
         v-if="isLoggedIn && currentRole === 'student'"
-        :logged-in="true"
+        :logged-in="isLoggedIn"
         :active-menu="currentMenu"
         :task-menu-open="taskMenuOpen"
         @profile-click="goProfile"
@@ -143,6 +143,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import tictactoeImage from '../assets/tictactoe.png'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -205,8 +207,11 @@ export default {
     }
   },
   methods: {
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
+    },
     async syncLoginState () {
-      const token = localStorage.getItem('auth_token')
+      const token = hasAuthToken() ? localStorage.getItem('auth_token') : ''
       const role = localStorage.getItem('auth_role')
       const userName = localStorage.getItem('auth_name')
 
@@ -223,25 +228,17 @@ export default {
       }
     },
     async loadTaskList () {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
+      if (!hasAuthToken()) {
         this.taskList = []
         return
       }
 
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/me/assignments?pageNum=0&pageSize=100`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        const result = await this.requestApi(`${API_BASE}/me/assignments?pageNum=0&pageSize=100`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务列表加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -367,10 +364,7 @@ export default {
       }
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
+      clearAuthState()
       this.isLoggedIn = false
       this.currentRole = ''
       this.userName = ''

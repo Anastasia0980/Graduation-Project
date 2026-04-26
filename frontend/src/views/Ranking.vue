@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='userName'
       :current-role='currentRole'
       active-nav='home'
@@ -13,7 +13,7 @@
     <div class='layout'>
       <StudentSidebar
         v-if='isStudent'
-        :logged-in='true'
+        :logged-in='isLoggedIn'
         active-menu='ranking'
         :task-menu-open='false'
         @profile-click='goProfile'
@@ -171,6 +171,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
   (typeof window !== 'undefined'
@@ -195,20 +197,16 @@ export default {
       pageSize: 5,
       loading: false,
       allTaskOptions: [],
+      singleRankingList: [],
       versusRankingList: [],
       teamRankingList: [],
-      singleRankingMockList: [
-        {
-          id: 1,
-          rank: 1,
-          name: '张三',
-          levelCount: 4,
-          clearTime: '2小时15分'
-        }
-      ]
+      singleRankingMockList: []
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     isStudent () {
       return !this.$route.path.startsWith('/teacher')
     },
@@ -224,7 +222,7 @@ export default {
     currentRankingList () {
       if (this.currentMode === 'single') {
         if (!this.selectedTaskId) return []
-        return this.singleRankingMockList
+        return this.singleRankingList
       }
       if (this.currentMode === 'team') {
         return this.teamRankingList
@@ -254,6 +252,9 @@ export default {
   watch: {
     selectedTaskId () {
       this.currentPage = 1
+      if (this.currentMode === 'single' && this.selectedTaskId) {
+        this.loadSingleRanking()
+      }
       if (this.currentMode === 'versus' && this.selectedTaskId) {
         this.loadVersusRanking()
       }
@@ -272,11 +273,8 @@ export default {
     this.loadTaskOptions()
   },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token') || ''
-      return {
-        Authorization: `Bearer ${token}`
-      }
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadTaskOptions () {
       this.loading = true
@@ -285,15 +283,8 @@ export default {
           ? `${API_BASE}/me/assignments?pageNum=0&pageSize=200`
           : `${API_BASE}/teacher/assignments?pageNum=0&pageSize=200`
 
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
-        })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务列表加载失败')
-        }
+        const result = await this.requestApi(url, { method: 'GET' })
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -323,6 +314,7 @@ export default {
       const options = this.currentTaskOptions
       if (options.length === 0) {
         this.selectedTaskId = ''
+        this.singleRankingList = []
         this.versusRankingList = []
         this.teamRankingList = []
         return
@@ -331,6 +323,9 @@ export default {
       const preferred = preferredTaskId && options.find(item => String(item.id) === String(preferredTaskId))
       this.selectedTaskId = preferred ? preferred.id : options[0].id
 
+      if (this.currentMode === 'single') {
+        this.loadSingleRanking()
+      }
       if (this.currentMode === 'versus') {
         this.loadVersusRanking()
       }
@@ -365,18 +360,13 @@ export default {
 
       this.loading = true
       try {
-        const response = await fetch(
+        const result = await this.requestApi(
           `${API_BASE}/assignments/${this.selectedTaskId}/leaderboard?pageNum=0&pageSize=200`,
           {
-            method: 'GET',
-            headers: this.getAuthHeaders()
+            method: 'GET'
           }
         )
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '排行榜加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -396,6 +386,52 @@ export default {
         this.loading = false
       }
     },
+    async loadSingleRanking () {
+      if (!this.selectedTaskId) {
+        this.singleRankingList = []
+        return
+      }
+
+      this.loading = true
+      try {
+        const result = await this.requestApi(
+          `${API_BASE}/assignments/${this.selectedTaskId}/leaderboard?pageNum=0&pageSize=200`,
+          {
+            method: 'GET'
+          }
+        )
+        if (!result) return
+
+        const pageData = result.data || {}
+        const content = Array.isArray(pageData.content) ? pageData.content : []
+        this.singleRankingList = content.map(item => ({
+          rank: item.rank || 0,
+          studentId: item.studentId,
+          name: item.nickname || '未知学生',
+          levelCount: item.levelCount || 0,
+          clearTime: this.formatClearTime(item.clearTime)
+        }))
+      } catch (error) {
+        this.singleRankingList = []
+        ElMessage.error(error.message || '单人排行榜加载失败')
+      } finally {
+        this.loading = false
+      }
+    },
+    formatClearTime (value) {
+      if (!value || value === '--') return '--'
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        return value
+      }
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+      const second = String(date.getSeconds()).padStart(2, '0')
+      return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+    },
     async loadTeamRanking () {
       if (!this.selectedTaskId) {
         this.teamRankingList = []
@@ -404,18 +440,13 @@ export default {
 
       this.loading = true
       try {
-        const response = await fetch(
+        const result = await this.requestApi(
           `${API_BASE}/assignments/${this.selectedTaskId}/team-leaderboard?pageNum=0&pageSize=200`,
           {
-            method: 'GET',
-            headers: this.getAuthHeaders()
+            method: 'GET'
           }
         )
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '分组排行榜加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -489,9 +520,7 @@ export default {
       this.$router.push('/teacher/export')
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
+      clearAuthState()
       this.$router.push('/')
     }
   }

@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <AppTopbar
-      :logged-in="true"
+      :logged-in="isLoggedIn"
       :user-name="profile.name"
       current-role="student"
       active-nav="home"
@@ -13,7 +13,7 @@
 
     <div class="layout">
       <StudentSidebar
-        :logged-in="true"
+        :logged-in="isLoggedIn"
         active-menu="profile"
         :task-menu-open="false"
         @profile-click="goProfile"
@@ -245,6 +245,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import defaultAvatar from '../assets/logo.png'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -302,6 +304,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     pagedRecentRecords () {
       const start = (this.recordPage - 1) * this.recordPageSize
       const end = start + this.recordPageSize
@@ -312,15 +317,8 @@ export default {
     this.initPageData()
   },
   methods: {
-    getAuthHeaders (withJson = false) {
-      const token = localStorage.getItem('auth_token') || ''
-      const headers = {
-        Authorization: `Bearer ${token}`
-      }
-      if (withJson) {
-        headers['Content-Type'] = 'application/json'
-      }
-      return headers
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     formatRole (role) {
       if (role === 'TEACHER') return '教师'
@@ -339,12 +337,11 @@ export default {
     },
     async loadProfile () {
       try {
-        const response = await fetch(`${API_BASE}/user/userInfo`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
+        const result = await this.requestApi(`${API_BASE}/user/userInfo`, {
+          method: 'GET'
         })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0 || !result.data) {
+        if (!result) return
+        if (result.code !== 0 || !result.data) {
           return
         }
 
@@ -369,12 +366,11 @@ export default {
     },
     async loadClassName () {
       try {
-        const response = await fetch(`${API_BASE}/user/me/class`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
+        const result = await this.requestApi(`${API_BASE}/user/me/class`, {
+          method: 'GET'
         })
-        const result = await response.json()
-        if (response.ok && result.code === 0 && result.data) {
+        if (!result) return
+        if (result.code === 0 && result.data) {
           this.profile.className = result.data
         }
       } catch (error) {
@@ -383,27 +379,14 @@ export default {
     async loadOverviewAndRecentRecords () {
       this.recordLoading = true
       try {
-        const [assignmentResp, submissionResp] = await Promise.all([
-          fetch(`${API_BASE}/me/assignments?pageNum=0&pageSize=100`, {
-            method: 'GET',
-            headers: this.getAuthHeaders()
-          }),
-          fetch(`${API_BASE}/me/submissions`, {
-            method: 'GET',
-            headers: this.getAuthHeaders()
-          })
+        const [assignmentResult, submissionResult] = await Promise.all([
+          this.requestApi(`${API_BASE}/me/assignments?pageNum=0&pageSize=100`, { method: 'GET' }),
+          this.requestApi(`${API_BASE}/me/submissions`, { method: 'GET' })
         ])
+        if (!assignmentResult || !submissionResult) return
 
-        const assignmentResult = await assignmentResp.json()
-        const submissionResult = await submissionResp.json()
-
-        const assignmentList = assignmentResp.ok && assignmentResult.code === 0
-          ? ((assignmentResult.data && assignmentResult.data.content) || [])
-          : []
-
-        const submissionList = submissionResp.ok && submissionResult.code === 0
-          ? (Array.isArray(submissionResult.data) ? submissionResult.data : [])
-          : []
+        const assignmentList = (assignmentResult.data && assignmentResult.data.content) || []
+        const submissionList = Array.isArray(submissionResult.data) ? submissionResult.data : []
 
         const now = Date.now()
         const openTaskCount = assignmentList.filter(item => {
@@ -470,17 +453,18 @@ export default {
       }
 
       try {
-        const response = await fetch(`${API_BASE}/user/update`, {
+        const result = await this.requestApi(`${API_BASE}/user/update`, {
           method: 'PUT',
-          headers: this.getAuthHeaders(true),
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({
             username: this.editForm.name,
             email: this.editForm.email
           })
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
+        if (!result) return
+        if (result.code !== 0) {
           this.resultMessage = result.message || '修改失败。'
           this.showResultDialog = true
           return
@@ -538,18 +522,19 @@ export default {
       }
 
       try {
-        const response = await fetch(`${API_BASE}/user/updatePwd`, {
+        const result = await this.requestApi(`${API_BASE}/user/updatePwd`, {
           method: 'PATCH',
-          headers: this.getAuthHeaders(true),
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({
             oldPwd: this.passwordForm.oldPassword,
             newPwd: this.passwordForm.newPassword,
             rePwd: this.passwordForm.confirmPassword
           })
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
+        if (!result) return
+        if (result.code !== 0) {
           this.resultMessage = result.message || '密码修改失败。'
           this.showResultDialog = true
           return
@@ -584,11 +569,8 @@ export default {
       this.$router.push('/teacher/home')
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
       this.$router.push('/')
     }
   }

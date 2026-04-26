@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='displayUserName'
       current-role='teacher'
       active-nav='home'
@@ -39,6 +39,7 @@
                 <th>对手</th>
                 <th>结果</th>
                 <th>录像</th>
+                <th>日志</th>
               </tr>
             </thead>
             <tbody>
@@ -74,6 +75,22 @@
                     暂无
                   </button>
                 </td>
+                <td>
+                  <button
+                    v-if='item.hasLog'
+                    class='table-btn'
+                    @click='downloadLog(item)'
+                  >
+                    下载
+                  </button>
+                  <button
+                    v-else
+                    class='disabled-btn'
+                    disabled
+                  >
+                    下载
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -99,6 +116,9 @@
           <div class='video-meta'>
             <div class='video-task-name'>{{ currentVideo.taskName }}</div>
             <div class='video-model-name'>模型文件：{{ currentVideo.modelName }}</div>
+            <div v-if='currentVideo.taskMode.includes("单人")' class='video-hint'>
+              视频左侧为 student，右侧 baseline
+            </div>
           </div>
 
           <div v-if='videoLoading' class='video-loading-box'>
@@ -130,6 +150,8 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest, notifyAuthExpiredAndRedirect } from '../utils/http'
 
 const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
   (typeof window !== 'undefined'
@@ -152,6 +174,7 @@ export default {
       currentVideo: {
         taskName: '',
         modelName: '',
+        taskMode: '',
         videoUrl: '',
         sourceApiUrl: ''
       },
@@ -161,6 +184,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     displayUserName () {
       return localStorage.getItem('auth_name') || '教师'
     },
@@ -174,44 +200,35 @@ export default {
     this.loadHistoryList()
   },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token') || ''
-      return {
-        Authorization: `Bearer ${token}`
-      }
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadHistoryList () {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
-        this.$router.push('/login')
-        return
-      }
-
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/me/submissions`, {
+        const result = await this.requestApi(`${API_BASE}/me/submissions`, {
           method: 'GET',
-          headers: this.getAuthHeaders()
+          authExpiredMessage: '登录信息已失效，请重新登录'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '提交历史加载失败')
-        }
+        if (!result) return
 
         const list = Array.isArray(result.data) ? result.data : []
         this.historyList = list.map(item => ({
           evaluationId: item.evaluationId,
           taskName: item.taskTitle || '未知任务',
+          taskMode: item.taskMode || '',
           modelName: item.modelName || '--',
           submitTime: item.submitTime || '--',
           status: item.status || '--',
           opponent: item.opponentName || '无',
           result: item.resultText || '-',
           hasVideo: !!item.hasVideo && !!item.evaluationResultId,
+          hasLog: !!item.hasLog && !!item.evaluationResultId,
           sourceApiUrl: item.evaluationResultId
             ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/video`
+            : '',
+          logApiUrl: item.evaluationResultId
+            ? `${API_BASE}/evaluation-results/${item.evaluationResultId}/log`
             : ''
         }))
       } catch (error) {
@@ -227,19 +244,18 @@ export default {
       this.currentVideo = {
         taskName: item.taskName,
         modelName: item.modelName,
+        taskMode: item.taskMode || '',
         videoUrl: '',
         sourceApiUrl: item.sourceApiUrl
       }
       this.videoError = ''
       this.videoLoading = true
-      this.videoVisible = true
 
       try {
         const token = localStorage.getItem('auth_token')
         if (!token) {
           this.videoError = '当前未登录或登录已过期，请重新登录'
-          ElMessage.error(this.videoError)
-          this.$router.push('/login')
+          notifyAuthExpiredAndRedirect(this.$router, this.videoError)
           return
         }
 
@@ -249,6 +265,11 @@ export default {
             Authorization: `Bearer ${token}`
           }
         })
+        if (response.status === 401) {
+          this.videoError = '当前未登录或登录已过期，请重新登录'
+          notifyAuthExpiredAndRedirect(this.$router, this.videoError)
+          return
+        }
 
         if (!response.ok) {
           throw new Error(`视频加载失败（${response.status}）`)
@@ -261,10 +282,55 @@ export default {
 
         const objectUrl = URL.createObjectURL(blob)
         this.currentVideo.videoUrl = objectUrl
+        this.videoVisible = true
       } catch (error) {
         this.videoError = error.message || '视频加载失败'
+        ElMessage.error(this.videoError)
       } finally {
         this.videoLoading = false
+      }
+    },
+    async downloadLog (item) {
+      try {
+        const token = localStorage.getItem('auth_token')
+        if (!token) {
+          notifyAuthExpiredAndRedirect(this.$router, '当前未登录或登录已过期，请重新登录')
+          return
+        }
+        if (!item.logApiUrl) {
+          ElMessage.warning('该记录暂无日志文件')
+          return
+        }
+
+        const response = await fetch(item.logApiUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        if (response.status === 401) {
+          notifyAuthExpiredAndRedirect(this.$router, '当前未登录或登录已过期，请重新登录')
+          return
+        }
+        if (!response.ok) {
+          throw new Error(`日志下载失败（${response.status}）`)
+        }
+
+        const blob = await response.blob()
+        if (!blob || blob.size === 0) {
+          throw new Error('日志文件为空')
+        }
+
+        const objectUrl = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = objectUrl
+        link.download = `evaluation-${item.evaluationId || 'log'}.log`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(objectUrl)
+      } catch (error) {
+        ElMessage.error(error.message || '日志下载失败')
       }
     },
     closeVideoObjectUrlOnly () {
@@ -284,6 +350,7 @@ export default {
       this.currentVideo = {
         taskName: '',
         modelName: '',
+        taskMode: '',
         videoUrl: '',
         sourceApiUrl: ''
       }
@@ -318,11 +385,8 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
       this.$router.push('/')
     }
   }
@@ -394,9 +458,8 @@ export default {
 }
 
 .table-btn {
-  min-width: 84px;
   height: 34px;
-  padding: 0 12px;
+  padding: 0 14px;
   border: none;
   border-radius: 4px;
   background: #1f4e8c;
@@ -405,17 +468,20 @@ export default {
   cursor: pointer;
 }
 
-.table-btn:hover {
-  background: #173b69;
+.view-btn,
+.close-btn,
+.disabled-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
 .disabled-btn {
-  background: #c0c4cc;
+  border: 1px solid #dcdfe6;
+  background: #f5f7fa;
+  color: #bfc4cd;
   cursor: not-allowed;
-}
-
-.disabled-btn:hover {
-  background: #c0c4cc;
 }
 
 .video-mask {
@@ -486,6 +552,12 @@ export default {
 .video-model-name {
   font-size: 14px;
   color: #606266;
+}
+
+.video-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #909399;
 }
 
 .video-player {

@@ -12,8 +12,12 @@ import org.example.rlplatform.service.SubmissionService;
 import org.example.rlplatform.service.UserService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.example.rlplatform.vo.SubmissionHistoryVO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -29,6 +33,9 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final BattleParticipantRepository battleParticipantRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${evaluation.workspace:}")
+    private String workspace;
 
     private static final DateTimeFormatter DATETIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -169,7 +176,7 @@ public class SubmissionServiceImpl implements SubmissionService {
             }
 
             vo.setStatus(mapStatus(evaluation.getStatus()));
-            vo.setOpponentName(buildOpponentName(participant, perspectiveStudentId));
+            vo.setOpponentName(buildOpponentName(evaluation, participant, perspectiveStudentId));
             vo.setOpponentStudentId(buildOpponentStudentId(participant, perspectiveStudentId));
 
             EvaluationResult result = resultMap.get(evaluation.getId());
@@ -244,7 +251,12 @@ public class SubmissionServiceImpl implements SubmissionService {
         return "--";
     }
 
-    private String buildOpponentName(BattleParticipant participant, Integer perspectiveStudentId) {
+    private String buildOpponentName(Evaluation evaluation, BattleParticipant participant, Integer perspectiveStudentId) {
+        ExperimentAssignment as = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
+        if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE) {
+            return "baseline";
+        }
+
         if (participant == null) {
             return "无";
         }
@@ -300,21 +312,31 @@ public class SubmissionServiceImpl implements SubmissionService {
     }
 
     private String buildResultText(Evaluation evaluation, EvaluationResult result, BattleParticipant participant, Integer perspectiveStudentId) {
+        ExperimentAssignment as = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
+
         if (evaluation.getStatus() == EvaluationStatus.PENDING || evaluation.getStatus() == EvaluationStatus.RUNNING) {
             return "-";
         }
 
         if (evaluation.getStatus() == EvaluationStatus.FAILED ||
                 (result != null && result.getResult() != null && result.getResult() == 1)) {
-            return "失败";
+            return "-";
         }
 
-        if (participant == null) {
-            return "已完成";
+        if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE && result.getWinner() == 1) {
+            return "获胜";
+        }
+
+        if (participant == null && as.getEvaluationMode() == EvaluationMode.SINGLE && result.getWinner() == 0) {
+            return "落败";
+        }
+
+        if (participant == null && result.getWinner() == null) {
+            return "-";
         }
 
         if (result == null || result.getWinner() == null) {
-            return "已完成";
+            return "-";
         }
 
         if (result.getWinner() == 0) {
@@ -371,7 +393,7 @@ public class SubmissionServiceImpl implements SubmissionService {
 
             if (hasBaseline) {
                 double baselineAvgReward = root.path("baseline_avg_reward").asDouble(0.0);
-                return String.format("共%d轮，平均奖励 %.2f；基线平均奖励 %.2f", rounds, studentAvgReward, baselineAvgReward);
+                return String.format("共%d轮，学生平均奖励 %.2f；基线平均奖励 %.2f", rounds, studentAvgReward, baselineAvgReward);
             }
 
             return String.format("共%d轮，平均奖励 %.2f", rounds, studentAvgReward);

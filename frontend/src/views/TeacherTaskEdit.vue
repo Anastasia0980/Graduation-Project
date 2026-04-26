@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='teacherName'
       current-role='teacher'
       active-nav='home'
@@ -234,6 +234,96 @@
             </div>
           </div>
 
+          <div v-if='taskMode === "single"' class='card section-space'>
+            <div class='card-title'>闯关配置</div>
+            <div class='field-tip' style='margin-bottom:12px'>
+              已发布任务不可改关卡顺序、stageId、标题与 envSpec，但可继续上传/更换各关 baseline；草稿保存后若需对学生可见，请点击「发布任务」。
+            </div>
+            <div v-if='publicationStatus !== "PUBLISHED"' class='stage-toolbar'>
+              <button type='button' class='secondary-btn' @click='addCurriculumStage'>添加关卡</button>
+            </div>
+
+            <div class='form-grid'>
+              <div
+                v-for='(stage, stageIndex) in curriculumStages'
+                :key='stage.stageId'
+                class='form-item full-width'
+              >
+                <div class='stage-header-row'>
+                  <label>关卡 {{ stageIndex + 1 }} · {{ stage.stageId }}</label>
+                  <button
+                    v-if='publicationStatus !== "PUBLISHED"'
+                    type='button'
+                    class='secondary-btn'
+                    @click='removeCurriculumStage(stageIndex)'
+                  >删除本关</button>
+                </div>
+                <div class='baseline-diff-block'>
+                  <div class='baseline-row'>
+                    <span class='baseline-upload-label'>标题</span>
+                    <input v-model='stage.title' class='baseline-algo-input' :disabled='publicationStatus === "PUBLISHED"' placeholder='关卡名称' />
+                  </div>
+                  <div v-if='isLunarEnvironment' class='baseline-row' style='align-items:flex-start'>
+                    <span class='baseline-upload-label'>envSpec</span>
+                    <textarea
+                      v-model='stage.envSpecText'
+                      rows='5'
+                      class='baseline-algo-input'
+                      :disabled='publicationStatus === "PUBLISHED"'
+                      style='height:auto;min-height:100px;font-family:monospace'
+                      placeholder='JSON，键：enable_wind, wind_power, turbulence_power, height_scale, impulse_scale, initial_angle_deg'
+                    ></textarea>
+                  </div>
+
+                  <div class='baseline-diff-subtitle'>已选 baseline</div>
+                  <div v-if='!selectedBaselineOption(stage)' class='baseline-empty'>未选择</div>
+                  <div v-else class='baseline-selected-list'>
+                    <div class='baseline-item'>
+                      <span>{{ selectedBaselineOption(stage).label || selectedBaselineOption(stage).algorithm || selectedBaselineOption(stage).id }}</span>
+                      <button type='button' class='baseline-x-btn' @click='removeBaselineFromStage(stage)'>X</button>
+                    </div>
+                  </div>
+
+                  <div class='baseline-diff-subtitle'>可选</div>
+                  <div v-if='availableBaselineOptions(stage).length === 0' class='baseline-empty'>暂无可选</div>
+                  <div v-else class='baseline-available-list'>
+                    <div
+                      v-for='opt in availableBaselineOptions(stage)'
+                      :key='opt.id'
+                      class='baseline-item baseline-item-available'
+                    >
+                      <span>{{ opt.label || opt.algorithm || opt.id }}</span>
+                      <div class='baseline-action-buttons'>
+                        <button type='button' class='baseline-add-btn' @click='addBaselineToStage(stage, opt.id)'>设为本关</button>
+                        <button type='button' class='baseline-x-btn' @click='softDeleteBaselineFromCatalog(stage.stageId, opt)'>X</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class='baseline-upload-box'>
+                    <div class='baseline-row'>
+                      <span class='baseline-upload-label'>algorithm：</span>
+                      <input v-model='stage.baselineUploadAlgorithm' class='baseline-algo-input' placeholder='需以实际算法名开头，例如 distribdqn_500 / priorddqn_500 / rainbow_500' />
+                    </div>
+                    <div class='baseline-row'>
+                      <input
+                        type='file'
+                        accept='.pth'
+                        :ref='`baselineFileInput_${stage.stageId}`'
+                        class='baseline-file-input'
+                        @change='handleBaselineFileChange($event, stage)'
+                      />
+                      <span class='baseline-file-name'>{{ stage.baselineFileName }}</span>
+                      <button type='button' class='baseline-upload-btn' @click='uploadBaselineModel(stage)'>
+                        上传并设为本关
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class='card section-space'>
             <div class='card-title'>任务环境及模型</div>
 
@@ -370,6 +460,15 @@
 
           <div class='bottom-action-row'>
             <button class='secondary-btn' type='button' @click='goBack'>取消</button>
+            <button
+              v-if='publicationStatus !== "PUBLISHED"'
+              class='primary-btn'
+              type='button'
+              :disabled='publishing'
+              @click='publishTask'
+            >
+              {{ publishing ? '发布中...' : '发布任务' }}
+            </button>
             <button class='primary-btn' type='button' :disabled='saving' @click='saveTask'>
               {{ saving ? '保存中...' : '保存修改' }}
             </button>
@@ -406,11 +505,21 @@
 </template>
 
 <script>
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
+const DEFAULT_ENV_SPEC_JSON = JSON.stringify({
+  enable_wind: false,
+  wind_power: 0.0,
+  turbulence_power: 0.0,
+  height_scale: 1.0,
+  impulse_scale: 0.0,
+  initial_angle_deg: 0.0
+}, null, 2)
 
 export default {
   name: 'TeacherTaskEditView',
@@ -423,7 +532,10 @@ export default {
       teacherName: localStorage.getItem('auth_name') || '教师',
       taskId: '',
       loading: false,
+      hydratingTask: false,
       saving: false,
+      publishing: false,
+      publicationStatus: 'PUBLISHED',
       taskMode: 'single',
       teamMin: '1',
       teamMax: '3',
@@ -462,6 +574,8 @@ export default {
       ],
       algorithmDialogVisible: false,
       customAlgorithmName: '',
+      curriculumStages: [],
+      globalBaselineCatalog: {},
       taskForm: {
         name: '',
         classId: '',
@@ -478,8 +592,14 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     isBattleLikeMode () {
       return this.taskMode === 'battle' || this.taskMode === 'tournament'
+    },
+    isLunarEnvironment () {
+      return (this.taskForm.environmentCode || '').trim() === 'LunarLander-v3'
     },
     battleEnvironmentOptions () {
       const merged = []
@@ -515,33 +635,35 @@ export default {
   watch: {
     taskMode () {
       this.ensureEnvironmentSelectedByMode()
+    },
+    'taskForm.environmentCode': {
+      handler () {
+        if (this.hydratingTask) return
+        this.ensureEnvironmentSelectedByMode()
+        if (!hasAuthToken()) return
+        this.curriculumStages.forEach(s => {
+          s.selectedBaselineId = null
+        })
+        this.loadBaselineCatalog()
+      }
     }
   },
   methods: {
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
+    },
     async initTaskData () {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
-        this.goBack()
-        return
-      }
+      if (!hasAuthToken()) return
 
       this.loading = true
+      this.hydratingTask = true
       try {
-        await this.loadClassOptions(token)
-        await this.loadBattleEnvironmentOptions(token)
-
-        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        await this.loadClassOptions()
+        await this.loadBattleEnvironmentOptions()
+        const result = await this.requestApi(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -552,6 +674,7 @@ export default {
         }
 
         this.fillTaskForm(currentTask)
+        await this.loadBaselineCatalog()
 
         if (this.taskMode === 'battle') {
           await this.loadBotStatus()
@@ -560,20 +683,16 @@ export default {
         ElMessage.error(error.message || '任务加载失败')
         this.goBack()
       } finally {
+        this.hydratingTask = false
         this.loading = false
       }
     },
-    async loadClassOptions (token) {
+    async loadClassOptions () {
       try {
-        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=100`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        const result = await this.requestApi(`${API_BASE}/class?pageNum=0&pageSize=100`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
+        if (!result) {
           this.classOptions = []
           this.classMap = {}
           return
@@ -596,16 +715,12 @@ export default {
         this.classMap = {}
       }
     },
-    async loadBattleEnvironmentOptions (token) {
+    async loadBattleEnvironmentOptions () {
       try {
-        const response = await fetch(`${API_BASE}/battle-environments/ready`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        const result = await this.requestApi(`${API_BASE}/battle-environments/ready`, {
+          method: 'GET'
         })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0) {
+        if (!result) {
           this.envOptions = []
           return
         }
@@ -639,21 +754,25 @@ export default {
         this.taskForm.environmentCode = this.singleEnvironmentOptions[0].code
       }
     },
-    async loadBotStatus () {
-      const token = localStorage.auth_token
-        ? `Bearer ${localStorage.auth_token}`
-        : ''
-
+    async loadBaselineCatalog () {
       try {
-        const response = await fetch(`${API_BASE}/assignments/${this.taskId}/system-bots/status`, {
-          method: 'GET',
-          headers: {
-            Authorization: token
-          }
+        const environment = this.taskForm.environmentCode
+        const result = await this.requestApi(`${API_BASE}/baselines/catalog?environment=${encodeURIComponent(environment)}`, {
+          method: 'GET'
         })
-        const result = await response.json()
+        if (!result) return
 
-        if (!response.ok || result.code !== 0 || !result.data) {
+        this.globalBaselineCatalog = result.data && typeof result.data === 'object' ? result.data : {}
+      } catch (error) {
+        ElMessage.warning(error.message || 'Baseline catalog 加载失败')
+      }
+    },
+    async loadBotStatus () {
+      try {
+        const result = await this.requestApi(`${API_BASE}/assignments/${this.taskId}/system-bots/status`, {
+          method: 'GET'
+        })
+        if (!result || !result.data) {
           this.easyBotConfigured = false
           this.mediumBotConfigured = false
           this.hardBotConfigured = false
@@ -707,6 +826,54 @@ export default {
         teamGroupDeadline: this.formatForDatetimeLocal(task.teamGroupDeadline)
       }
       this.ensureEnvironmentSelectedByMode()
+
+      const rawPub = task.publicationStatus
+      this.publicationStatus = rawPub === 'DRAFT' ? 'DRAFT' : 'PUBLISHED'
+
+      const stagesCfg = Array.isArray(config.curriculumStages) ? config.curriculumStages : []
+      if (stagesCfg.length > 0) {
+        this.curriculumStages = stagesCfg.map((s, idx) => ({
+          stageId: String(s.stageId || '').trim() || `st_fill_${idx}`,
+          title: s.title || `第 ${idx + 1} 关`,
+          envSpecText:
+            s.envSpec && typeof s.envSpec === 'object'
+              ? JSON.stringify(s.envSpec, null, 2)
+              : DEFAULT_ENV_SPEC_JSON,
+          selectedBaselineId: s.baseline && s.baseline.id ? s.baseline.id : null,
+          baselineUploadAlgorithm: '',
+          baselineFile: null,
+          baselineFileName: '当前未选择文件'
+        }))
+      } else {
+        const taskBaselineOptions =
+          config && config.taskBaselineOptions && typeof config.taskBaselineOptions === 'object'
+            ? config.taskBaselineOptions
+            : {}
+        const hasLegacy = Object.keys(taskBaselineOptions).some(
+          k => taskBaselineOptions[k] && taskBaselineOptions[k].id
+        )
+        if (hasLegacy) {
+          const legacyStages = []
+          for (let i = 1; i <= 10; i++) {
+            const tid = `T${i}`
+            const item = taskBaselineOptions[tid]
+            legacyStages.push({
+              stageId: tid,
+              title: `第 ${i} 关`,
+              envSpecText: DEFAULT_ENV_SPEC_JSON,
+              selectedBaselineId: item && item.id ? item.id : null,
+              baselineUploadAlgorithm: '',
+              baselineFile: null,
+              baselineFileName: '当前未选择文件'
+            })
+          }
+          this.curriculumStages = legacyStages
+        } else {
+          this.curriculumStages = []
+          this.initCurriculumStagesIfEmpty()
+        }
+      }
+      this.initCurriculumStagesIfEmpty()
     },
     parseTaskConfig (task) {
       if (task.config && typeof task.config === 'object') {
@@ -846,6 +1013,180 @@ export default {
         this.selectedAlgorithms.push(name)
       }
     },
+    newStageRow (title) {
+      return {
+        stageId: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        title: title || '新关卡',
+        envSpecText: DEFAULT_ENV_SPEC_JSON,
+        selectedBaselineId: null,
+        baselineUploadAlgorithm: '',
+        baselineFile: null,
+        baselineFileName: '当前未选择文件'
+      }
+    },
+    initCurriculumStagesIfEmpty () {
+      if (!this.curriculumStages || this.curriculumStages.length === 0) {
+        this.curriculumStages.push(this.newStageRow('第 1 关'))
+      }
+    },
+    addCurriculumStage () {
+      this.curriculumStages.push(this.newStageRow(`第 ${this.curriculumStages.length + 1} 关`))
+    },
+    removeCurriculumStage (index) {
+      if (this.curriculumStages.length <= 1) {
+        ElMessage.warning('至少保留一关')
+        return
+      }
+      this.curriculumStages.splice(index, 1)
+    },
+    selectedBaselineOption (stage) {
+      const sid = stage && stage.selectedBaselineId
+      if (!sid) return null
+      return this.getBaselineOptionById(stage.stageId, sid)
+    },
+    availableBaselineOptions (stage) {
+      const catalogList = this.globalBaselineCatalog[stage.stageId] || []
+      const selectedId = stage.selectedBaselineId
+      return catalogList.filter(opt => opt && opt.id !== selectedId)
+    },
+    addBaselineToStage (stage, baselineId) {
+      stage.selectedBaselineId = baselineId
+    },
+    removeBaselineFromStage (stage) {
+      stage.selectedBaselineId = null
+    },
+    getBaselineOptionById (taskId, baselineId) {
+      const catalogList = this.globalBaselineCatalog?.[taskId] || []
+      const fromCatalog = catalogList.find(opt => opt && opt.id === baselineId)
+      if (fromCatalog) return fromCatalog
+
+      const parts = String(baselineId || '').split('-')
+      const algoKey = parts.slice(1).join('-') || ''
+      const env = this.taskForm.environmentCode || 'tictactoe_v3'
+      return {
+        id: baselineId,
+        label: algoKey ? String(algoKey).toUpperCase() : baselineId,
+        algorithm: algoKey,
+        modelPath: algoKey ? `${env}/${taskId}/${algoKey}/baseline.pth` : ''
+      }
+    },
+    handleBaselineFileChange (event, stage) {
+      const file = event.target.files && event.target.files[0]
+      if (!file) return
+      stage.baselineFile = file
+      stage.baselineFileName = file.name
+    },
+    resetBaselineUpload (stage) {
+      stage.baselineUploadAlgorithm = ''
+      stage.baselineFile = null
+      stage.baselineFileName = '当前未选择文件'
+      const fileInputRef = this.$refs[`baselineFileInput_${stage.stageId}`]
+      const fileInput = Array.isArray(fileInputRef) ? fileInputRef[0] : fileInputRef
+      if (fileInput) {
+        fileInput.value = ''
+      }
+    },
+    normalizeBaselineAlgorithm (value) {
+      return String(value || '').trim().toLowerCase()
+    },
+    isValidBaselineAlgorithm (value) {
+      // 需以算法名开头，后续可追加下划线分段（如 distribdqn_500 / priorddqn_500 / rainbow_500）
+      return /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(value)
+    },
+    async uploadBaselineModel (stage) {
+      const algorithm = this.normalizeBaselineAlgorithm(stage.baselineUploadAlgorithm)
+      const file = stage.baselineFile
+
+      if (!algorithm) {
+        ElMessage.warning(`请输入 ${stage.stageId} 算法名`)
+        return
+      }
+      if (!this.isValidBaselineAlgorithm(algorithm)) {
+        ElMessage.warning('算法名格式不正确：需以实际算法名开头，例如 distribdqn_500 / priorddqn_500 / rainbow_500')
+        return
+      }
+      if (!file) {
+        ElMessage.warning(`请选择 ${stage.stageId} 的 baseline.pth 文件`)
+        return
+      }
+
+      try {
+        const formData = new FormData()
+        formData.append('environment', this.taskForm.environmentCode || 'tictactoe_v3')
+        formData.append('taskId', stage.stageId)
+        formData.append('algorithm', algorithm)
+        formData.append('model', file)
+
+        const result = await this.requestApi(`${API_BASE}/baselines/upload`, {
+          method: 'POST',
+          body: formData
+        })
+        if (!result) return
+
+        ElMessage.success('baseline 上传成功')
+
+        await this.loadBaselineCatalog()
+
+        const baselineId = `${stage.stageId}-${algorithm}`
+        this.addBaselineToStage(stage, baselineId)
+
+        this.resetBaselineUpload(stage)
+      } catch (error) {
+        ElMessage.error(error.message || 'baseline 上传失败，请检查后端是否已启动')
+      }
+    },
+    async softDeleteBaselineFromCatalog (taskId, opt) {
+      const baselineId = opt && opt.id ? opt.id : ''
+      const algorithm = opt && (opt.algorithm || opt.label)
+        ? String(opt.algorithm || opt.label)
+        : (baselineId ? String(baselineId).split('-')[1] : '')
+
+      if (!algorithm) {
+        ElMessage.warning('baseline 标识缺失，无法删除')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认删除 ${taskId} 的该 baseline 资源吗？\n删除后将从可选列表中消失。`,
+          '提示',
+          {
+            type: 'warning',
+            confirmButtonText: '确认删除',
+            cancelButtonText: '取消'
+          }
+        )
+      } catch (e) {
+        // 用户取消确认弹窗
+        return
+      }
+
+      const params = new URLSearchParams({
+        environment: this.taskForm.environmentCode || '',
+        taskId,
+        algorithm
+      })
+
+      try {
+        const result = await this.requestApi(`${API_BASE}/baselines/soft-delete?${params.toString()}`, {
+          method: 'DELETE'
+        })
+        if (!result) return
+
+        // 删除后刷新 catalog（删除=软删除，所以删除项应消失在可选列表）
+        ElMessage.success('baseline 已删除')
+        if (baselineId) {
+          this.curriculumStages.forEach(s => {
+            if (s.stageId === taskId && s.selectedBaselineId === baselineId) {
+              s.selectedBaselineId = null
+            }
+          })
+        }
+        await this.loadBaselineCatalog()
+      } catch (error) {
+        ElMessage.error(error.message || 'baseline 删除失败，请检查后端是否已启动')
+      }
+    },
     getEvaluationModeValue () {
       if (this.taskMode === 'battle') {
         return 'VERSUS'
@@ -856,7 +1197,7 @@ export default {
       return 'SINGLE'
     },
     buildConfigPayload () {
-      return {
+      const base = {
         overview: this.taskForm.intro,
         rules: this.taskForm.rule,
         observationSpace: this.taskForm.observation,
@@ -866,6 +1207,49 @@ export default {
         algorithmOptions: this.algorithmOptions,
         teamMaxMembers: Number(this.teamMax || 3)
       }
+      if (this.taskMode !== 'single') {
+        return base
+      }
+
+      const env = this.taskForm.environmentCode || 'tictactoe_v3'
+      const curriculumStages = this.curriculumStages.map(s => {
+        const selectedId = s.selectedBaselineId
+        if (!selectedId) {
+          throw new Error('关卡未选择 baseline：' + (s.stageId || ''))
+        }
+        const catalogList = this.globalBaselineCatalog[s.stageId] || []
+        const fromCatalog = catalogList.find(opt => opt && opt.id === selectedId)
+        let baseline
+        if (fromCatalog) {
+          baseline = fromCatalog
+        } else {
+          const parts = String(selectedId || '').split('-')
+          const algoKey = parts.slice(1).join('-') || ''
+          baseline = {
+            id: selectedId,
+            label: algoKey ? String(algoKey).toUpperCase() : selectedId,
+            algorithm: algoKey,
+            modelPath: `${env}/${s.stageId}/${algoKey}/baseline.pth`
+          }
+        }
+        const stagePayload = {
+          stageId: String(s.stageId || '').trim(),
+          title: s.title || '',
+          baseline
+        }
+        if (this.isLunarEnvironment) {
+          let envSpec
+          try {
+            envSpec = JSON.parse(s.envSpecText || '{}')
+          } catch (e) {
+            throw new Error('envSpec JSON 解析失败：' + (s.stageId || ''))
+          }
+          stagePayload.envSpec = envSpec
+        }
+        return stagePayload
+      })
+
+      return { ...base, curriculumStages }
     },
     validateTaskForm () {
       if (!this.taskForm.name.trim()) {
@@ -903,6 +1287,26 @@ export default {
         ElMessage.warning('请至少选择一个可用算法')
         return false
       }
+      if (this.taskMode === 'single') {
+        if (!this.curriculumStages || this.curriculumStages.length === 0) {
+          ElMessage.warning('请至少配置一关')
+          return false
+        }
+        for (const s of this.curriculumStages) {
+          if (this.isLunarEnvironment) {
+            try {
+              JSON.parse(s.envSpecText || '{}')
+            } catch (e) {
+              ElMessage.warning(`关卡 ${s.stageId} 的 envSpec 不是合法 JSON`)
+              return false
+            }
+          }
+          if (!s.selectedBaselineId) {
+            ElMessage.warning(`请为关卡 ${s.stageId} 选择 baseline`)
+            return false
+          }
+        }
+      }
       return true
     },
 
@@ -912,7 +1316,7 @@ export default {
       const parts = normalized.split('/')
       return parts[parts.length - 1] || '当前未选择文件'
     },
-    async uploadTaskIcon (token) {
+    async uploadTaskIcon () {
       if (!this.selectedTaskIconFile) {
         return this.taskIconUrl || null
       }
@@ -920,22 +1324,17 @@ export default {
       const formData = new FormData()
       formData.append('file', this.selectedTaskIconFile)
 
-      const response = await fetch(`${API_BASE}/assignments/icon`, {
+      const result = await this.requestApi(`${API_BASE}/assignments/icon`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
         body: formData
       })
-
-      const result = await response.json()
-      if (!response.ok || result.code !== 0) {
-        throw new Error(result.message || '任务图标上传失败')
+      if (!result) {
+        throw new Error('任务图标上传失败')
       }
 
       return result.data || this.taskIconUrl || null
     },
-    async uploadBotPair (level, token) {
+    async uploadBotPair (level) {
       const pair = this.botFiles[level]
       if (!pair.config || !pair.model) {
         return
@@ -945,68 +1344,56 @@ export default {
       formData.append('config', pair.config)
       formData.append('model', pair.model)
 
-      const response = await fetch(`${API_BASE}/assignments/${this.taskId}/system-bots/${level}`, {
+      const result = await this.requestApi(`${API_BASE}/assignments/${this.taskId}/system-bots/${level}`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
         body: formData
       })
-
-      const result = await response.json()
-      if (!response.ok || result.code !== 0) {
-        throw new Error(result.message || `${level} 人机模型上传失败`)
+      if (!result) {
+        throw new Error(`${level} 人机模型上传失败`)
       }
     },
-    async uploadSelectedBotFiles (token) {
-      await this.uploadBotPair('easy', token)
-      await this.uploadBotPair('medium', token)
-      await this.uploadBotPair('hard', token)
+    async uploadSelectedBotFiles () {
+      await this.uploadBotPair('easy')
+      await this.uploadBotPair('medium')
+      await this.uploadBotPair('hard')
     },
     async saveTask () {
       if (!this.validateTaskForm()) {
         return
       }
 
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
+      let configPayload
+      try {
+        configPayload = this.buildConfigPayload()
+      } catch (e) {
+        ElMessage.warning(e.message || '配置构建失败')
         return
+      }
+
+      const payload = {
+        title: this.taskForm.name.trim(),
+        evaluationMode: this.getEvaluationModeValue(),
+        agentName: this.selectedAlgorithms.join(','),
+        environment: this.taskForm.environmentCode,
+        taskIcon: await this.uploadTaskIcon(),
+        deadline: this.taskForm.deadline,
+        teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
+        config: configPayload
       }
 
       this.saving = true
       try {
-        const taskIcon = await this.uploadTaskIcon(token)
-
-        const payload = {
-          title: this.taskForm.name.trim(),
-          evaluationMode: this.getEvaluationModeValue(),
-          agentName: this.selectedAlgorithms.join(','),
-          environment: this.taskForm.environmentCode,
-          taskIcon,
-          deadline: this.taskForm.deadline,
-          teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
-          config: this.buildConfigPayload()
-        }
-
-        const response = await fetch(`${API_BASE}/assignments/${this.taskId}`, {
+        const result = await this.requestApi(`${API_BASE}/assignments/${this.taskId}`, {
           method: 'PATCH',
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)
         })
-
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          ElMessage.error(result.message || '保存修改失败')
-          return
-        }
+        if (!result) return
 
         if (this.taskMode === 'battle') {
-          await this.uploadSelectedBotFiles(token)
+          await this.uploadSelectedBotFiles()
           await this.loadBotStatus()
         }
 
@@ -1016,6 +1403,21 @@ export default {
         ElMessage.error(error.message || '保存修改失败，请检查后端服务')
       } finally {
         this.saving = false
+      }
+    },
+    async publishTask () {
+      this.publishing = true
+      try {
+        const result = await this.requestApi(`${API_BASE}/assignments/${this.taskId}/publish`, {
+          method: 'POST'
+        })
+        if (!result) return
+        ElMessage.success('发布成功')
+        this.publicationStatus = 'PUBLISHED'
+      } catch (error) {
+        ElMessage.error(error.message || '发布失败，请检查后端是否已启动')
+      } finally {
+        this.publishing = false
       }
     },
     goBack () {
@@ -1048,6 +1450,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
       this.$router.push('/')
     }
@@ -1304,6 +1707,170 @@ export default {
 }
 
 .algorithm-btn-active {
+  background: #1f4e8c;
+}
+
+.baseline-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.baseline-chip {
+  min-width: 80px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid #dcdfe6;
+  background: #ffffff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.baseline-chip-active {
+  border-color: #1f4e8c;
+  background: #ecf5ff;
+  color: #1f4e8c;
+  font-weight: 600;
+}
+
+.stage-toolbar {
+  margin-bottom: 12px;
+}
+
+.stage-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.baseline-diff-block {
+  margin-top: 8px;
+}
+
+.baseline-diff-subtitle {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.baseline-empty {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #909399;
+}
+
+.baseline-selected-list,
+.baseline-available-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.baseline-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #ffffff;
+  min-height: 20px;
+}
+
+.baseline-item-available {
+  background: #fafafa;
+}
+
+.baseline-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.baseline-x-btn {
+  border: none;
+  background: #f56c6c;
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 26px;
+  width: 26px;
+  font-size: 12px;
+}
+
+.baseline-add-btn {
+  border: none;
+  background: #1f4e8c;
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.baseline-upload-box {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #eeeeee;
+}
+
+.baseline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.baseline-upload-label {
+  width: 72px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.baseline-algo-input {
+  flex: 1;
+  height: 36px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 0 10px;
+  font-size: 14px;
+  outline: none;
+}
+
+.baseline-file-input {
+  flex: 1;
+}
+
+.baseline-file-name {
+  font-size: 13px;
+  color: #606266;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.baseline-upload-btn {
+  border: none;
+  background: #303133;
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.baseline-upload-btn:hover {
   background: #1f4e8c;
 }
 

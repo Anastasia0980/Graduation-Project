@@ -57,4 +57,16 @@ public class ExperimentAssignment {
 
     @Column(name = "is_deleted", nullable = false)
     private Boolean isDeleted = false;
+
+    /**
+     * 发布状态：null 视为已发布（兼容历史数据）；新建作业默认为草稿。
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "publication_status", length = 16)
+    private PublicationStatus publicationStatus;
+
+    /** null 与 PUBLISHED 均视为学生可见 */
+    public PublicationStatus getEffectivePublicationStatus() {
+        return publicationStatus != null ? publicationStatus : PublicationStatus.PUBLISHED;
+    }
 }

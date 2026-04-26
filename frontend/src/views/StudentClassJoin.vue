@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='displayUserName'
       current-role='student'
       active-nav='home'
@@ -12,7 +12,7 @@
 
     <div class='layout'>
       <StudentSidebar
-        :logged-in='true'
+        :logged-in='isLoggedIn'
         active-menu='class'
         :task-menu-open='false'
         @profile-click='goProfile'
@@ -141,6 +141,8 @@
 import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
   (typeof window !== 'undefined'
@@ -174,21 +176,19 @@ export default {
   created () {
     this.loadCurrentClassInfo()
   },
+  computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    }
+  },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token')
-      return token ? { Authorization: `Bearer ${token}` } : {}
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadCurrentClassInfo () {
       try {
-        const response = await fetch(`${API_BASE}/user/me/class`, {
-          method: 'GET',
-          headers: {
-            ...this.getAuthHeaders()
-          }
-        })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0 || !result.data) {
+        const result = await this.requestApi(`${API_BASE}/user/me/class`, { method: 'GET' })
+        if (!result || !result.data) {
           this.joinedClass = false
           this.classInfo = {
             id: null,
@@ -212,14 +212,8 @@ export default {
     },
     async loadMyClassMembers () {
       try {
-        const response = await fetch(`${API_BASE}/class/me/users?pageNum=0&pageSize=100&isDeleted=false`, {
-          method: 'GET',
-          headers: {
-            ...this.getAuthHeaders()
-          }
-        })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0 || !result.data || !Array.isArray(result.data.content)) {
+        const result = await this.requestApi(`${API_BASE}/class/me/users?pageNum=0&pageSize=100&isDeleted=false`, { method: 'GET' })
+        if (!result || !result.data || !Array.isArray(result.data.content)) {
           this.classInfo.students = []
           this.classInfo.studentCount = 0
           return
@@ -239,14 +233,8 @@ export default {
     },
     async fillClassInfoByName (className) {
       try {
-        const response = await fetch(`${API_BASE}/class?pageNum=0&pageSize=100&isDeleted=false`, {
-          method: 'GET',
-          headers: {
-            ...this.getAuthHeaders()
-          }
-        })
-        const result = await response.json()
-        if (!response.ok || result.code !== 0 || !result.data || !result.data.content) {
+        const result = await this.requestApi(`${API_BASE}/class?pageNum=0&pageSize=100&isDeleted=false`, { method: 'GET' })
+        if (!result || !result.data || !result.data.content) {
           this.classInfo.classCode = ''
           this.classInfo.teacher = ''
           this.classInfo.studentCount = 0
@@ -287,17 +275,16 @@ export default {
         const params = new URLSearchParams()
         params.append('code', this.joinCode.trim())
 
-        const response = await fetch(`${API_BASE}/user/me/class`, {
+        const result = await this.requestApi(`${API_BASE}/user/me/class`, {
           method: 'PATCH',
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-            ...this.getAuthHeaders()
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
           },
           body: params.toString()
         })
-        const result = await response.json()
+        if (!result) return
 
-        if (!response.ok || result.code !== 0) {
+        if (result.code !== 0) {
           ElMessage.error(result.message || '加入班级失败')
           return
         }
@@ -314,15 +301,10 @@ export default {
     },
     async leaveClass () {
       try {
-        const response = await fetch(`${API_BASE}/user/me/class/quit`, {
-          method: 'PATCH',
-          headers: {
-            ...this.getAuthHeaders()
-          }
-        })
-        const result = await response.json()
+        const result = await this.requestApi(`${API_BASE}/user/me/class/quit`, { method: 'PATCH' })
+        if (!result) return
 
-        if (!response.ok || result.code !== 0) {
+        if (result.code !== 0) {
           ElMessage.error(result.message || '退出班级失败')
           return
         }
@@ -364,10 +346,7 @@ export default {
       this.$router.push('/student/history')
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
+      clearAuthState()
       this.$router.push('/login')
     }
   }

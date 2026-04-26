@@ -20,6 +20,7 @@ import StudentClassJoin from '../views/StudentClassJoin.vue'
 import StudentTournament from '../views/StudentTournament.vue'
 import StudentResourceDownload from '../views/StudentResourceDownload.vue'
 import TeacherEnvironmentManage from '../views/TeacherEnvironmentManage.vue'
+import { isAuthExpiredPendingConfirm } from '../utils/http'
 
 const routes = [
   {
@@ -147,6 +148,25 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+const PUBLIC_PATHS = new Set(['/', '/login', '/register'])
+
+router.beforeEach((to, from, next) => {
+  if (PUBLIC_PATHS.has(to.path)) {
+    next()
+    return
+  }
+  const token = localStorage.getItem('auth_token')
+  if (!token) {
+    if (isAuthExpiredPendingConfirm()) {
+      next()
+      return
+    }
+    next('/login')
+    return
+  }
+  next()
 })
 
 export default router

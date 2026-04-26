@@ -9,10 +9,6 @@ public interface EvaluationService {
 
     Evaluation getEvaluationById(long id);
 
-    void runEvaluation(Long evaluationId);
-
-    void runEvaluationAsync(long evaluationId);
-
     void runEvaluationByConfig(Integer assignmentId, MultipartFile model, MultipartFile config);
 
     Page<Evaluation> list(Integer pageNum, Integer pageSize, Integer assignmentId, Integer studentId, String status);

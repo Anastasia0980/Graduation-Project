@@ -12,6 +12,7 @@ import org.example.rlplatform.service.BattleEnvironmentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -21,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 public class BattleExecuter {
 
@@ -42,13 +44,18 @@ public class BattleExecuter {
     private BattleEnvironmentService battleEnvironmentService;
 
     public void executeBattle(Evaluation evaluation, BattleParticipant participant) {
+        final Long evalId = evaluation.getId();
         BattleEnvironment battleEnvironment = battleEnvironmentService.getReadyByCode(evaluation.getEnvironment());
+        log.info("Battle evaluation start id={} env={} games={} student1Dir={} student2Dir={}",
+                evalId, evaluation.getEnvironment(), evaluation.getEpisodes(),
+                participant.getStudent1DirRel(), participant.getStudent2DirRel());
 
         String finalPythonCmd = resolvePythonCmd(battleEnvironment);
         String base = resolveWorkspace(battleEnvironment);
         Path script = resolveScriptPath(battleEnvironment);
 
         if (!script.toFile().exists()) {
+            log.warn("Battle evaluation id={} aborted: script not found path={}", evalId, script);
             evaluation.setStatus(EvaluationStatus.FAILED);
             evaluation.setErrorMessage("Battle script not found: " + script);
             saveEvaluationResult(evaluation, null, null, base);
@@ -77,9 +84,16 @@ public class BattleExecuter {
         }
 
         pb.redirectErrorStream(true);
-        pb.directory(script.getParent().toFile());
+        Path cwd = script.getParent();
+        if (cwd != null) {
+            pb.directory(cwd.toFile());
+        }
+
+        log.info("Battle evaluation id={} spawning process python={} script={} cwd={} resultBase={}",
+                evalId, finalPythonCmd, script, cwd, resultBase);
 
         StringBuilder output = new StringBuilder();
+        long processStartMs = System.currentTimeMillis();
         try {
             Process process = pb.start();
 
@@ -92,8 +106,10 @@ public class BattleExecuter {
             }
 
             boolean finished = process.waitFor(30, TimeUnit.MINUTES);
+            long elapsedMs = System.currentTimeMillis() - processStartMs;
             if (!finished) {
                 process.destroyForcibly();
+                log.warn("Battle evaluation id={} failed: python timeout after {}ms (limit 30m)", evalId, elapsedMs);
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage("Battle python execution timeout");
                 saveEvaluationResult(evaluation, null, null, base);
@@ -102,6 +118,10 @@ public class BattleExecuter {
 
             int exitCode = process.exitValue();
             String out = output.toString().trim();
+            if (log.isDebugEnabled()) {
+                log.debug("Battle evaluation id={} raw output ({} chars): {}", evalId, out.length(),
+                        out.length() > 4000 ? out.substring(0, 4000) + "..." : out);
+            }
 
             String jsonLine = extractJsonLine(out);
             JsonNode root = null;
@@ -113,15 +133,21 @@ public class BattleExecuter {
             }
 
             if (exitCode != 0) {
-                evaluation.setStatus(EvaluationStatus.FAILED);
-                evaluation.setErrorMessage(root != null && root.has("error")
+                String errMsg = root != null && root.has("error")
                         ? root.path("error").asText()
-                        : (out.isEmpty() ? "Battle script failed (no output)" : out));
+                        : (out.isEmpty() ? "Battle script failed (no output)" : out);
+                log.warn("Battle evaluation id={} python exitCode={} after {}ms error={}", evalId, exitCode, elapsedMs, errMsg);
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage(errMsg);
+                log.info("Battle evaluation id={} finished status={} in {}ms", evalId, evaluation.getStatus(), elapsedMs);
                 saveEvaluationResult(evaluation, root, jsonLine, base);
                 return;
             }
 
             if (root == null) {
+                String preview = out.length() > 500 ? out.substring(0, 500) + "..." : out;
+                log.warn("Battle evaluation id={} failed: no valid JSON line in output after {}ms preview={}",
+                        evalId, elapsedMs, preview);
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage("Invalid JSON from battle script. Output: " +
                         (out.length() > 500 ? out.substring(0, 500) + "..." : out));
@@ -143,6 +169,7 @@ public class BattleExecuter {
             saveEvaluationResult(evaluation, root, jsonLine, base);
 
         } catch (Exception e) {
+            log.error("Battle evaluation id={} unexpected error", evalId, e);
             evaluation.setStatus(EvaluationStatus.FAILED);
             evaluation.setErrorMessage(e.getMessage());
             saveEvaluationResult(evaluation, null, null, base);
@@ -203,7 +230,9 @@ public class BattleExecuter {
             }
 
             evaluationResultRepository.save(er);
+            log.debug("Battle evaluation id={} result row saved", evaluation.getId());
         } catch (Exception e) {
+            log.error("Battle evaluation id={} save EvaluationResult failed", evaluation.getId(), e);
             evaluation.setStatus(EvaluationStatus.FAILED);
             if (evaluation.getErrorMessage() == null || evaluation.getErrorMessage().isBlank()) {
                 evaluation.setErrorMessage("Save battle result failed: " + e.getMessage());

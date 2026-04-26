@@ -28,8 +28,20 @@ spring:
 #  level:
 #    org.springframework.web.servlet.mapping: DEBUG
 
+# logging:
+#   level:
+#     org.example.rlplatform.battle.BattleExecuter: DEBUG
+
 #TODO: 需要修改为实际的路径
 evaluation:
   python: ""
   script: ""
   workspace: ""
+  baselineRoot: ""
+
+battle:
+  python: ""
+  script: ""
+
+system:
+  bot-root: ""

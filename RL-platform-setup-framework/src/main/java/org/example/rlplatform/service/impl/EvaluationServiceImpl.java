@@ -4,25 +4,34 @@ import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
 import org.example.rlplatform.entity.*;
 import org.example.rlplatform.Repository.EvaluationRepository;
 import org.example.rlplatform.evaluation.EvaluationExecuter;
+import org.example.rlplatform.evaluation.EvaluationRunner;
+import org.example.rlplatform.service.CurriculumProgressService;
 import org.example.rlplatform.service.ModelFileService;
 import org.example.rlplatform.service.EvaluationService;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import lombok.extern.slf4j.Slf4j;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Locale;
 
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.web.multipart.MultipartFile;
 
 import static java.time.LocalDateTime.now;
 
+@Slf4j
 @Service
 public class EvaluationServiceImpl implements EvaluationService {
 
@@ -38,6 +47,21 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Autowired
     private ExperimentAssignmentRepository experimentAssignmentRepository;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private EvaluationRunner evaluationRunner;
+
+    @Autowired
+    private CurriculumProgressService curriculumProgressService;
+
+    @Value("${evaluation.baselineRoot:}")
+    private String baselineRoot;
+
+    @Value("${evaluation.workspace:}")
+    private String workspaceConfig;
+
     @Override
     public void createEvaluation(Evaluation evaluation) {
         evaluation.setCreateTime(now());
@@ -48,21 +72,6 @@ public class EvaluationServiceImpl implements EvaluationService {
     @Override
     public Evaluation getEvaluationById(long id) {
         return evaluationRepository.findById(id).orElseThrow(RuntimeException::new);
-    }
-
-    @Override
-    public void runEvaluation(Long evaluationId) {
-        Evaluation evaluation = getEvaluationById(evaluationId);
-
-        evaluation.setErrorMessage(null);
-        evaluation.setStatus(EvaluationStatus.RUNNING);
-        evaluation.setUpdateTime(now());
-        evaluationRepository.save(evaluation);
-
-        evaluationExecuter.execute(evaluation);
-
-        evaluation.setUpdateTime(now());
-        evaluationRepository.save(evaluation);
     }
 
     @Override
@@ -81,6 +90,9 @@ public class EvaluationServiceImpl implements EvaluationService {
             if (assignment == null) {
                 throw new IllegalArgumentException("任务不存在");
             }
+            if (assignment.getEffectivePublicationStatus() != PublicationStatus.PUBLISHED) {
+                throw new IllegalStateException("任务尚未发布，无法进行单人评测");
+            }
 
             if (assignment.getEvaluationMode() != EvaluationMode.SINGLE) {
                 throw new IllegalStateException("当前任务不是单人模式，不能进行单人评测");
@@ -91,9 +103,30 @@ public class EvaluationServiceImpl implements EvaluationService {
                 throw new IllegalStateException("任务未配置环境");
             }
 
-            int episodes = 10;
+            int episodes = 100;
 
             ModelFile modelFile = modelFileService.uploadModelWithConfig(model, config, studentId);
+
+            String taskId = curriculumProgressService.resolveNextTaskId(studentId, assignmentId);
+
+            ExperimentConfig taskConfig = null;
+            if (assignment.getConfigJson() != null && !assignment.getConfigJson().isBlank()) {
+                try {
+                    taskConfig = objectMapper.readValue(assignment.getConfigJson(), ExperimentConfig.class);
+                } catch (Exception ignored) {
+                    taskConfig = null;
+                }
+            }
+            BaselineOption chosen = selectBaselineForAssignment(taskConfig, taskId);
+
+            if (chosen.getModelPath() == null || chosen.getModelPath().isBlank()) {
+                throw new IllegalStateException("baseline 选项未配置 modelPath");
+            }
+
+            String normalizedModelPath = chosen.getModelPath().replace("\\", "/");
+            String baselineModelPath = (baselineRoot != null && !baselineRoot.isBlank())
+                    ? baselineRoot.replace("\\", "/").replaceAll("/+$", "") + "/" + normalizedModelPath.replaceAll("^/+", "")
+                    : normalizedModelPath;
 
             evaluation = new Evaluation();
             evaluation.setStudentId(studentId);
@@ -102,14 +135,43 @@ public class EvaluationServiceImpl implements EvaluationService {
             evaluation.setModelId(modelFile.getId());
             evaluation.setAssignmentId(assignmentId);
             evaluation.setEpisodes(episodes);
+            // 闯关模式下不再使用 baselineDifficulty（历史字段，避免写入错误语义）
+            evaluation.setBaselineDifficulty(null);
+            evaluation.setBaselineId(chosen.getId());
+            evaluation.setBaselineModelPath(baselineModelPath);
+            evaluation.setTaskId(taskId);
+            evaluation.setStageSpecPath(null);
             evaluation.setStatus(EvaluationStatus.PENDING);
             evaluation.setCreateTime(now());
             evaluation.setUpdateTime(now());
             evaluationRepository.save(evaluation);
 
-            runEvaluationAsync(evaluation.getId());
+            if (isLunarEnvironment(environment)
+                    && taskConfig != null
+                    && taskConfig.getCurriculumStages() != null
+                    && !taskConfig.getCurriculumStages().isEmpty()) {
+                if (workspaceConfig == null || workspaceConfig.isBlank()) {
+                    throw new IllegalStateException("evaluation.workspace 未配置，无法写入关卡 envSpec");
+                }
+                CurriculumStageConfig stage = findStageById(taskConfig.getCurriculumStages(), taskId);
+                if (stage == null || stage.getEnvSpec() == null) {
+                    throw new IllegalStateException("未找到关卡配置或 envSpec 为空: " + taskId);
+                }
+                Path ws = Paths.get(workspaceConfig.trim());
+                Path dir = ws.resolve("stage_specs");
+                Files.createDirectories(dir);
+                Path specFile = dir.resolve(evaluation.getId() + ".json");
+                objectMapper.writeValue(specFile.toFile(), stage.getEnvSpec());
+                evaluation.setStageSpecPath("stage_specs/" + evaluation.getId() + ".json");
+                evaluation.setUpdateTime(now());
+                evaluationRepository.save(evaluation);
+            }
+
+            evaluationRunner.runAsync(evaluation.getId());
 
         } catch (Exception e) {
+            log.error("runEvaluationByConfig failed assignmentId={} evaluationId={}",
+                    assignmentId, evaluation != null ? evaluation.getId() : null, e);
             if (evaluation != null) {
                 evaluation.setStatus(EvaluationStatus.FAILED);
                 evaluation.setErrorMessage(e.getMessage());
@@ -120,11 +182,56 @@ public class EvaluationServiceImpl implements EvaluationService {
         }
     }
 
-    @Override
-    @Async("evaluationExecutor")
-    public void runEvaluationAsync(long evaluationId) {
-        runEvaluation(evaluationId);
+    private BaselineOption selectBaselineForAssignment(ExperimentConfig taskConfig, String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalStateException("无法确定当前闯关关卡");
+        }
+        String key = taskId.trim();
+        if (taskConfig != null && taskConfig.getCurriculumStages() != null && !taskConfig.getCurriculumStages().isEmpty()) {
+            CurriculumStageConfig stage = findStageById(taskConfig.getCurriculumStages(), key);
+            if (stage != null && stage.getBaseline() != null) {
+                return stage.getBaseline();
+            }
+            throw new IllegalStateException("任务未配置当前关卡 baseline（stageId=" + key + "）");
+        }
+
+        String normalizedTaskId = key.toUpperCase(Locale.ROOT);
+        BaselineOption selected = (taskConfig != null && taskConfig.getTaskBaselineOptions() != null)
+                ? taskConfig.getTaskBaselineOptions().get(normalizedTaskId)
+                : null;
+        if (selected != null) {
+            return selected;
+        }
+
+        throw new IllegalStateException("任务未配置当前关卡 baseline（taskId=" + normalizedTaskId + "）");
     }
+
+    private static CurriculumStageConfig findStageById(List<CurriculumStageConfig> stages, String stageId) {
+        if (stages == null || stageId == null) {
+            return null;
+        }
+        String k = stageId.trim();
+        for (CurriculumStageConfig s : stages) {
+            if (s != null && s.getStageId() != null && s.getStageId().trim().equals(k)) {
+                return s;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isLunarEnvironment(String environment) {
+        return environment != null && "LunarLander-v3".equalsIgnoreCase(environment.trim());
+    }
+
+//    @Override
+//    public void runEvaluationByBot(Long evaluationId) {
+//        Evaluation evaluation = getEvaluationById(evaluationId);
+//        evaluation.setErrorMessage(null);
+//        evaluation.setStatus(EvaluationStatus.RUNNING);
+//        evaluation.setUpdateTime(now());
+//        evaluationRepository.save(evaluation);
+//
+//    }
 
     @Override
     public Page<Evaluation> list(Integer pageNum, Integer pageSize, Integer assignmentId, Integer studentId, String status) {

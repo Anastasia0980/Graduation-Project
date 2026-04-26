@@ -9,12 +9,13 @@ import java.util.Map;
 public class JwtUtil {
 
     private static final String KEY = "rlbjtu";
+    private static final long JWT_EXPIRE_MS = 1000L * 60 * 60 * 24 * 7; // 7 days
 	
 	//接收业务数据,生成token并返回
     public static String genToken(Map<String, Object> claims) {
         return JWT.create()
                 .withClaim("claims", claims)
-                .withExpiresAt(new Date(System.currentTimeMillis() + 1000 * 60 * 60))
+                .withExpiresAt(new Date(System.currentTimeMillis() + JWT_EXPIRE_MS))
                 .sign(Algorithm.HMAC256(KEY));
     }
 

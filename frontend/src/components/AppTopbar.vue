@@ -19,7 +19,7 @@
     </div>
 
     <div class="topbar-right">
-      <template v-if="loggedIn">
+      <template v-if="effectiveLoggedIn">
         <span class="user-name" @click="$emit('user-click')">{{ displayUserName }}</span>
         <button class="ghost-btn" @click="handleLogout">退出</button>
       </template>
@@ -33,6 +33,8 @@
 </template>
 
 <script>
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+
 export default {
   name: 'AppTopbar',
   props: {
@@ -54,20 +56,19 @@ export default {
     }
   },
   computed: {
+    effectiveLoggedIn () {
+      return this.loggedIn && hasAuthToken()
+    },
     displayUserName () {
-      if (!this.loggedIn) {
+      if (!this.effectiveLoggedIn) {
         return ''
       }
-      return this.userName || ''
+      return this.userName || localStorage.getItem('auth_name') || ''
     }
   },
   methods: {
     handleLogout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
-      sessionStorage.removeItem('mock_logged_out_view')
+      clearAuthState()
       this.$emit('logout')
     }
   }

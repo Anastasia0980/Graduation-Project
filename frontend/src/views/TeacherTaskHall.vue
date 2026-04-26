@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <AppTopbar
-      :logged-in="true"
+      :logged-in="isLoggedIn"
       :user-name="teacherName"
       current-role="teacher"
       active-nav="home"
@@ -96,6 +96,8 @@ import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import tictactoeImage from '../assets/tictactoe.png'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest } from '../utils/http'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -124,6 +126,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     filteredTasks () {
       return this.currentTab === 'ended'
         ? this.taskList.filter(t => !t.isOpen)
@@ -144,27 +149,16 @@ export default {
     this.loadTaskList()
   },
   methods: {
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
+    },
     async loadTaskList () {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        ElMessage.error('登录信息已失效，请重新登录')
-        this.$router.push('/login')
-        return
-      }
-
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        const result = await this.requestApi(`${API_BASE}/teacher/assignments?pageNum=0&pageSize=100`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '任务列表加载失败')
-        }
+        if (!result) return
 
         const pageData = result.data || {}
         const content = Array.isArray(pageData.content) ? pageData.content : []
@@ -275,11 +269,8 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
+      clearAuthState()
       sessionStorage.setItem('mock_logged_out_view', 'true')
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
       this.$router.push('/')
     }
   }

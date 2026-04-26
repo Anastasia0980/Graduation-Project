@@ -1,7 +1,7 @@
 <template>
   <div class='page'>
     <AppTopbar
-      :logged-in='true'
+      :logged-in='isLoggedIn'
       :user-name='displayUserName'
       current-role='student'
       active-nav='home'
@@ -80,6 +80,7 @@
 
 <script>
 import AppTopbar from '../components/AppTopbar.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
 
 export default {
   name: 'StudentTournamentView',
@@ -87,6 +88,9 @@ export default {
     AppTopbar
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     displayUserName () {
       return localStorage.getItem('auth_name') || ''
     }
@@ -107,10 +111,7 @@ export default {
       this.$router.push('/teacher/home')
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
-      localStorage.removeItem('auth_email')
+      clearAuthState()
       sessionStorage.removeItem('mock_logged_out_view')
       this.$router.replace('/')
     }

@@ -34,4 +34,6 @@ public class SubmissionHistoryVO {
     private Long evaluationResultId;
 
     private Boolean hasVideo;
+
+    private Boolean hasLog;
 }

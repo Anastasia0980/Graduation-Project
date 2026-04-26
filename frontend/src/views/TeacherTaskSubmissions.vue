@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <AppTopbar
-      :logged-in="true"
+      :logged-in="isLoggedIn"
       :user-name="displayUserName"
       current-role="teacher"
       active-nav="home"
@@ -20,7 +20,7 @@
         <div class="page-header">
           <div class="header-left">
             <button class="back-btn" @click="goBack">返回</button>
-            <h2>学生提交情况</h2>
+            <h2>提交详情</h2>
           </div>
         </div>
 
@@ -159,6 +159,9 @@
           <div class="video-meta">
             <div class="video-task-name">{{ currentVideo.taskName }}</div>
             <div class="video-model-name">模型文件：{{ currentVideo.modelName }}</div>
+            <div v-if='currentVideo.taskMode.includes("单人")' class='video-hint'>
+              视频左侧为 student，右侧 baseline，视频仅展示小部分轮次
+            </div>
           </div>
 
           <div v-if="videoLoading" class="video-loading-box">
@@ -190,6 +193,8 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
+import { clearAuthState, hasAuthToken } from '../utils/auth'
+import { apiRequest, notifyAuthExpiredAndRedirect } from '../utils/http'
 
 const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
   (typeof window !== 'undefined'
@@ -212,6 +217,7 @@ export default {
       videoVisible: false,
       videoLoading: false,
       videoError: '',
+      taskMode: '',
       currentVideo: {
         taskName: '',
         modelName: '',
@@ -221,6 +227,9 @@ export default {
     }
   },
   computed: {
+    isLoggedIn () {
+      return hasAuthToken()
+    },
     displayUserName () {
       return localStorage.getItem('auth_name') || '教师'
     },
@@ -243,24 +252,16 @@ export default {
     this.loadSubmissionList()
   },
   methods: {
-    getAuthHeaders () {
-      const token = localStorage.getItem('auth_token') || ''
-      return {
-        Authorization: `Bearer ${token}`
-      }
+    async requestApi (url, options = {}) {
+      return await apiRequest(url, options)
     },
     async loadSubmissionList () {
       this.loading = true
       try {
-        const response = await fetch(`${API_BASE}/assignments/${this.taskId}/submissions`, {
-          method: 'GET',
-          headers: this.getAuthHeaders()
+        const result = await this.requestApi(`${API_BASE}/assignments/${this.taskId}/submissions`, {
+          method: 'GET'
         })
-        const result = await response.json()
-
-        if (!response.ok || result.code !== 0) {
-          throw new Error(result.message || '提交记录加载失败')
-        }
+        if (!result) return
 
         const list = Array.isArray(result.data) ? result.data : []
         this.submissionList = list.map(item => ({
@@ -269,6 +270,7 @@ export default {
           studentId: item.studentId,
           studentName: item.studentName || '--',
           taskName: item.taskTitle || '未知任务',
+          taskMode: item.taskMode || '',
           modelName: item.modelName || '--',
           submitTime: item.submitTime || '--',
           status: item.status || '--',
@@ -311,9 +313,7 @@ export default {
       this.$router.push({ path: '/', query: { tab: 'open' } })
     },
     logout () {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_role')
-      localStorage.removeItem('auth_name')
+      clearAuthState()
       this.$router.push('/')
     },
     goStudentDetail (studentId) {
@@ -326,17 +326,18 @@ export default {
       this.currentVideo = {
         taskName: item.taskName,
         modelName: item.modelName,
+        taskMode: item.taskMode || '',
         videoUrl: '',
         sourceApiUrl: item.sourceApiUrl
       }
       this.videoError = ''
       this.videoLoading = true
-      this.videoVisible = true
 
       try {
         const token = localStorage.getItem('auth_token')
         if (!token) {
-          throw new Error('当前未登录或登录已过期')
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
         }
 
         const response = await fetch(item.sourceApiUrl, {
@@ -346,6 +347,10 @@ export default {
           }
         })
 
+        if (response.status === 401) {
+          notifyAuthExpiredAndRedirect(this.$router)
+          return
+        }
         if (!response.ok) {
           throw new Error(`视频加载失败（${response.status}）`)
         }
@@ -357,8 +362,10 @@ export default {
 
         const objectUrl = URL.createObjectURL(blob)
         this.currentVideo.videoUrl = objectUrl
+        this.videoVisible = true
       } catch (error) {
         this.videoError = error.message || '视频加载失败'
+        ElMessage.error(this.videoError)
       } finally {
         this.videoLoading = false
       }
@@ -382,7 +389,8 @@ export default {
     async fetchAndDownload (url, filename) {
       const token = localStorage.getItem('auth_token')
       if (!token) {
-        throw new Error('当前未登录或登录已过期')
+        notifyAuthExpiredAndRedirect(this.$router)
+        throw new Error('登录信息已失效，请重新登录')
       }
 
       const response = await fetch(url, {
@@ -392,6 +400,10 @@ export default {
         }
       })
 
+      if (response.status === 401) {
+        notifyAuthExpiredAndRedirect(this.$router)
+        throw new Error('登录信息已失效，请重新登录')
+      }
       if (!response.ok) {
         throw new Error(`下载失败（${response.status}）`)
       }
@@ -425,6 +437,7 @@ export default {
       this.closeVideoObjectUrlOnly()
 
       this.currentVideo = {
+        taskMode: '',
         taskName: '',
         modelName: '',
         videoUrl: '',
@@ -631,6 +644,12 @@ export default {
 .video-model-name {
   font-size: 14px;
   color: #606266;
+}
+
+.video-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #909399;
 }
 
 .video-player {
