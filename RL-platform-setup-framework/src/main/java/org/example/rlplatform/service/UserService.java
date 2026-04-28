@@ -27,6 +27,8 @@ public interface UserService {
 
     void softDeleteStudent(Integer id);
 
+    void softDeleteUser(Integer id);
+
     void resetPwd(Integer id, String newPwd);
 
     User findByEmail(@Email String email);

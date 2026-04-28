@@ -78,10 +78,8 @@
 </template>
 
 <script>
-const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:8080`
-    : 'http://localhost:8080')
+import { getApiBaseUrl } from './utils/http'
+const API_BASE = getApiBaseUrl()
 
 export default {
   name: 'BattlePage',

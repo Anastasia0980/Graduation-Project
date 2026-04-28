@@ -144,9 +144,9 @@ import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import tictactoeImage from '../assets/tictactoe.png'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
-import { apiRequest } from '../utils/http'
+import { apiRequest, getApiBaseUrl } from '../utils/http'
 
-const API_BASE = 'http://localhost:8080'
+const API_BASE = getApiBaseUrl()
 
 function normalizeFileUrl (url) {
   if (!url) return ''

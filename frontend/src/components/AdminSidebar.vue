@@ -17,6 +17,14 @@
     >
       说明管理
     </div>
+
+    <div
+      class='menu-item'
+      :class='{ active: activeMenu === "user" }'
+      @click="$emit('change-menu', 'user')"
+    >
+      用户管理
+    </div>
   </aside>
 </template>
 

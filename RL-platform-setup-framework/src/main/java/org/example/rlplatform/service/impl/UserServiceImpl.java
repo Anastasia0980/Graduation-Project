@@ -49,14 +49,19 @@ public class UserServiceImpl implements UserService {
     public Page<User> listByCondition(Integer pageNum, Integer pageSize, String role, String keyword, Integer classId, Boolean isDeleted) {
         Specification<User> spec = (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
-            if (role != null) {
-                predicates.add(criteriaBuilder.equal(root.get("role"), role));
+            if (role != null && !role.isBlank()) {
+                try {
+                    predicates.add(criteriaBuilder.equal(root.get("role"), UserRole.valueOf(role.toUpperCase())));
+                } catch (IllegalArgumentException e) {
+                    predicates.add(criteriaBuilder.disjunction());
+                }
             }
             if (keyword != null && !keyword.isBlank()) {
-                String like = "%" + keyword + "%";
+                String like = "%" + keyword.trim() + "%";
                 predicates.add(criteriaBuilder.or(
-                        criteriaBuilder.like(root.get("username"), like)/*,
-                        criteriaBuilder.like(root.get("nickname"), like)*/
+                        criteriaBuilder.like(root.get("username"), like),
+                        criteriaBuilder.like(root.get("nickname"), like),
+                        criteriaBuilder.like(root.get("email"), like)
                 ));
             }
             if (isDeleted != null) {
@@ -96,8 +101,6 @@ public class UserServiceImpl implements UserService {
             throw new RuntimeException("邮箱已被占用");
         }
         dbUser.setEmail(user.getEmail());
-//        dbUser.setUserPic(user.getUserPic());
-
         dbUser.setUpdateTime(LocalDateTime.now());
         userRepository.save(dbUser);
     }
@@ -160,6 +163,27 @@ public class UserServiceImpl implements UserService {
             if (dbUser.getRole() != UserRole.STUDENT) {
                 throw new RuntimeException("您无权删除该用户！需要管理员权限");
             }
+        }
+
+        dbUser.setIsDeleted(true);
+        dbUser.setUpdateTime(LocalDateTime.now());
+        userRepository.save(dbUser);
+    }
+
+    @Override
+    @Transactional
+    public void softDeleteUser(Integer id) {
+        User dbUser = getByIdAndNotDeleted(id);
+
+        Map<String, Object> claims = ThreadLocalUtil.get();
+        Integer currentId = (Integer) claims.get("id");
+        if (dbUser.getId().equals(currentId)) {
+            throw new RuntimeException("不能删除当前登录用户");
+        }
+
+        String currentRole = String.valueOf(claims.get("role"));
+        if (!UserRole.ADMIN.name().equals(currentRole)) {
+            throw new RuntimeException("您无权删除该用户！需要管理员权限");
         }
 
         dbUser.setIsDeleted(true);

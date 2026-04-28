@@ -68,8 +68,8 @@ public class UserController {
     public Result<String> login(@RequestParam String email, @RequestParam String password){
 
         User loginuser = userService.findByEmail(email);
-        if(loginuser == null){
-            return Result.error("邮箱错误");
+        if(loginuser == null || Boolean.TRUE.equals(loginuser.getIsDeleted())){
+            return Result.error("邮箱错误或账号已被删除");
         }
 
         if(loginuser.getPassword().equals(Md5Util.getMD5String(password))){
@@ -92,10 +92,7 @@ public class UserController {
     }
 
     @GetMapping("/userInfo")
-    public Result<User> userinfo(/*@RequestHeader(name="Authorization") String token*/){
-
-//        Map<String,Object> claims = JwtUtil.parseToken(token);
-//        String username = claims.get("username").toString();
+    public Result<User> userinfo(){
         Map<String, Object> claims = ThreadLocalUtil.get();
         String userId = claims.get("id").toString();
         User user = userService.findByIdAndIsDeletedFalse(Integer.parseInt(userId));
@@ -123,7 +120,6 @@ public class UserController {
 
     @PatchMapping("/updatePwd")
     public Result updatePwd(@RequestBody Map<String,String> params){
-        //校验参数
         String oldPwd = params.get("oldPwd");
         String newPwd = params.get("newPwd");
         String rePwd = params.get("rePwd");
@@ -142,7 +138,6 @@ public class UserController {
             return Result.error("两次填写的密码不一致");
         }
 
-        //密码更新
         userService.updatePwd(newPwd);
         return Result.success();
     }
@@ -158,6 +153,12 @@ public class UserController {
             @RequestParam(required = false, defaultValue = "false") Boolean isDeleted
     ){
         return Result.success(userService.listByCondition(pageNum, pageSize, role, keyword, classId, isDeleted));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<User> detail(@PathVariable Integer id) {
+        return Result.success(userService.findByIdAndIsDeletedFalse(id));
     }
 
     @PatchMapping("/{id}/role")
@@ -179,6 +180,13 @@ public class UserController {
     @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
     public Result deleteStudent(@PathVariable Integer id){
         userService.softDeleteStudent(id);
+        return Result.success();
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result deleteUser(@PathVariable Integer id){
+        userService.softDeleteUser(id);
         return Result.success();
     }
 

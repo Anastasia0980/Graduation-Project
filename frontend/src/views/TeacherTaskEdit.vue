@@ -509,9 +509,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
-import { apiRequest } from '../utils/http'
+import { apiRequest, getApiBaseUrl } from '../utils/http'
 
-const API_BASE = 'http://localhost:8080'
+const API_BASE = getApiBaseUrl()
 const DEFAULT_ENV_SPEC_JSON = JSON.stringify({
   enable_wind: false,
   wind_power: 0.0,

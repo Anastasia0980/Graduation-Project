@@ -172,12 +172,9 @@ import StudentSidebar from '../components/StudentSidebar.vue'
 import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
-import { apiRequest } from '../utils/http'
+import { apiRequest, getApiBaseUrl } from '../utils/http'
 
-const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:8080`
-    : 'http://localhost:8080')
+const API_BASE = getApiBaseUrl()
 
 export default {
   name: 'RankingView',

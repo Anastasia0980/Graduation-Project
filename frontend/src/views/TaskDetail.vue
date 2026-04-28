@@ -621,9 +621,9 @@ import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import tictactoeImage from '../assets/tictactoe.png'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
-import { notifyAuthExpiredAndRedirect } from '../utils/http'
+import { notifyAuthExpiredAndRedirect, getApiBaseUrl } from '../utils/http'
 
-const API_BASE = 'http://localhost:8080'
+const API_BASE = getApiBaseUrl()
 
 function normalizeFileUrl (url) {
   if (!url) return ''

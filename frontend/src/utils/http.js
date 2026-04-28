@@ -1,6 +1,48 @@
 import { clearAuthState } from './auth'
 import { ElMessageBox } from 'element-plus'
 
+/**
+ * 后端服务端口。
+ *
+ * 默认情况下，前端会自动使用“当前页面访问地址的 hostname + 8080”作为后端地址：
+ * - 本地访问 http://localhost:8081      -> 请求 http://localhost:8080
+ * - 校园网访问 http://192.168.x.x:8081 -> 请求 http://192.168.x.x:8080
+ * - 服务器访问 http://服务器IP:8081     -> 请求 http://服务器IP:8080
+ *
+ * 如果以后后端端口改变，只需要修改这里。
+ */
+const DEFAULT_BACKEND_PORT = '8080'
+
+/**
+ * 固定后端地址。
+ *
+ * 通常保持为空字符串，表示自动根据当前访问的前端地址推导后端地址。
+ * 只有当前端和后端不在同一台电脑/服务器时，才需要改成固定地址，例如：
+ * const FIXED_API_BASE = 'http://192.168.1.25:8080'
+ */
+const FIXED_API_BASE = ''
+
+export function getApiBaseUrl () {
+  if (FIXED_API_BASE && FIXED_API_BASE.trim()) {
+    return FIXED_API_BASE.replace(/\/$/, '')
+  }
+
+  if (typeof window === 'undefined' || !window.location) {
+    return `http://localhost:${DEFAULT_BACKEND_PORT}`
+  }
+
+  const protocol = window.location.protocol || 'http:'
+  const hostname = window.location.hostname || 'localhost'
+
+  return `${protocol}//${hostname}:${DEFAULT_BACKEND_PORT}`
+}
+
+export function buildApiUrl (url = '') {
+  if (!url) return getApiBaseUrl()
+  if (/^https?:\/\//i.test(url)) return url
+  return `${getApiBaseUrl()}${url.startsWith('/') ? url : `/${url}`}`
+}
+
 const DEFAULT_AUTH_EXPIRED_MESSAGE = '会话已过期，请重新登录后操作'
 const AUTH_EXPIRED_PENDING_KEY = 'auth_expired_pending_confirm'
 
@@ -104,7 +146,7 @@ export async function apiRequest (url, options = {}) {
     }
   }
 
-  const response = await fetch(url, { ...fetchOptions, headers })
+  const response = await fetch(buildApiUrl(url), { ...fetchOptions, headers })
 
   if (response.status === 401) {
     notifyAuthExpiredAndRedirect(routerInstance, authExpiredMessage)

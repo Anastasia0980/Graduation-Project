@@ -169,9 +169,9 @@ import TeacherSidebar from '../components/TeacherSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import defaultAvatar from '../assets/logo.png'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
-import { apiRequest, notifyAuthExpiredAndRedirect } from '../utils/http'
+import { apiRequest, notifyAuthExpiredAndRedirect, getApiBaseUrl } from '../utils/http'
 
-const API_BASE = 'http://localhost:8080'
+const API_BASE = getApiBaseUrl()
 
 function normalizeFileUrl (url) {
   if (!url) return ''

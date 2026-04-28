@@ -73,16 +73,14 @@
 </template>
 
 <script>
+import { getApiBaseUrl } from '../utils/http'
 import { ElMessage } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import StudentSidebar from '../components/StudentSidebar.vue'
 import CommonPagination from '../components/CommonPagination.vue'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
 
-const API_BASE = (process.env.VUE_APP_API_BASE && process.env.VUE_APP_API_BASE.trim()) ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:8080`
-    : 'http://localhost:8080')
+const API_BASE = getApiBaseUrl()
 
 export default {
   name: 'StudentResourceDownloadView',
