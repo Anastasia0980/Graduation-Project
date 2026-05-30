@@ -34,10 +34,10 @@ spring:
 
 #TODO: 需要修改为实际的路径
 evaluation:
-  python: "C:/Users/qtq/anaconda3/envs/mojito/python.exe"
+  python: "E:/Anaconda/envs/rl_single/python.exe"
   script: "scripts/evaluate.py"
-  workspace: "E:/2025-2026/GP/LunarLander-RL-Comparison"
-  baselineRoot: "E:/2025-2026/GP/LunarLander-RL-Comparison/saved_models"
+  workspace: "E:/RL_Result"
+  baselineRoot: "E:/RL_Result"
 
 # logging:
 #   level:

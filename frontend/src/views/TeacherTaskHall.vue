@@ -296,6 +296,7 @@ export default {
 
 .content-area {
   flex: 1;
+  min-width: 0;
   padding: 20px;
 }
 
@@ -344,11 +345,14 @@ export default {
 }
 
 .task-card {
+  height: 430px;
   background: #ffffff;
   border: 1px solid #dcdfe6;
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(31, 45, 61, 0.06);
+  display: flex;
+  flex-direction: column;
 }
 
 .task-image-box {
@@ -366,12 +370,19 @@ export default {
 }
 
 .task-body {
+  flex: 1;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .task-type-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-width: 96px;
+  max-width: 100%;
   height: 28px;
   padding: 0 10px;
   border-radius: 999px;
@@ -379,6 +390,7 @@ export default {
   color: #1f4e8c;
   font-size: 12px;
   font-weight: 700;
+  text-align: center;
   margin-bottom: 10px;
 }
 
@@ -388,11 +400,17 @@ export default {
 }
 
 .task-title {
+  min-height: 50px;
   font-size: 18px;
   font-weight: 700;
   color: #1f2d3d;
+  line-height: 1.4;
   margin-bottom: 10px;
   cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .task-title:hover {
@@ -403,11 +421,16 @@ export default {
   font-size: 14px;
   color: #606266;
   line-height: 1.8;
-  min-height: 52px;
+  height: 52px;
   margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .task-meta {
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -420,6 +443,7 @@ export default {
 }
 
 .submit-btn {
+  margin-top: auto;
   width: 100%;
   height: 38px;
   border: none;

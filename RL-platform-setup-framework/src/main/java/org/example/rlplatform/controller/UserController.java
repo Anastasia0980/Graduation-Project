@@ -31,6 +31,8 @@ import java.util.concurrent.TimeUnit;
 @Validated
 public class UserController {
 
+    private static final String DEFAULT_STUDENT_PASSWORD = "123456";
+
     @Autowired
     private UserService userService;
 
@@ -191,14 +193,9 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/password_reset")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
-    public Result resetPwdByAdminAndTeacher(@PathVariable Integer id, @RequestBody Map<String,String> params){
-        String newPwd = params.get("newPwd");
-        if (StringUtils.isEmpty(newPwd)) {
-            return Result.error("新密码不能为空");
-        }
-
-        userService.resetPwd(id, newPwd);
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result resetStudentPwdByAdmin(@PathVariable Integer id){
+        userService.resetStudentPwdToDefault(id, DEFAULT_STUDENT_PASSWORD);
         return Result.success();
     }
 

@@ -25,7 +25,8 @@
         </div>
 
         <div class="table-card">
-          <table class="history-table">
+          <div class="history-table-scroll">
+            <table class="history-table">
             <thead>
               <tr>
                 <th>学生</th>
@@ -57,15 +58,15 @@
                     class="student-link"
                     @click="goStudentDetail(item.studentId)"
                   >
-                    {{ item.studentName }}
+                    <span class="cell-text">{{ item.studentName }}</span>
                   </span>
-                  <span v-else>{{ item.studentName }}</span>
+                  <span v-else class="cell-text">{{ item.studentName }}</span>
                 </td>
 
-                <td>{{ item.taskName }}</td>
-                <td>{{ item.modelName }}</td>
-                <td>{{ item.submitTime }}</td>
-                <td>{{ item.status }}</td>
+                <td><span class="cell-text">{{ item.taskName }}</span></td>
+                <td><span class="cell-text">{{ item.modelName }}</span></td>
+                <td><span class="cell-text">{{ item.submitTime }}</span></td>
+                <td><span class="cell-text">{{ item.status }}</span></td>
 
                 <td>
                   <span
@@ -73,13 +74,13 @@
                     class="student-link"
                     @click="goStudentDetail(item.opponentStudentId)"
                   >
-                    {{ item.opponent }}
+                    <span class="cell-text">{{ item.opponent }}</span>
                   </span>
-                  <span v-else>{{ item.opponent }}</span>
+                  <span v-else class="cell-text">{{ item.opponent }}</span>
                 </td>
 
-                <td>{{ item.result }}</td>
-                <td class="detail-cell">{{ item.detailedResult }}</td>
+                <td><span class="cell-text">{{ item.result }}</span></td>
+                <td class="detail-cell"><span class="cell-text">{{ item.detailedResult }}</span></td>
 
                 <td>
                   <button
@@ -136,7 +137,8 @@
                 </td>
               </tr>
             </tbody>
-          </table>
+            </table>
+          </div>
 
           <CommonPagination
             v-model:currentPage="currentPage"
@@ -467,6 +469,7 @@ export default {
 
 .content-area {
   flex: 1;
+  min-width: 0;
   padding: 20px;
 }
 
@@ -504,20 +507,32 @@ export default {
 }
 
 .table-card {
+  width: 100%;
+  max-width: 100%;
   background: #ffffff;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
   overflow: hidden;
 }
 
+.history-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .history-table {
   width: 100%;
+  min-width: 1500px;
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
 .history-table th,
 .history-table td {
-  padding: 14px 12px;
+  height: 64px;
+  padding: 10px 12px;
   border-bottom: 1px solid #ebeef5;
   text-align: left;
   font-size: 14px;
@@ -536,13 +551,78 @@ export default {
 }
 
 .detail-cell {
-  min-width: 220px;
-  white-space: normal;
-  line-height: 1.6;
   color: #606266;
 }
 
+.cell-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 20px;
+  max-height: 40px;
+  word-break: break-all;
+}
+
+.history-table th:nth-child(1),
+.history-table td:nth-child(1) { width: 150px; }
+
+.history-table th:nth-child(2),
+.history-table td:nth-child(2) { width: 210px; }
+
+.history-table th:nth-child(3),
+.history-table td:nth-child(3) { width: 210px; }
+
+.history-table th:nth-child(4),
+.history-table td:nth-child(4) { width: 170px; }
+
+.history-table th:nth-child(5),
+.history-table td:nth-child(5) { width: 120px; }
+
+.history-table th:nth-child(6),
+.history-table td:nth-child(6) { width: 160px; }
+
+.history-table th:nth-child(7),
+.history-table td:nth-child(7) { width: 130px; }
+
+.history-table th:nth-child(8),
+.history-table td:nth-child(8) { width: 240px; }
+
+.history-table th:nth-last-child(3),
+.history-table td:nth-last-child(3),
+.history-table th:nth-last-child(2),
+.history-table td:nth-last-child(2),
+.history-table th:nth-last-child(1),
+.history-table td:nth-last-child(1) {
+  width: 106px;
+  min-width: 106px;
+  text-align: center;
+  position: sticky;
+  z-index: 2;
+  background: #ffffff;
+}
+
+.history-table th:nth-last-child(3),
+.history-table th:nth-last-child(2),
+.history-table th:nth-last-child(1) {
+  z-index: 3;
+  background: #f8fafc;
+}
+
+.history-table th:nth-last-child(1),
+.history-table td:nth-last-child(1) { right: 0; }
+
+.history-table th:nth-last-child(2),
+.history-table td:nth-last-child(2) { right: 106px; }
+
+.history-table th:nth-last-child(3),
+.history-table td:nth-last-child(3) {
+  right: 212px;
+  box-shadow: -6px 0 8px -8px rgba(31, 45, 61, 0.35);
+}
+
 .student-link {
+  display: block;
   color: #1f4e8c;
   cursor: pointer;
   text-decoration: underline;
@@ -682,10 +762,6 @@ export default {
 
   .content-area {
     padding: 16px;
-  }
-
-  .table-card {
-    overflow-x: auto;
   }
 
   .history-table {

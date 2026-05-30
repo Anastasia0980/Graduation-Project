@@ -88,45 +88,47 @@
 
           <div v-if='loading' class='empty-box'>正在加载环境列表...</div>
           <div v-else-if='envList.length === 0' class='empty-box'>当前暂无已创建环境。</div>
-          <div v-else class='table-wrap'>
-            <table class='table'>
+          <div v-else class='table-wrap env-table-wrap'>
+            <table class='table env-table'>
               <thead>
                 <tr>
-                  <th>环境名称</th>
-                  <th>环境编码</th>
-                  <th>状态</th>
-                  <th>Conda 环境名</th>
-                  <th>Python 路径</th>
-                  <th>GPU</th>
-                  <th>操作</th>
+                  <th class='env-name-col'>环境名称</th>
+                  <th class='env-code-col'>环境编码</th>
+                  <th class='env-status-col'>状态</th>
+                  <th class='env-conda-col'>Conda 环境名</th>
+                  <th class='env-path-col'>Python 路径</th>
+                  <th class='env-gpu-col'>GPU</th>
+                  <th class='env-action-col'>操作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for='item in pagedEnvList' :key='item.id'>
-                  <td>{{ item.name }}</td>
-                  <td>{{ item.code }}</td>
-                  <td>
+                  <td class='env-name-col'><span class='cell-two-line'>{{ item.name }}</span></td>
+                  <td class='env-code-col'><span class='cell-two-line'>{{ item.code }}</span></td>
+                  <td class='env-status-col'>
                     <span class='status-tag' :class='statusClass(item.status)'>{{ formatStatus(item.status) }}</span>
                   </td>
-                  <td>{{ item.condaEnvName || '--' }}</td>
-                  <td class='path-cell'>{{ item.pythonPath || '--' }}</td>
-                  <td>{{ item.isGpu ? `是${item.cudaDevice ? `（${item.cudaDevice}）` : ''}` : '否' }}</td>
-                  <td>
-                    <button class='mini-btn' type='button' @click='showLog(item)'>查看日志</button>
+                  <td class='env-conda-col'><span class='cell-two-line'>{{ item.condaEnvName || '--' }}</span></td>
+                  <td class='env-path-col path-cell'><span class='cell-two-line'>{{ item.pythonPath || '--' }}</span></td>
+                  <td class='env-gpu-col'><span class='cell-two-line'>{{ item.isGpu ? `是${item.cudaDevice ? `（${item.cudaDevice}）` : ''}` : '否' }}</span></td>
+                  <td class='env-action-col env-action-cell'>
+                    <div class='env-action-buttons'>
+                      <button class='mini-btn fixed-mini-btn' type='button' @click='showLog(item)'>查看日志</button>
 
-                    <button
-                      v-if='canDisable(item)'
-                      class='mini-btn danger-btn'
-                      type='button'
-                      @click='disableEnvironment(item)'
-                    >停用</button>
+                      <button
+                        v-if='canDisable(item)'
+                        class='mini-btn fixed-mini-btn danger-btn'
+                        type='button'
+                        @click='disableEnvironment(item)'
+                      >停用</button>
 
-                    <button
-                      v-if='canDelete(item)'
-                      class='mini-btn delete-btn'
-                      type='button'
-                      @click='deleteEnvironment(item)'
-                    >删除</button>
+                      <button
+                        v-if='canDelete(item)'
+                        class='mini-btn fixed-mini-btn delete-btn'
+                        type='button'
+                        @click='deleteEnvironment(item)'
+                      >删除</button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -701,6 +703,7 @@ export default {
 
 .content-area {
   flex: 1;
+  min-width: 0;
   padding: 20px;
 }
 
@@ -836,6 +839,93 @@ export default {
 .table-wrap {
   width: 100%;
   overflow-x: auto;
+}
+
+.env-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+}
+
+.env-table {
+  min-width: 1120px;
+  table-layout: fixed;
+}
+
+.env-table .env-name-col {
+  width: 180px;
+}
+
+.env-table .env-code-col {
+  width: 150px;
+}
+
+.env-table .env-status-col {
+  width: 110px;
+}
+
+.env-table .env-conda-col {
+  width: 190px;
+}
+
+.env-table .env-path-col {
+  width: 320px;
+}
+
+.env-table .env-gpu-col {
+  width: 110px;
+}
+
+.env-table .env-action-col {
+  width: 250px;
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #ffffff;
+  box-shadow: -8px 0 12px rgba(15, 23, 42, 0.04);
+}
+
+.env-table th.env-action-col {
+  z-index: 3;
+  background: #f8fafc;
+}
+
+.env-table td {
+  height: 62px;
+}
+
+.cell-two-line {
+  display: -webkit-box;
+  max-height: 40px;
+  line-height: 20px;
+  overflow: hidden;
+  word-break: break-all;
+  text-overflow: ellipsis;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.env-action-cell {
+  white-space: nowrap;
+}
+
+.env-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  height: 34px;
+  white-space: nowrap;
+}
+
+.fixed-mini-btn {
+  width: 72px;
+  min-width: 72px;
+  margin-right: 0;
+  padding: 0;
+  text-align: center;
 }
 
 .table {

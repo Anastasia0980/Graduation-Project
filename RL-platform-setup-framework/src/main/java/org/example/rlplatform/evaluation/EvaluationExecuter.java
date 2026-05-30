@@ -39,6 +39,12 @@ public class EvaluationExecuter {
     @Value("${evaluation.workspace:}")
     private String workspaceConfig;
 
+    @Value("${conda.executable:conda}")
+    private String condaExecutable;
+
+    @Value("${conda.envs-root:}")
+    private String condaEnvsRoot;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
@@ -58,6 +64,9 @@ public class EvaluationExecuter {
 
         String modelName = null;
         String configPath = null;
+        String resultBase = Paths.get("results", String.valueOf(evalId), "video_0")
+                .toString()
+                .replace("\\", "/");
         if (evaluation.getModelId() != null) {
             var modelFile = modelFileService.getById(evaluation.getModelId());
             if (modelFile != null) {
@@ -179,7 +188,16 @@ public class EvaluationExecuter {
         }
 
         List<String> cmd = new ArrayList<>();
-        cmd.add(pythonCmd);
+
+        Path pythonPath = Paths.get(pythonCmd).toAbsolutePath().normalize();
+        Path envRoot = pythonPath.getParent();
+
+        cmd.add(condaExecutable);
+        cmd.add("run");
+        cmd.add("--no-capture-output");
+        cmd.add("-p");
+        cmd.add(envRoot.toString());
+        cmd.add("python");
         cmd.add(script.toString());
         cmd.add("--env");
         cmd.add(evaluation.getEnvironment());
@@ -199,6 +217,8 @@ public class EvaluationExecuter {
         cmd.add(configPath);
         cmd.add("--task_id");
         cmd.add(taskIdForScript);
+        cmd.add("--result_base");
+        cmd.add(resultBase);
         if (useStageSpec) {
             cmd.add("--stage_spec_path");
             cmd.add(stageSpecAbs.toString());
@@ -209,6 +229,10 @@ public class EvaluationExecuter {
 
         pb.redirectErrorStream(true);
         pb.directory(cwd.toFile());
+
+        pb.environment().putIfAbsent("PYGAME_HIDE_SUPPORT_PROMPT", "1");
+        pb.environment().putIfAbsent("SDL_VIDEODRIVER", "dummy");
+        pb.environment().putIfAbsent("SDL_AUDIODRIVER", "dummy");
 
         log.info("Evaluation id={} spawning process python={} script={} cwd={} agent={} modelName={} taskId={} stageSpec={}",
                 evalId, pythonCmd, script, cwd, agentType, modelName, taskIdForScript, useStageSpec ? stageSpecAbs : "-");
@@ -333,8 +357,11 @@ public class EvaluationExecuter {
             } else if (root != null) {
                 er.setDetailedResults(root.toString());
             }
-            if (root != null && root.has("result_dir")) {
-                er.setResultDir(root.path("result_dir").asText());
+            if (root != null && root.has("result_dir") && !root.path("result_dir").isNull()) {
+                String resultDir = root.path("result_dir").asText(null);
+                if (resultDir != null && !resultDir.isBlank() && !"null".equalsIgnoreCase(resultDir.trim())) {
+                    er.setResultDir(resultDir.trim());
+                }
             }
             if (root != null && root.has("winner")) {
                 er.setWinner(root.path("winner").asInt());

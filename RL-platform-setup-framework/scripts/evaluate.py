@@ -6,7 +6,6 @@
 - 统一输出 JSON 到 stdout，便于后端调用。
 - 调用示例：
     python evaluate.py --env LunarLander-v3 --agent dqn --model_name DDQN_LLdV2_250.pth --episodes 10 --workspace E:\2025-2026\GP\LunarLander-RL-Comparison --render_video --baseline_model_path LunarLander-v3\easy\dqn\dqn_episode_100.pth
-
 """
 
 import os
@@ -14,6 +13,11 @@ import sys
 import argparse
 import json
 from datetime import datetime
+
+# 后端异步测评不需要弹出 SDL/pygame 窗口；录制视频时也使用无窗口渲染。
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import numpy as np
 
@@ -26,6 +30,7 @@ except ImportError:  # pragma: no cover - 运行环境中若无 gymnasium 则退
 import torch
 import ffmpeg
 import glob
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -57,17 +62,6 @@ SUPPORTED_AGENT_PREFIXES = (
 )
 
 
-        
-# seed = 42  # 设置随机种子以复现结果
-
-# # 设置随机种子
-# random.seed(seed)
-# np.random.seed(seed)
-# torch.manual_seed(seed)
-# if torch.cuda.is_available():
-#     torch.cuda.manual_seed_all(seed)
-
-
 def _maybe_add_mujoco_dll_directory() -> None:
     """
     仅在本地存在 mujoco200 路径时添加 DLL 目录。
@@ -82,12 +76,27 @@ def _maybe_add_mujoco_dll_directory() -> None:
             pass
 
 
+# =========================
+# 最小化新增 1：统一结果路径辅助函数
+# =========================
+def normalize_result_base(result_base: str) -> str:
+    return (result_base or "").strip().replace("\\", "/")
+
+
+def build_baseline_result_base(result_base: str) -> str:
+    base = normalize_result_base(result_base)
+    parent = os.path.dirname(base)
+    return (os.path.join(parent, "baseline_video")).replace("\\", "/")
+
+
 def make_env(env_id: str,
              model_name: str,
              realtime_render: bool = False,
              render_video: bool = False,
              task_id: Optional[str] = None,
-             stage_spec_path: Optional[str] = None):
+             stage_spec_path: Optional[str] = None,
+             result_base: Optional[str] = None,
+             workspace: Optional[str] = None):
     """
     统一的环境创建函数，支持三种模式：
     - 实时渲染（human）
@@ -96,7 +105,7 @@ def make_env(env_id: str,
 
     返回 (env, result_dir)：
     - env: gym 环境实例
-    - result_dir: 若录制视频，则为视频基路径；否则为 None
+    - result_dir: 若录制视频，则为相对 workspace 的视频基路径；否则为 None
     """
     result_dir = None
 
@@ -123,7 +132,6 @@ def make_env(env_id: str,
                 raise ValueError("闯关模式要求传入 --task_id（T1...T10）或 --stage_spec_path")
             try:
                 import lunar_task_env  # type: ignore
-
                 env = lunar_task_env.make_lunar_env(normalized_task_id, render_mode=render_mode)
             except ImportError as e:
                 raise ImportError(
@@ -133,32 +141,31 @@ def make_env(env_id: str,
     else:
         raise ValueError(f"Unsupported environment: {env_id}")
 
+    # =========================
+    # 最小化修改 2：录屏目录不再自己猜，严格使用后端传入的 result_base
+    # =========================
     if render_video:
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_name = os.path.splitext(model_name)[0]
-        name_prefix = f"{base_name}_{run_id}"
-        os.makedirs("videos", exist_ok=True)
+        result_base = normalize_result_base(result_base)
+        if not result_base:
+            raise ValueError("render_video 模式下必须提供 --result_base")
+
+        if workspace is None:
+            raise ValueError("render_video 模式下必须提供 workspace")
+
+        video_folder = os.path.join(workspace, os.path.dirname(result_base))
+        name_prefix = os.path.basename(result_base)
+
+        os.makedirs(video_folder, exist_ok=True)
         env = gym.wrappers.RecordVideo(
             env,
-            video_folder="videos",
+            video_folder=video_folder,
             episode_trigger=lambda eid: eid < 4,
             name_prefix=name_prefix,
         )
-        result_dir = os.path.join("videos", name_prefix)
+        # 注意：这里返回的是相对 workspace 的“基路径”，供后端 later 拼接 .mp4
+        result_dir = result_base
 
     return env, result_dir
-
-
-# def _resolve_model_path(model_path: str) -> str:
-#     """
-#     兼容两种写法：
-#     - 直接传完整路径
-#     - 只传文件名，此时默认在当前工作目录下的 models/ 里查找
-#     """
-#     if os.path.isabs(model_path) or os.path.exists(model_path):
-#         return model_path
-#     candidate = os.path.join("models", model_path)
-#     return candidate
 
 
 def load_policy(env, agent_name: str, model_path: str) -> _PolicyWrapper:
@@ -253,10 +260,9 @@ def normalize_agent_name(agent_name: str) -> str:
     )
 
 
-def run_episodes(env, policy: _PolicyWrapper, num_episodes: int, max_steps = None):
+def run_episodes(env, policy: _PolicyWrapper, num_episodes: int, max_steps=None):
     rewards = []
     for i in range(num_episodes):
-        # reset_out = env.reset(seed = seed + i)
         reset_out = env.reset()
         if isinstance(reset_out, (list, tuple)):
             state = reset_out[0]
@@ -288,31 +294,65 @@ def run_episodes(env, policy: _PolicyWrapper, num_episodes: int, max_steps = Non
 
 
 def videoConcat(result_dir):
-    # 拼接视频
-    if result_dir is not None:
-        video_files = sorted(glob.glob(result_dir + "-episode-*.mp4"))
-        if not video_files:
-            raise FileNotFoundError("No episode videos found!")
+    # 将 RecordVideo 生成的 episode 视频整理为后端可读取的 result_dir.mp4。
+    # 注意：ffmpeg-python 仍然需要系统中存在 ffmpeg.exe；若未安装，则退化为直接使用第一段视频，
+    # 避免因为 [WinError 2] 让整个单人测评失败。
+    if result_dir is None:
+        return
 
-        filelist_path = result_dir + "_filelist.txt"
-        with open(filelist_path, 'w') as f:
-            for vf in video_files:
-                f.write(f"file '{os.path.abspath(vf)}'\n")
+    video_files = sorted(glob.glob(result_dir + "-episode-*.mp4"))
+    if not video_files:
+        raise FileNotFoundError("No episode videos found!")
 
-        (
-            ffmpeg
-            .input(filelist_path, format='concat', safe=0)
-            .output(result_dir + ".mp4")
-            .run()
-        )
+    output_path = result_dir + ".mp4"
 
+    if shutil.which("ffmpeg") is None:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        os.replace(video_files[0], output_path)
+        for vf in video_files[1:]:
+            try:
+                os.remove(vf)
+            except OSError:
+                pass
+        return
+
+    filelist_path = result_dir + "_filelist.txt"
+    with open(filelist_path, 'w', encoding="utf-8") as f:
         for vf in video_files:
-            os.remove(vf)
+            f.write(f"file '{os.path.abspath(vf)}'\n")
+
+    (
+        ffmpeg
+        .input(filelist_path, format='concat', safe=0)
+        .output(output_path)
+        .run(overwrite_output=True)
+    )
+
+    for vf in video_files:
+        os.remove(vf)
+    try:
+        os.remove(filelist_path)
+    except OSError:
+        pass
 
 
 def video_side_by_side(student_video: str, baseline_video: str, output_path: str):
     # 将两个 mp4 水平拼接成一个对比视频：左侧 student，右侧 baseline。
-    if not (os.path.isfile(student_video) and os.path.isfile(baseline_video)):
+    # 若系统未安装 ffmpeg.exe，则保留学生视频作为最终视频，避免测评失败。
+    if not os.path.isfile(student_video):
+        return
+
+    if shutil.which("ffmpeg") is None or not os.path.isfile(baseline_video):
+        if os.path.abspath(student_video) != os.path.abspath(output_path):
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            os.replace(student_video, output_path)
+        if os.path.isfile(baseline_video):
+            try:
+                os.remove(baseline_video)
+            except OSError:
+                pass
         return
 
     v1 = ffmpeg.input(student_video)
@@ -322,7 +362,7 @@ def video_side_by_side(student_video: str, baseline_video: str, output_path: str
     (
         ffmpeg
         .output(joined, output_path)
-        .run()
+        .run(overwrite_output=True)
     )
 
     os.remove(student_video)
@@ -352,7 +392,7 @@ def parse_args(argv=None):
     parser.add_argument("--realtime_render", action="store_true",
                         help="Render in realtime (human).")
     parser.add_argument("--render_video", action="store_true",
-                        help="Record video to ./videos/")
+                        help="Record video to result_base directory.")
     parser.add_argument("--baseline_model_path", default=None,
                         help="Optional baseline model path")
     parser.add_argument("--config_path", default=None,
@@ -361,6 +401,12 @@ def parse_args(argv=None):
                         help="Curriculum task id（legacy: T1…T10）；与 --stage_spec_path 二选一或同时用于标注")
     parser.add_argument("--stage_spec_path", default="",
                         help="关卡环境参数 JSON 文件路径（A2，与 lunar_task_env.make_lunar_env_from_spec 对齐）")
+    # =========================
+    # 最小化新增 3：由后端传入统一结果基路径
+    # 例如 results/62/video_0
+    # =========================
+    parser.add_argument("--result_base", default="",
+                        help="相对 workspace 的结果基路径，例如 results/62/video_0")
     return parser.parse_args(argv)
 
 
@@ -390,6 +436,12 @@ def main(argv=None):
     }
 
     try:
+        # =========================
+        # 最小化新增 4：统一主视频 result_base
+        # =========================
+        primary_result_base = normalize_result_base(args.result_base) if args.render_video else None
+        baseline_result_base = build_baseline_result_base(primary_result_base) if primary_result_base else None
+
         env, result_dir = make_env(
             env_id=args.env,
             model_name=args.model_name,
@@ -397,6 +449,8 @@ def main(argv=None):
             render_video=bool(args.render_video),
             task_id=args.task_id,
             stage_spec_path=args.stage_spec_path,
+            result_base=primary_result_base,
+            workspace=workspace,
         )
 
         # HalfCheetah 等连续环境默认给一个步数上限
@@ -407,15 +461,18 @@ def main(argv=None):
         result["student_avg_reward"] = float(sum(rewards) / len(rewards)) if rewards else 0.0
         result["student_rewards"] = rewards
         env.close()
-        videoConcat(result_dir)
-        result["result_dir"] = result_dir
+
+        if args.render_video and result_dir is not None:
+            videoConcat(result_dir)
+            # 注意：返回给后端的一定是“相对 workspace 的基路径”
+            result["result_dir"] = result_dir
 
         baseline_used = False
         result_dir_baseline = None
         if args.baseline_model_path:
             baseline_path = os.path.join("saved_models", args.baseline_model_path)
             if os.path.isfile(baseline_path):
-                baseline_model_name = Path(args.baseline_model_path).stem # 传入的是Path，需要得到文件名
+                baseline_model_name = Path(args.baseline_model_path).stem
                 env_baseline, result_dir_baseline = make_env(
                     env_id=args.env,
                     model_name=baseline_model_name,
@@ -423,6 +480,8 @@ def main(argv=None):
                     render_video=bool(args.render_video),
                     task_id=args.task_id,
                     stage_spec_path=args.stage_spec_path,
+                    result_base=baseline_result_base,
+                    workspace=workspace,
                 )
                 baseline_agent = args.baseline_agent if args.baseline_agent else args.agent
                 baseline_policy = load_policy(env_baseline, baseline_agent, baseline_path)
@@ -431,24 +490,39 @@ def main(argv=None):
                 result["baseline_rewards"] = baseline_rewards
                 baseline_used = True
                 env_baseline.close()
-                videoConcat(result_dir_baseline)
+
+                if args.render_video and result_dir_baseline is not None:
+                    videoConcat(result_dir_baseline)
         else:
             print("Warning: No baseline model path provided")
 
         if baseline_used:
-            if (result["student_avg_reward"] > result["baseline_avg_reward"]):
+            if result["student_avg_reward"] > result["baseline_avg_reward"]:
                 result["winner"] = 1
             else:
                 result["winner"] = 0
         else:
             print("Warning: No baseline model used")
 
-        if baseline_used and args.render_video and result_dir is not None and result_dir_baseline is not None:
-            student_video_path = result_dir + ".mp4"
-            baseline_video_path = result_dir_baseline + ".mp4"
-            compare_video_path = result_dir + "_vs_baseline.mp4"
-            video_side_by_side(student_video_path, baseline_video_path, compare_video_path)
-            result["result_dir"] = result_dir + "_vs_baseline"
+        # =========================
+        # 最小化修改 5：
+        # 对比视频最终仍然覆盖写回 video_0.mp4
+        # result["result_dir"] 始终保持 primary_result_base，不再返回 _vs_baseline
+        # =========================
+        if baseline_used and args.render_video and primary_result_base and result_dir_baseline is not None:
+            student_video_path = os.path.join(workspace, primary_result_base + ".mp4")
+            baseline_video_path = os.path.join(workspace, result_dir_baseline + ".mp4")
+            compare_video_path = student_video_path
+
+            if os.path.isfile(student_video_path) and os.path.isfile(baseline_video_path):
+                student_tmp_path = os.path.join(
+                    workspace,
+                    os.path.join(os.path.dirname(primary_result_base), "student_video.mp4")
+                )
+                os.replace(student_video_path, student_tmp_path)
+                video_side_by_side(student_tmp_path, baseline_video_path, compare_video_path)
+
+            result["result_dir"] = primary_result_base
 
     except Exception as e:
         result["status"] = "FAILED"
@@ -462,4 +536,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

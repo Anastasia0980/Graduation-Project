@@ -29,7 +29,7 @@ public interface UserService {
 
     void softDeleteUser(Integer id);
 
-    void resetPwd(Integer id, String newPwd);
+    void resetStudentPwdToDefault(Integer id, String defaultPwd);
 
     User findByEmail(@Email String email);
 

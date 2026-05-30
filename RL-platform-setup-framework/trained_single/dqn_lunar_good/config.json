@@ -1,0 +1,15 @@
+{
+  "algorithm": "dqn",
+  "env": "LunarLander-v3",
+  "train_episodes": 500,
+  "batch_size": 64,
+  "gamma": 0.99,
+  "lr": 0.0005,
+  "epsilon_start": 1.0,
+  "epsilon_end": 0.05,
+  "epsilon_decay": 0.995,
+  "target_update_freq": 200,
+  "buffer_capacity": 50000,
+  "seed": 42,
+  "best_model": "best_model.pth"
+}

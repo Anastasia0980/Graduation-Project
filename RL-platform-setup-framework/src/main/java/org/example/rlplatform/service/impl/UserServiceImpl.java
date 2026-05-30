@@ -193,10 +193,19 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void resetPwd(Integer id, String newPwd) {
+    public void resetStudentPwdToDefault(Integer id, String defaultPwd) {
         User dbUser = getByIdAndNotDeleted(id);
-        dbUser.setPassword(Md5Util.getMD5String(newPwd));
-        dbUser.setIsDeleted(false);
+
+        Map<String, Object> claims = ThreadLocalUtil.get();
+        String currentRole = String.valueOf(claims.get("role"));
+        if (!UserRole.ADMIN.name().equals(currentRole)) {
+            throw new RuntimeException("您无权重置学生密码！需要管理员权限");
+        }
+        if (dbUser.getRole() != UserRole.STUDENT) {
+            throw new RuntimeException("仅支持重置学生账号密码");
+        }
+
+        dbUser.setPassword(Md5Util.getMD5String(defaultPwd));
         dbUser.setUpdateTime(LocalDateTime.now());
         userRepository.save(dbUser);
     }

@@ -137,6 +137,14 @@
                         修改角色
                       </button>
                       <button
+                        class='mini-btn'
+                        type='button'
+                        :disabled='item.isDeleted || item.role !== "STUDENT"'
+                        @click='resetStudentPassword(item)'
+                      >
+                        重置密码
+                      </button>
+                      <button
                         class='mini-btn delete-btn'
                         type='button'
                         :disabled='item.isDeleted'
@@ -569,6 +577,40 @@ export default {
       } catch (error) {
         if (error === 'cancel' || error === 'close') return
         ElMessage.error(error.message || '删除失败')
+      }
+    },
+    async resetStudentPassword (item) {
+      if (!item || !item.id) {
+        ElMessage.warning('用户信息缺失，无法重置密码')
+        return
+      }
+      if (item.role !== 'STUDENT') {
+        ElMessage.warning('仅支持重置学生账号密码')
+        return
+      }
+
+      try {
+        await ElMessageBox.confirm(
+          `确认将学生“${item.username || item.email || item.id}”的密码重置为 123456 吗？`,
+          '重置密码确认',
+          {
+            confirmButtonText: '确认重置',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+        await apiRequest(`${API_BASE}/user/${item.id}/password_reset`, {
+          method: 'PATCH',
+          router: this.$router,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ newPwd: '123456' })
+        })
+        ElMessage.success('密码已重置为 123456')
+      } catch (error) {
+        if (error === 'cancel' || error === 'close') return
+        ElMessage.error(error.message || '密码重置失败')
       }
     },
     async deleteUser (item) {
