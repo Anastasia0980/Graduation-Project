@@ -180,14 +180,19 @@ public class SubmissionServiceImpl implements SubmissionService {
             vo.setOpponentStudentId(buildOpponentStudentId(participant, perspectiveStudentId));
 
             EvaluationResult result = resultMap.get(evaluation.getId());
+            boolean attachmentsCleaned = participant != null && Boolean.TRUE.equals(participant.getAttachmentsCleaned());
+            vo.setAttachmentsCleaned(attachmentsCleaned);
             if (result != null) {
                 vo.setEvaluationResultId(result.getId());
-                vo.setHasVideo(result.getResultDir() != null && !result.getResultDir().isBlank());
+                boolean hasAttachments = !attachmentsCleaned && result.getResultDir() != null && !result.getResultDir().isBlank();
+                vo.setHasVideo(hasAttachments);
+                vo.setHasLog(hasAttachments);
                 vo.setResultText(buildResultText(evaluation, result, participant, perspectiveStudentId));
                 vo.setDetailedResult(buildDetailedResult(evaluation, result, participant, perspectiveStudentId));
             } else {
                 vo.setEvaluationResultId(null);
                 vo.setHasVideo(false);
+                vo.setHasLog(false);
                 vo.setResultText("-");
                 vo.setDetailedResult("-");
             }

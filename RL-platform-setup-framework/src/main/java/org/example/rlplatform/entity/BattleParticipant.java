@@ -47,4 +47,13 @@ public class BattleParticipant {
 
     @Column(name = "student2_model_name", length = 255)
     private String student2ModelName;
+
+    @Column(name = "student1_attachment_release_requested", nullable = false)
+    private Boolean student1AttachmentReleaseRequested = false;
+
+    @Column(name = "student2_attachment_release_requested", nullable = false)
+    private Boolean student2AttachmentReleaseRequested = false;
+
+    @Column(name = "attachments_cleaned", nullable = false)
+    private Boolean attachmentsCleaned = false;
 }

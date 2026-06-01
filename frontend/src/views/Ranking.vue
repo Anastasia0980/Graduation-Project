@@ -92,6 +92,7 @@
                 <tr v-else-if='currentMode === "team"'>
                   <th>排名</th>
                   <th>队伍名</th>
+                  <th>模型名</th>
                   <th>队长姓名</th>
                   <th>队员1姓名</th>
                   <th>队员2姓名</th>
@@ -102,6 +103,7 @@
                 <tr v-else>
                   <th>排名</th>
                   <th>姓名</th>
+                  <th>模型名</th>
                   <th>天梯分</th>
                   <th>战绩</th>
                   <th>对战场次</th>
@@ -130,10 +132,11 @@
                 <tr
                   v-else-if='currentMode === "team"'
                   v-for='item in pagedRankingList'
-                  :key='item.teamId || item.rank'
+                  :key='item.submissionId || `${item.teamId}_${item.modelName}_${item.rank}`'
                 >
                   <td>{{ item.rank }}</td>
                   <td>{{ item.teamName }}</td>
+                  <td>{{ item.modelName }}</td>
                   <td>{{ item.captainName }}</td>
                   <td>{{ item.member1Name }}</td>
                   <td>{{ item.member2Name }}</td>
@@ -142,9 +145,10 @@
                   <td>{{ item.matchCount }}</td>
                 </tr>
 
-                <tr v-else v-for='item in pagedRankingList' :key='item.studentId'>
+                <tr v-else v-for='item in pagedRankingList' :key='item.submissionId || `${item.studentId}_${item.modelName}_${item.rank}`'>
                   <td>{{ item.rank }}</td>
                   <td>{{ item.name }}</td>
+                  <td>{{ item.modelName }}</td>
                   <td>{{ item.ladderScore }}</td>
                   <td>{{ item.record }}</td>
                   <td>{{ item.matchCount }}</td>
@@ -236,14 +240,14 @@ export default {
         return '注：单人模式排行榜先按闯过关卡数降序排序；若闯过关卡数相同，则按闯关时间升序排序。'
       }
       if (this.currentMode === 'team') {
-        return '注：分组对战排行榜按队伍天梯分降序排列；战绩与对战场次按一次挑战=一场统计，并在同一视图展示队长与队员信息。'
+        return '注：分组对战排行榜按队伍 + 模型维度的天梯分降序排列；同一队伍的多个模型会分别统计战绩与对战场次。'
       }
-      return '注：对战模式排行榜按天梯分降序排列；天梯分综合考虑基础战绩、对手强度、对战多样性与重复挑战惩罚。战绩与对战场次按一次挑战=一场统计。'
+      return '注：对战模式排行榜按模型维度的天梯分降序排列；同一学生的多个模型会分别统计战绩与对战场次。'
     },
     currentColspan () {
       if (this.currentMode === 'single') return 4
-      if (this.currentMode === 'team') return 8
-      return 5
+      if (this.currentMode === 'team') return 9
+      return 6
     }
   },
   watch: {
@@ -371,7 +375,9 @@ export default {
         this.versusRankingList = content.map(item => ({
           rank: item.rank,
           studentId: item.studentId,
+          submissionId: item.submissionId,
           name: item.nickname || '未知学生',
+          modelName: item.modelName || '未命名模型',
           ladderScore: item.ladderScore ?? item.bestScore ?? 0,
           record: `${item.winCount || 0}胜${item.loseCount || 0}负${item.drawCount || 0}平`,
           matchCount: item.matchCount || 0
@@ -451,7 +457,9 @@ export default {
         this.teamRankingList = content.map(item => ({
           rank: item.rank,
           teamId: item.teamId,
+          submissionId: item.submissionId,
           teamName: item.teamName || '未知队伍',
+          modelName: item.modelName || '未命名模型',
           captainName: item.captainName || '--',
           member1Name: item.member1Name || '--',
           member2Name: item.member2Name || '--',

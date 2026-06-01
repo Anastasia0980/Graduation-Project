@@ -32,6 +32,7 @@
             type="password"
             placeholder="请输入密码"
           >
+          <div v-if="passwordError" class="form-error">{{ passwordError }}</div>
         </div>
 
         <div class="form-item">
@@ -60,6 +61,7 @@
 
 <script>
 import { getApiBaseUrl } from '../utils/http'
+import { isStrongPassword, PASSWORD_RULE_MESSAGE } from '../utils/password'
 import { ElMessage } from 'element-plus'
 
 const API_BASE = getApiBaseUrl()
@@ -77,12 +79,24 @@ export default {
       }
     }
   },
+  computed: {
+    passwordError () {
+      const password = this.registerForm.password
+      if (!password) return ''
+      return isStrongPassword(password) ? '' : PASSWORD_RULE_MESSAGE
+    }
+  },
   methods: {
     async handleRegister () {
       const { name, email, password, confirmPassword } = this.registerForm
 
       if (!name || !email || !password || !confirmPassword) {
         ElMessage.warning('请填写完整注册信息')
+        return
+      }
+
+      if (!isStrongPassword(password)) {
+        ElMessage.warning(PASSWORD_RULE_MESSAGE)
         return
       }
 
@@ -199,6 +213,13 @@ export default {
 
 .form-item input:focus {
   border-color: #1f4e8c;
+}
+
+.form-error {
+  margin-top: 6px;
+  color: #f56c6c;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .action-row {

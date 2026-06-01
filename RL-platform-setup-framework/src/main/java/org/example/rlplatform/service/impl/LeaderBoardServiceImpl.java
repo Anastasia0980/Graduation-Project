@@ -3,6 +3,7 @@ package org.example.rlplatform.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.rlplatform.Repository.BattleParticipantRepository;
+import org.example.rlplatform.Repository.BattleModelSubmissionRepository;
 import org.example.rlplatform.Repository.AssignmentCurriculumProgressRepository;
 import org.example.rlplatform.Repository.TeamGroupRepository;
 import org.example.rlplatform.Repository.TeamMemberRepository;
@@ -11,6 +12,7 @@ import org.example.rlplatform.Repository.EvaluationResultRepository;
 import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
 import org.example.rlplatform.Repository.UserRepository;
 import org.example.rlplatform.entity.BattleParticipant;
+import org.example.rlplatform.entity.BattleModelSubmission;
 import org.example.rlplatform.entity.AssignmentCurriculumProgress;
 import org.example.rlplatform.entity.Evaluation;
 import org.example.rlplatform.entity.EvaluationMode;
@@ -30,12 +32,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.time.LocalDateTime;
 
 @Service
@@ -49,6 +54,9 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
 
     @Autowired
     private BattleParticipantRepository battleParticipantRepository;
+
+    @Autowired
+    private BattleModelSubmissionRepository battleModelSubmissionRepository;
 
     @Autowired
     private ExperimentAssignmentRepository experimentAssignmentRepository;
@@ -106,7 +114,8 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
             participantMap.put(participant.getEvaluationId(), participant);
         }
 
-        Map<Integer, PlayerStats> statsMap = new LinkedHashMap<>();
+        Map<Long, BattleModelSubmission> submissionMap = buildSubmissionMap(participantMap.values());
+        Map<String, PlayerStats> statsMap = new LinkedHashMap<>();
 
         for (Evaluation evaluation : evaluations) {
             if (evaluation.getStatus() != EvaluationStatus.FINISHED) {
@@ -141,11 +150,10 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
                 continue;
             }
 
-            Integer student1Id = participant.getStudent1Id().intValue();
-            Integer student2Id = participant.getStudent2Id().intValue();
-
-            PlayerStats stats1 = statsMap.computeIfAbsent(student1Id, key -> new PlayerStats(student1Id));
-            PlayerStats stats2 = statsMap.computeIfAbsent(student2Id, key -> new PlayerStats(student2Id));
+            PlayerStats stats1 = resolvePlayerStats(statsMap, "student", participant.getStudent1Id().intValue(),
+                    participant.getStudent1SubmissionId(), participant.getStudent1ModelName(), submissionMap);
+            PlayerStats stats2 = resolvePlayerStats(statsMap, "student", participant.getStudent2Id().intValue(),
+                    participant.getStudent2SubmissionId(), participant.getStudent2ModelName(), submissionMap);
 
             stats1.matchCount += 1;
             stats2.matchCount += 1;
@@ -153,18 +161,18 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
             if (winner == 1) {
                 stats1.winCount += 1;
                 stats2.loseCount += 1;
-                stats1.addOpponent(student2Id, 1, 1, 0, 0);
-                stats2.addOpponent(student1Id, 1, 0, 1, 0);
+                stats1.addOpponent(stats2.statsKey, 1, 1, 0, 0);
+                stats2.addOpponent(stats1.statsKey, 1, 0, 1, 0);
             } else if (winner == 2) {
                 stats2.winCount += 1;
                 stats1.loseCount += 1;
-                stats1.addOpponent(student2Id, 1, 0, 1, 0);
-                stats2.addOpponent(student1Id, 1, 1, 0, 0);
+                stats1.addOpponent(stats2.statsKey, 1, 0, 1, 0);
+                stats2.addOpponent(stats1.statsKey, 1, 1, 0, 0);
             } else {
                 stats1.drawCount += 1;
                 stats2.drawCount += 1;
-                stats1.addOpponent(student2Id, 1, 0, 0, 1);
-                stats2.addOpponent(student1Id, 1, 0, 0, 1);
+                stats1.addOpponent(stats2.statsKey, 1, 0, 0, 1);
+                stats2.addOpponent(stats1.statsKey, 1, 0, 0, 1);
             }
         }
 
@@ -195,7 +203,7 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
 
             double weightedOpponentStrength = 0.0;
             for (OpponentStats opponentStats : stats.opponentStatsMap.values()) {
-                PlayerStats opponent = statsMap.get(opponentStats.opponentId);
+                PlayerStats opponent = statsMap.get(opponentStats.opponentKey);
                 double opponentBaseScore = opponent == null ? 0.0 : opponent.baseScore;
                 double myPerformanceAgainstOpponent =
                         opponentStats.matchCount <= 0
@@ -236,7 +244,7 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
             if (a.matchCount != b.matchCount) {
                 return Integer.compare(b.matchCount, a.matchCount);
             }
-            return Integer.compare(a.studentId, b.studentId);
+            return compareStatsOwner(a, b);
         });
 
         List<Integer> studentIds = new ArrayList<>();
@@ -266,6 +274,8 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
             LeaderBoard row = new LeaderBoard();
             row.setRank(i + 1);
             row.setStudentId(stats.studentId);
+            row.setSubmissionId(stats.submissionId);
+            row.setModelName(stats.modelName);
             row.setNickname(displayName);
             row.setBestScore(stats.ladderScore);
             row.setLadderScore(stats.ladderScore);
@@ -421,6 +431,7 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
         for (BattleParticipant participant : battleParticipantRepository.findByEvaluationIdIn(evaluationIds)) {
             participantMap.put(participant.getEvaluationId(), participant);
         }
+        Map<Long, BattleModelSubmission> submissionMap = buildSubmissionMap(participantMap.values());
 
         List<TeamGroup> teamGroups = teamGroupRepository.findByAssignmentIdAndIsDeletedFalseOrderByIdAsc(assignmentId);
         if (teamGroups == null || teamGroups.isEmpty()) {
@@ -428,13 +439,15 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
         }
 
         Map<Integer, TeamGroup> captainTeamMap = new HashMap<>();
+        Map<Integer, TeamGroup> teamGroupMap = new HashMap<>();
         for (TeamGroup teamGroup : teamGroups) {
+            teamGroupMap.put(teamGroup.getId(), teamGroup);
             if (teamGroup.getCaptainStudentId() != null) {
                 captainTeamMap.put(teamGroup.getCaptainStudentId(), teamGroup);
             }
         }
 
-        Map<Integer, PlayerStats> statsMap = new LinkedHashMap<>();
+        Map<String, PlayerStats> statsMap = new LinkedHashMap<>();
 
         for (Evaluation evaluation : evaluations) {
             if (evaluation.getStatus() != EvaluationStatus.FINISHED) {
@@ -468,26 +481,28 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
 
             Integer team1Id = team1.getId();
             Integer team2Id = team2.getId();
-            PlayerStats stats1 = statsMap.computeIfAbsent(team1Id, key -> new PlayerStats(team1Id));
-            PlayerStats stats2 = statsMap.computeIfAbsent(team2Id, key -> new PlayerStats(team2Id));
+            PlayerStats stats1 = resolvePlayerStats(statsMap, "team", team1Id,
+                    participant.getStudent1SubmissionId(), participant.getStudent1ModelName(), submissionMap);
+            PlayerStats stats2 = resolvePlayerStats(statsMap, "team", team2Id,
+                    participant.getStudent2SubmissionId(), participant.getStudent2ModelName(), submissionMap);
             stats1.matchCount += 1;
             stats2.matchCount += 1;
 
             if (winner == 1) {
                 stats1.winCount += 1;
                 stats2.loseCount += 1;
-                stats1.addOpponent(team2Id, 1, 1, 0, 0);
-                stats2.addOpponent(team1Id, 1, 0, 1, 0);
+                stats1.addOpponent(stats2.statsKey, 1, 1, 0, 0);
+                stats2.addOpponent(stats1.statsKey, 1, 0, 1, 0);
             } else if (winner == 2) {
                 stats2.winCount += 1;
                 stats1.loseCount += 1;
-                stats1.addOpponent(team2Id, 1, 0, 1, 0);
-                stats2.addOpponent(team1Id, 1, 1, 0, 0);
+                stats1.addOpponent(stats2.statsKey, 1, 0, 1, 0);
+                stats2.addOpponent(stats1.statsKey, 1, 1, 0, 0);
             } else {
                 stats1.drawCount += 1;
                 stats2.drawCount += 1;
-                stats1.addOpponent(team2Id, 1, 0, 0, 1);
-                stats2.addOpponent(team1Id, 1, 0, 0, 1);
+                stats1.addOpponent(stats2.statsKey, 1, 0, 0, 1);
+                stats2.addOpponent(stats1.statsKey, 1, 0, 0, 1);
             }
         }
 
@@ -516,7 +531,7 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
 
             double weightedOpponentStrength = 0.0;
             for (OpponentStats opponentStats : stats.opponentStatsMap.values()) {
-                PlayerStats opponent = statsMap.get(opponentStats.opponentId);
+                PlayerStats opponent = statsMap.get(opponentStats.opponentKey);
                 double opponentBaseScore = opponent == null ? 0.0 : opponent.baseScore;
                 double myPerformanceAgainstOpponent = opponentStats.matchCount <= 0
                         ? 0.0
@@ -550,13 +565,13 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
             if (a.matchCount != b.matchCount) {
                 return Integer.compare(b.matchCount, a.matchCount);
             }
-            return Integer.compare(a.studentId, b.studentId);
+            return compareStatsOwner(a, b);
         });
 
         List<LeaderBoard> allRows = new ArrayList<>();
         for (int i = 0; i < sortedStats.size(); i++) {
             PlayerStats stats = sortedStats.get(i);
-            TeamGroup teamGroup = teamGroupRepository.findByIdAndIsDeletedFalse(stats.studentId);
+            TeamGroup teamGroup = teamGroupMap.get(stats.studentId);
             if (teamGroup == null) {
                 continue;
             }
@@ -564,6 +579,8 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
             row.setRank(i + 1);
             row.setTeamId(teamGroup.getId().longValue());
             row.setTeamName(teamGroup.getTeamName());
+            row.setSubmissionId(stats.submissionId);
+            row.setModelName(stats.modelName);
             fillTeamMemberNames(row, teamGroup);
             row.setBestScore(stats.ladderScore);
             row.setLadderScore(stats.ladderScore);
@@ -622,8 +639,74 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
         }
     }
 
+    private Map<Long, BattleModelSubmission> buildSubmissionMap(Collection<BattleParticipant> participants) {
+        Set<Long> submissionIds = new HashSet<>();
+        if (participants != null) {
+            for (BattleParticipant participant : participants) {
+                if (participant.getStudent1SubmissionId() != null) {
+                    submissionIds.add(participant.getStudent1SubmissionId());
+                }
+                if (participant.getStudent2SubmissionId() != null) {
+                    submissionIds.add(participant.getStudent2SubmissionId());
+                }
+            }
+        }
+
+        Map<Long, BattleModelSubmission> submissionMap = new HashMap<>();
+        if (!submissionIds.isEmpty()) {
+            for (BattleModelSubmission submission : battleModelSubmissionRepository.findAllById(submissionIds)) {
+                submissionMap.put(submission.getId(), submission);
+            }
+        }
+        return submissionMap;
+    }
+
+    private PlayerStats resolvePlayerStats(
+            Map<String, PlayerStats> statsMap,
+            String ownerType,
+            Integer ownerId,
+            Long submissionId,
+            String participantModelName,
+            Map<Long, BattleModelSubmission> submissionMap
+    ) {
+        BattleModelSubmission submission = submissionId == null ? null : submissionMap.get(submissionId);
+        String modelName = resolveModelName(participantModelName, submission);
+        String statsKey = buildStatsKey(ownerType, ownerId, submissionId, modelName);
+        return statsMap.computeIfAbsent(statsKey, key -> new PlayerStats(statsKey, ownerId, submissionId, modelName));
+    }
+
+    private String resolveModelName(String participantModelName, BattleModelSubmission submission) {
+        if (participantModelName != null && !participantModelName.isBlank()) {
+            return participantModelName;
+        }
+        if (submission != null && submission.getModelName() != null && !submission.getModelName().isBlank()) {
+            return submission.getModelName();
+        }
+        return "未命名模型";
+    }
+
+    private String buildStatsKey(String ownerType, Integer ownerId, Long submissionId, String modelName) {
+        if (submissionId != null) {
+            return "submission:" + submissionId;
+        }
+        return ownerType + ":" + ownerId + ":" + (modelName == null ? "" : modelName.trim());
+    }
+
+    private int compareStatsOwner(PlayerStats a, PlayerStats b) {
+        int ownerCompare = Integer.compare(a.studentId, b.studentId);
+        if (ownerCompare != 0) {
+            return ownerCompare;
+        }
+        long submissionA = a.submissionId == null ? Long.MAX_VALUE : a.submissionId;
+        long submissionB = b.submissionId == null ? Long.MAX_VALUE : b.submissionId;
+        return Long.compare(submissionA, submissionB);
+    }
+
     private static class PlayerStats {
+        private final String statsKey;
         private final Integer studentId;
+        private final Long submissionId;
+        private final String modelName;
 
         private int winCount;
         private int loseCount;
@@ -638,14 +721,17 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
         private double finalScore;
         private int ladderScore;
 
-        private final Map<Integer, OpponentStats> opponentStatsMap = new HashMap<>();
+        private final Map<String, OpponentStats> opponentStatsMap = new HashMap<>();
 
-        private PlayerStats(Integer studentId) {
+        private PlayerStats(String statsKey, Integer studentId, Long submissionId, String modelName) {
+            this.statsKey = statsKey;
             this.studentId = studentId;
+            this.submissionId = submissionId;
+            this.modelName = modelName;
         }
 
-        private void addOpponent(Integer opponentId, int matchInc, int wins, int loses, int draws) {
-            OpponentStats stats = opponentStatsMap.computeIfAbsent(opponentId, key -> new OpponentStats(opponentId));
+        private void addOpponent(String opponentKey, int matchInc, int wins, int loses, int draws) {
+            OpponentStats stats = opponentStatsMap.computeIfAbsent(opponentKey, key -> new OpponentStats(opponentKey));
             stats.matchCount += matchInc;
             stats.winCount += wins;
             stats.loseCount += loses;
@@ -654,15 +740,15 @@ public class LeaderBoardServiceImpl implements LeaderBoardService {
     }
 
     private static class OpponentStats {
-        private final Integer opponentId;
+        private final String opponentKey;
 
         private int matchCount;
         private int winCount;
         private int loseCount;
         private int drawCount;
 
-        private OpponentStats(Integer opponentId) {
-            this.opponentId = opponentId;
+        private OpponentStats(String opponentKey) {
+            this.opponentKey = opponentKey;
         }
     }
 }

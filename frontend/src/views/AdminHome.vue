@@ -591,7 +591,7 @@ export default {
 
       try {
         await ElMessageBox.confirm(
-          `确认将学生“${item.username || item.email || item.id}”的密码重置为 123456 吗？`,
+          `确认将学生“${item.username || item.email || item.id}”的密码重置为 Abcd1234 吗？`,
           '重置密码确认',
           {
             confirmButtonText: '确认重置',
@@ -605,9 +605,9 @@ export default {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ newPwd: '123456' })
+          body: JSON.stringify({ newPwd: 'Abcd1234' })
         })
-        ElMessage.success('密码已重置为 123456')
+        ElMessage.success('密码已重置为 Abcd1234')
       } catch (error) {
         if (error === 'cancel' || error === 'close') return
         ElMessage.error(error.message || '密码重置失败')

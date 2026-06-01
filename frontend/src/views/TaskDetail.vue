@@ -230,7 +230,10 @@
             >
               <div class='ranking-left'>
                 <span class='ranking-rank'>{{ item.rank }}</span>
-                <span class='ranking-name'>{{ item.displayName }}</span>
+                <span class='ranking-name-wrap'>
+                  <span class='ranking-name'>{{ item.displayName }}</span>
+                  <span v-if='item.modelName' class='ranking-model-name'>{{ item.modelName }}</span>
+                </span>
               </div>
               <div class='ranking-score'>{{ item.score }}</div>
             </div>
@@ -413,6 +416,49 @@
       </div>
     </div>
 
+    <div v-if='showSlotSelectDialog' class='dialog-mask' @click='closeSlotSelectDialog'>
+      <div class='dialog-box large-box' @click.stop>
+        <div class='dialog-header'>
+          <div class='dialog-title'>选择候选模型位置</div>
+          <button class='close-btn' @click='closeSlotSelectDialog'>关闭</button>
+        </div>
+        <div class='dialog-body'>
+          <div class='dialog-tip slot-select-tip'>
+            固定展示 5 个候选模型位置。空位置可直接放入本次上传的模型，已有模型的位置需要确认后替换。
+          </div>
+          <div class='slot-grid'>
+            <div v-for='slot in battleModelSlots' :key='slot.slotIndex' class='model-slot-card'>
+              <div class='slot-title'>候选位 {{ slot.slotIndex }}</div>
+              <template v-if='slot.model'>
+                <div class='battle-model-name'>{{ slot.model.modelName || 'model.pt' }}</div>
+                <div class='slot-status'>
+                  <span :class='slot.model.mainModel ? "status-ok" : "status-off"'>
+                    {{ slot.model.mainModel ? '主模型' : '非主模型' }}
+                  </span>
+                </div>
+                <button
+                  class='danger-btn small-action-btn slot-action-btn'
+                  :disabled='slotActionLoading || !pendingBattleSubmission'
+                  @click='replacePendingModel(slot)'
+                >
+                  替换
+                </button>
+              </template>
+              <template v-else>
+                <button
+                  class='slot-add-btn'
+                  :disabled='slotActionLoading || !pendingBattleSubmission'
+                  @click='bindPendingModelToSlot(slot.slotIndex, false)'
+                >
+                  +
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-if='showMyBattleModelsDialog' class='dialog-mask' @click='closeMyBattleModelsDialog'>
       <div class='dialog-box large-box' @click.stop>
         <div class='dialog-header'>
@@ -431,26 +477,48 @@
             {{ myBattleModelsMessage }}
           </div>
 
-          <div v-if='myBattleModels.length > 0' class='battle-model-list'>
+          <div class='battle-model-list'>
             <div
-              v-for='item in myBattleModels'
-              :key='item.submissionId'
+              v-for='slot in battleModelSlots'
+              :key='slot.slotIndex'
               class='battle-model-item'
             >
-              <div class='battle-model-main'>
-                <div class='battle-model-name'>{{ item.modelName || 'model.pt' }}</div>
+              <div v-if='slot.model' class='battle-model-main'>
+                <div class='battle-model-name'>候选位 {{ slot.slotIndex }} · {{ slot.model.modelName || 'model.pt' }}</div>
                 <div class='battle-model-meta'>
-                  <span>提交时间：{{ item.submitTime || '--' }}</span>
-                  <span>战绩：{{ item.winCount }}胜 {{ item.loseCount }}负 {{ item.drawCount }}平</span>
+                  <span>提交时间：{{ slot.model.submitTime || '--' }}</span>
+                  <span>战绩：{{ slot.model.winCount }}胜 {{ slot.model.loseCount }}负 {{ slot.model.drawCount }}平</span>
+                  <span :class='slot.model.mainModel ? "status-ok" : "status-off"'>
+                    {{ slot.model.mainModel ? '已设为主模型' : '非主模型' }}
+                  </span>
+                </div>
+              </div>
+              <div v-else class='battle-model-main'>
+                <div class='battle-model-name'>候选位 {{ slot.slotIndex }}</div>
+                <div class='battle-model-meta'>
+                  <span>空位置</span>
                 </div>
               </div>
               <div class='battle-model-actions'>
-                <button class='primary-btn small-action-btn' @click='openOpponentDialog(item)'>发起挑战</button>
+                <template v-if='slot.model'>
+                  <button
+                    class='secondary-btn small-action-btn'
+                    :disabled='slot.model.mainModel || myBattleModelsLoading'
+                    @click='setMainBattleModel(slot.model)'
+                  >
+                    {{ slot.model.mainModel ? '已设为主模型' : '设为主模型' }}
+                  </button>
+                  <button
+                    v-if='slot.model.mainModel'
+                    class='primary-btn small-action-btn'
+                    @click='openOpponentDialog(slot.model)'
+                  >
+                    发起挑战
+                  </button>
+                </template>
               </div>
             </div>
           </div>
-
-          <div v-else class='empty-state'>当前暂无已提交模型，请先上传模型。</div>
         </div>
       </div>
     </div>
@@ -477,7 +545,7 @@
               class='battle-model-item'
             >
               <div class='battle-model-main'>
-                <div class='battle-model-name'>{{ item.studentName }} - {{ item.modelName || 'model.pt' }}</div>
+                <div class='battle-model-name'>{{ item.studentName }}</div>
                 <div class='battle-model-meta'>
                   <span>提交时间：{{ item.submitTime || '--' }}</span>
                   <span>战绩：{{ item.winCount }}胜 {{ item.loseCount }}负 {{ item.drawCount }}平</span>
@@ -617,7 +685,7 @@
 </template>
 
 <script>
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import AppTopbar from '../components/AppTopbar.vue'
 import tictactoeImage from '../assets/tictactoe.png'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
@@ -667,11 +735,13 @@ export default {
       showTaskListDialog: false,
       showMyBattleModelsDialog: false,
       showOpponentDialog: false,
+      showSlotSelectDialog: false,
       currentSubmitMode: 'single',
       currentBotDifficulty: '',
       queryLoading: false,
       myBattleModelsLoading: false,
       challengeLoading: false,
+      slotActionLoading: false,
       submitMessage: '',
       queryMessage: '',
       evaluationId: null,
@@ -690,6 +760,7 @@ export default {
       myBattleModels: [],
       opponentModels: [],
       selectedMyBattleModel: null,
+      pendingBattleSubmission: null,
       rankingList: [],
       myBattleModelsMessage: '',
       opponentModelsMessage: '',
@@ -717,6 +788,19 @@ export default {
   computed: {
     hasAnyBotModel () {
       return this.hasEasyBot || this.hasMediumBot || this.hasHardBot
+    },
+    battleModelSlots () {
+      const slots = Array.from({ length: 5 }, (_, index) => ({
+        slotIndex: index + 1,
+        model: null
+      }))
+      ;(this.myBattleModels || []).forEach(item => {
+        const slotIndex = Number(item.slotIndex || 0)
+        if (slotIndex >= 1 && slotIndex <= 5) {
+          slots[slotIndex - 1].model = item
+        }
+      })
+      return slots
     },
     topThreeRanking () {
       return this.rankingList.slice(0, 3)
@@ -1074,6 +1158,7 @@ export default {
           return {
             rank: item.rank,
             displayName: this.taskMode === 'tournament' ? (item.teamName || '未知队伍') : (item.nickname || '未知学生'),
+            modelName: item.modelName || '未命名模型',
             score: item.ladderScore ?? item.bestScore ?? 0
           }
         })
@@ -1185,6 +1270,63 @@ export default {
       this.showSubmitDialog = false
       this.loadingSubmit = false
     },
+    closeSlotSelectDialog () {
+      this.showSlotSelectDialog = false
+      this.pendingBattleSubmission = null
+      this.slotActionLoading = false
+    },
+    async replacePendingModel (slot) {
+      if (!slot || !slot.model) return
+      try {
+        await ElMessageBox.confirm(
+          '替换后当前模型将不再可用，模型文件和可清理附件可能会被清理，历史对战结果摘要将保留，是否继续？',
+          '确认替换',
+          {
+            confirmButtonText: '确认',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+        await this.bindPendingModelToSlot(slot.slotIndex, true)
+      } catch (error) {
+        if (error !== 'cancel' && error !== 'close') {
+          ElMessage.error(error.message || '替换失败')
+        }
+      }
+    },
+    async bindPendingModelToSlot (slotIndex, replace) {
+      if (!this.pendingBattleSubmission || !this.pendingBattleSubmission.submissionId) {
+        ElMessage.warning('请先上传模型')
+        return
+      }
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        ElMessage.error('当前未登录或登录已过期，请重新登录')
+        return
+      }
+      this.slotActionLoading = true
+      try {
+        const assignmentId = this.getAssignmentId()
+        const resp = await fetch(`${API_BASE}/battle/models/${assignmentId}/${this.pendingBattleSubmission.submissionId}/slot?slotIndex=${slotIndex}&replace=${replace ? 'true' : 'false'}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const res = await resp.json()
+        if (!resp.ok || res.code !== 0) {
+          throw new Error(res.message || '保存候选位置失败')
+        }
+        await this.loadMyBattleModels()
+        this.closeSlotSelectDialog()
+        this.showMyBattleModelsDialog = true
+        ElMessage.success((res.data && res.data.message) || '候选位置已保存')
+      } catch (error) {
+        ElMessage.error(error.message || '保存候选位置失败')
+      } finally {
+        this.slotActionLoading = false
+      }
+    },
     async openTaskListDialog () {
       await this.loadTasks()
       this.showTaskListDialog = true
@@ -1287,6 +1429,16 @@ export default {
         }
 
         this.showSubmitDialog = false
+        if (this.currentSubmitMode === 'human' && payload.submissionId) {
+          this.pendingBattleSubmission = {
+            submissionId: payload.submissionId,
+            modelName: payload.modelName || (this.selectedFiles.model ? this.selectedFiles.model.name : 'model.pt')
+          }
+          await this.loadMyBattleModels()
+          this.showSlotSelectDialog = true
+          return
+        }
+
         const role = (localStorage.getItem('auth_role') || '').toUpperCase()
         if (role === 'TEACHER' && assignmentId) {
           this.$router.push(`/teacher/task-submissions/${assignmentId}`)
@@ -1344,9 +1496,43 @@ export default {
         this.myBattleModelsLoading = false
       }
     },
+    async setMainBattleModel (item) {
+      if (!item || !item.submissionId) {
+        return
+      }
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        ElMessage.error('当前未登录或登录已过期，请重新登录')
+        return
+      }
+      this.myBattleModelsLoading = true
+      try {
+        const assignmentId = this.getAssignmentId()
+        const resp = await fetch(`${API_BASE}/battle/models/${assignmentId}/${item.submissionId}/main`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        const res = await resp.json()
+        if (!resp.ok || res.code !== 0) {
+          throw new Error(res.message || '设置主模型失败')
+        }
+        await this.loadMyBattleModels()
+        ElMessage.success('主模型已更新')
+      } catch (error) {
+        ElMessage.error(error.message || '设置主模型失败')
+      } finally {
+        this.myBattleModelsLoading = false
+      }
+    },
     async openOpponentDialog (item) {
       if (this.taskMode === 'tournament' && !this.teamInfo.isCaptain) {
         ElMessage.warning('仅队长可发起挑战')
+        return
+      }
+      if (!item || !item.mainModel) {
+        ElMessage.warning('请先设置主模型')
         return
       }
       this.selectedMyBattleModel = item
@@ -2106,6 +2292,19 @@ function titleSafe (value, fallback) {
   font-weight: 600;
 }
 
+.ranking-name-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ranking-model-name {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.2;
+}
+
 .ranking-score {
   font-size: 14px;
   color: #1f4e8c;
@@ -2592,6 +2791,66 @@ function titleSafe (value, fallback) {
 
 .opponent-selected-tip {
   margin-bottom: 14px;
+}
+
+.slot-select-tip {
+  margin-bottom: 14px;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.model-slot-card {
+  min-height: 150px;
+  padding: 14px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #fafbfd;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.slot-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.slot-status {
+  font-size: 13px;
+}
+
+.slot-add-btn {
+  width: 100%;
+  height: 72px;
+  border: 1px dashed #1f4e8c;
+  border-radius: 6px;
+  background: #ecf5ff;
+  color: #1f4e8c;
+  font-size: 28px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.slot-add-btn:disabled,
+.slot-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.slot-action-btn {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .slot-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 </style>

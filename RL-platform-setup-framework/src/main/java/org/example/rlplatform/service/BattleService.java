@@ -15,6 +15,10 @@ public interface BattleService {
 
     List<BattleModelOptionVO> listMyBattleModels(Integer assignmentId);
 
+    Result<?> bindBattleModelSlot(Integer assignmentId, Long submissionId, Integer slotIndex, Boolean replace);
+
+    Result<?> setMainBattleModel(Integer assignmentId, Long submissionId);
+
     List<BattleModelOptionVO> listOpponentBattleModels(Integer assignmentId, Long mySubmissionId);
 
     Result<?> challengeBySubmission(Integer assignmentId, Long mySubmissionId, Long opponentSubmissionId);

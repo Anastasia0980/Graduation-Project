@@ -277,7 +277,7 @@ export default {
           opponentStudentId: item.opponentStudentId || null,
           result: item.resultText || '-',
           detailedResult: item.detailedResult || '-',
-          hasLog: !!item.evaluationResultId,
+          hasLog: !!item.hasLog && !!item.evaluationResultId,
           hasVideo: !!item.hasVideo && !!item.evaluationResultId,
           canDownloadModel: !!item.evaluationId,
           sourceApiUrl: item.evaluationResultId

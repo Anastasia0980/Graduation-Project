@@ -8,6 +8,8 @@ public class BattleModelOptionVO {
     private Long studentId;
     private String studentName;
     private String modelName;
+    private Integer slotIndex;
+    private Boolean mainModel;
     private String submitTime;
     private Integer winCount;
     private Integer loseCount;

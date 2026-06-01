@@ -11,4 +11,5 @@ public class BattleTaskDetailVO {
     private Integer winner;
     private String winnerText;
     private String resultDir;
+    private Boolean attachmentsCleaned;
 }

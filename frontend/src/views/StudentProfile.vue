@@ -206,6 +206,7 @@
           <div class="form-item">
             <label>请输入新密码</label>
             <input v-model="passwordForm.newPassword" type="password" placeholder="请输入新密码">
+            <div v-if="newPasswordError" class="form-error">{{ newPasswordError }}</div>
           </div>
 
           <div class="form-item">
@@ -247,6 +248,7 @@ import CommonPagination from '../components/CommonPagination.vue'
 import defaultAvatar from '../assets/logo.png'
 import { clearAuthState, hasAuthToken } from '../utils/auth'
 import { apiRequest, getApiBaseUrl } from '../utils/http'
+import { isStrongPassword, PASSWORD_RULE_MESSAGE } from '../utils/password'
 
 const API_BASE = getApiBaseUrl()
 
@@ -311,6 +313,11 @@ export default {
       const start = (this.recordPage - 1) * this.recordPageSize
       const end = start + this.recordPageSize
       return this.recentRecords.slice(start, end)
+    },
+    newPasswordError () {
+      const password = this.passwordForm.newPassword
+      if (!password) return ''
+      return isStrongPassword(password) ? '' : PASSWORD_RULE_MESSAGE
     }
   },
   created () {
@@ -517,6 +524,12 @@ export default {
     async confirmChangePassword () {
       if (!this.passwordForm.oldPassword || !this.passwordForm.newPassword || !this.passwordForm.confirmPassword) {
         this.resultMessage = '请填写完整的密码信息。'
+        this.showResultDialog = true
+        return
+      }
+
+      if (!isStrongPassword(this.passwordForm.newPassword)) {
+        this.resultMessage = PASSWORD_RULE_MESSAGE
         this.showResultDialog = true
         return
       }
@@ -839,6 +852,12 @@ export default {
 
 .form-item input:focus {
   border-color: #1f4e8c;
+}
+
+.form-error {
+  color: #f56c6c;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .disabled-item input {

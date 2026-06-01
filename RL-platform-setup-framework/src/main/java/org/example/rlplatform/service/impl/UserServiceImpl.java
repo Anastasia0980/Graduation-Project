@@ -10,6 +10,7 @@ import org.example.rlplatform.entity.UserRole;
 import org.example.rlplatform.service.StudentClassService;
 import org.example.rlplatform.service.UserService;
 import org.example.rlplatform.utils.Md5Util;
+import org.example.rlplatform.utils.PasswordValidator;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -77,6 +78,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void register(String username, String password, String email, UserRole role) {
+        validatePassword(password);
         String md5String = Md5Util.getMD5String(password);
         User u = new User();
         u.setUsername(username);
@@ -116,6 +118,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void updatePwd(String newPwd) {
+        validatePassword(newPwd);
         Map<String, Object> map = ThreadLocalUtil.get();
         Integer userId = (Integer)map.get("id");
         userRepository.updatePwd(Md5Util.getMD5String(newPwd), userId);
@@ -194,6 +197,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void resetStudentPwdToDefault(Integer id, String defaultPwd) {
+        validatePassword(defaultPwd);
         User dbUser = getByIdAndNotDeleted(id);
 
         Map<String, Object> claims = ThreadLocalUtil.get();
@@ -256,6 +260,12 @@ public class UserServiceImpl implements UserService {
             throw new RuntimeException("用户已删除");
         }
         return dbUser;
+    }
+
+    private void validatePassword(String password) {
+        if (!PasswordValidator.isValid(password)) {
+            throw new RuntimeException(PasswordValidator.MESSAGE);
+        }
     }
 
 }

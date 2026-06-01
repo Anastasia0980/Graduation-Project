@@ -33,6 +33,7 @@ import java.util.*;
 public class BattleServiceImpl implements BattleService {
 
     private static final int DEFAULT_GAMES = 30;
+    private static final int MODEL_SLOT_COUNT = 5;
     private static final DateTimeFormatter DATETIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -121,13 +122,16 @@ public class BattleServiceImpl implements BattleService {
             submission.setGames(DEFAULT_GAMES);
             submission.setStudentDirRel(rel);
             submission.setModelName(safeModelName(model));
-            submission.setActive(true);
+            submission.setSlotIndex(null);
+            submission.setMainModel(false);
+            submission.setActive(false);
             submission.setCreateTime(LocalDateTime.now());
             battleModelSubmissionRepository.save(submission);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("submissionId", submission.getId());
             data.put("modelName", submission.getModelName());
+            data.put("requiresSlotSelection", true);
             data.put("message", "模型已保存，可在“已提交模型”中选择该模型发起挑战。");
             return Result.success(data);
         } catch (Exception e) {
@@ -143,9 +147,104 @@ public class BattleServiceImpl implements BattleService {
         }
         ExperimentAssignment assignment = validBattleAssignment(assignmentId);
         Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+        ensureActiveSlotLayout(assignmentId, ownerStudentId);
         List<BattleModelSubmission> submissions = battleModelSubmissionRepository
-                .findByAssignmentIdAndStudentIdAndActiveTrueOrderByIdDesc(assignmentId, ownerStudentId);
+                .findByAssignmentIdAndStudentIdAndActiveTrueAndSlotIndexIsNotNullOrderBySlotIndexAscIdDesc(assignmentId, ownerStudentId);
         return buildBattleModelOptions(assignment, submissions);
+    }
+
+    @Override
+    public Result<?> bindBattleModelSlot(Integer assignmentId, Long submissionId, Integer slotIndex, Boolean replace) {
+        try {
+            if (assignmentId == null || submissionId == null || slotIndex == null) {
+                return Result.error("assignmentId, submissionId and slotIndex are required");
+            }
+            if (slotIndex < 1 || slotIndex > MODEL_SLOT_COUNT) {
+                return Result.error("候选模型位置必须在 1 到 5 之间");
+            }
+
+            Long studentId = currentStudentId();
+            if (studentId == null) {
+                return Result.error("当前登录信息无效，请重新登录");
+            }
+
+            ExperimentAssignment assignment = validBattleAssignment(assignmentId);
+            validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+            validateTeamLockedIfNeeded(assignment, studentId.intValue());
+
+            Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+            BattleModelSubmission submission = battleModelSubmissionRepository.findById(submissionId)
+                    .orElseThrow(() -> new RuntimeException("模型记录不存在"));
+            if (!Objects.equals(submission.getAssignmentId(), assignmentId) || !Objects.equals(submission.getStudentId(), ownerStudentId)) {
+                return Result.error("只能操作当前用户或当前队伍的模型");
+            }
+
+            Optional<BattleModelSubmission> oldSlotOpt = battleModelSubmissionRepository
+                    .findByAssignmentIdAndStudentIdAndSlotIndexAndActiveTrue(assignmentId, ownerStudentId, slotIndex);
+            BattleModelSubmission oldSlot = oldSlotOpt.orElse(null);
+            boolean inheritMain = false;
+            if (oldSlot != null && !Objects.equals(oldSlot.getId(), submission.getId())) {
+                if (!Boolean.TRUE.equals(replace)) {
+                    return Result.error("该候选位置已有模型，请确认后再替换");
+                }
+                inheritMain = Boolean.TRUE.equals(oldSlot.getMainModel());
+                releaseOldSubmission(oldSlot);
+            }
+
+            if (Boolean.TRUE.equals(inheritMain)) {
+                clearOwnerMainModels(assignmentId, ownerStudentId, submission.getId());
+            }
+            submission.setSlotIndex(slotIndex);
+            submission.setMainModel(inheritMain);
+            submission.setActive(true);
+            battleModelSubmissionRepository.save(submission);
+
+            ensureActiveSlotLayout(assignmentId, ownerStudentId);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("submissionId", submission.getId());
+            data.put("slotIndex", slotIndex);
+            data.put("mainModel", submission.getMainModel());
+            data.put("message", "候选模型位置已保存");
+            return Result.success(data);
+        } catch (Exception e) {
+            log.error("bindBattleModelSlot failed assignmentId={} submissionId={}", assignmentId, submissionId, e);
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @Override
+    public Result<?> setMainBattleModel(Integer assignmentId, Long submissionId) {
+        try {
+            if (assignmentId == null || submissionId == null) {
+                return Result.error("assignmentId and submissionId are required");
+            }
+            Long studentId = currentStudentId();
+            if (studentId == null) {
+                return Result.error("当前登录信息无效，请重新登录");
+            }
+
+            ExperimentAssignment assignment = validBattleAssignment(assignmentId);
+            validateTeamCaptainIfNeeded(assignment, studentId.intValue());
+            validateTeamLockedIfNeeded(assignment, studentId.intValue());
+
+            Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
+            BattleModelSubmission submission = battleModelSubmissionRepository.findByIdAndActiveTrue(submissionId)
+                    .orElseThrow(() -> new RuntimeException("模型记录不存在或已失效"));
+            if (!Objects.equals(submission.getAssignmentId(), assignmentId) || !Objects.equals(submission.getStudentId(), ownerStudentId)) {
+                return Result.error("只能设置自己的模型为主模型");
+            }
+            if (submission.getSlotIndex() == null || submission.getSlotIndex() < 1 || submission.getSlotIndex() > MODEL_SLOT_COUNT) {
+                return Result.error("请先将模型放入候选模型位置");
+            }
+
+            clearOwnerMainModels(assignmentId, ownerStudentId, submission.getId());
+            submission.setMainModel(true);
+            battleModelSubmissionRepository.save(submission);
+            return Result.success("主模型已更新");
+        } catch (Exception e) {
+            log.error("setMainBattleModel failed assignmentId={} submissionId={}", assignmentId, submissionId, e);
+            return Result.error(e.getMessage());
+        }
     }
 
     @Override
@@ -171,8 +270,12 @@ public class BattleServiceImpl implements BattleService {
             throw new RuntimeException("不能使用他人的模型作为自己的出战模型");
         }
 
+        if (!Boolean.TRUE.equals(mySubmission.getMainModel())) {
+            throw new RuntimeException("请先设置主模型");
+        }
+
         List<BattleModelSubmission> submissions = battleModelSubmissionRepository
-                .findByAssignmentIdAndStudentIdNotAndActiveTrueOrderByIdDesc(assignmentId, ownerStudentId);
+                .findByAssignmentIdAndStudentIdNotAndActiveTrueAndMainModelTrueOrderByIdDesc(assignmentId, ownerStudentId);
         return buildBattleModelOptions(assignment, submissions);
     }
 
@@ -211,6 +314,13 @@ public class BattleServiceImpl implements BattleService {
             Long ownerStudentId = resolveSubmissionOwnerStudentId(assignment, studentId);
             if (!Objects.equals(mySubmission.getStudentId(), ownerStudentId)) {
                 return Result.error("只能使用当前队伍有效模型发起挑战");
+            }
+
+            if (!Boolean.TRUE.equals(mySubmission.getMainModel())) {
+                return Result.error("请先设置主模型");
+            }
+            if (!Boolean.TRUE.equals(opponentSubmission.getMainModel())) {
+                return Result.error("对手主模型不存在或已失效");
             }
 
             if (Objects.equals(mySubmission.getStudentId(), opponentSubmission.getStudentId())) {
@@ -361,6 +471,7 @@ public class BattleServiceImpl implements BattleService {
                 BattleParticipant participant = participantOpt.get();
                 vo.setStudent1Id(participant.getStudent1Id());
                 vo.setStudent2Id(participant.getStudent2Id());
+                vo.setAttachmentsCleaned(Boolean.TRUE.equals(participant.getAttachmentsCleaned()));
             }
 
             List<EvaluationResult> evaluationResults = evaluationResultRepository.findByEvaluationId(evaluation.getId());
@@ -518,6 +629,8 @@ public class BattleServiceImpl implements BattleService {
 
             vo.setStudentName(studentName);
             vo.setModelName(submission.getModelName());
+            vo.setSlotIndex(submission.getSlotIndex());
+            vo.setMainModel(Boolean.TRUE.equals(submission.getMainModel()));
             vo.setSubmitTime(submission.getCreateTime() == null ? "--" : submission.getCreateTime().format(DATETIME_FORMATTER));
 
             int[] record = countBattleRecord(submission.getId());
@@ -528,6 +641,142 @@ public class BattleServiceImpl implements BattleService {
             result.add(vo);
         }
         return result;
+    }
+
+    private void ensureActiveSlotLayout(Integer assignmentId, Long ownerStudentId) {
+        if (assignmentId == null || ownerStudentId == null) {
+            return;
+        }
+        List<BattleModelSubmission> active = battleModelSubmissionRepository
+                .findByAssignmentIdAndStudentIdAndActiveTrueOrderByCreateTimeAscIdAsc(assignmentId, ownerStudentId);
+        if (active == null || active.isEmpty()) {
+            return;
+        }
+
+        Set<Integer> usedSlots = new HashSet<>();
+        List<Integer> freeSlots = new ArrayList<>();
+        for (int i = 1; i <= MODEL_SLOT_COUNT; i++) {
+            freeSlots.add(i);
+        }
+
+        boolean changed = false;
+        for (BattleModelSubmission submission : active) {
+            Integer slot = submission.getSlotIndex();
+            if (slot != null && slot >= 1 && slot <= MODEL_SLOT_COUNT && !usedSlots.contains(slot)) {
+                usedSlots.add(slot);
+                freeSlots.remove(slot);
+                continue;
+            }
+            if (!freeSlots.isEmpty()) {
+                Integer nextSlot = freeSlots.remove(0);
+                submission.setSlotIndex(nextSlot);
+                usedSlots.add(nextSlot);
+                changed = true;
+            } else {
+                submission.setSlotIndex(null);
+                submission.setMainModel(false);
+                submission.setActive(false);
+                changed = true;
+            }
+        }
+        if (changed) {
+            battleModelSubmissionRepository.saveAll(active);
+        }
+    }
+
+    private void clearOwnerMainModels(Integer assignmentId, Long ownerStudentId, Long keepSubmissionId) {
+        List<BattleModelSubmission> mainModels = battleModelSubmissionRepository
+                .findByAssignmentIdAndStudentIdAndActiveTrueAndMainModelTrueOrderByIdDesc(assignmentId, ownerStudentId);
+        for (BattleModelSubmission model : mainModels) {
+            if (!Objects.equals(model.getId(), keepSubmissionId)) {
+                model.setMainModel(false);
+            }
+        }
+        if (!mainModels.isEmpty()) {
+            battleModelSubmissionRepository.saveAll(mainModels);
+        }
+    }
+
+    private void releaseOldSubmission(BattleModelSubmission oldSubmission) {
+        if (oldSubmission == null) {
+            return;
+        }
+
+        List<BattleParticipant> participants = battleParticipantRepository
+                .findByStudent1SubmissionIdOrStudent2SubmissionIdOrderByIdDesc(oldSubmission.getId(), oldSubmission.getId());
+        boolean hasBattleRecord = participants != null && !participants.isEmpty();
+
+        oldSubmission.setActive(false);
+        oldSubmission.setMainModel(false);
+        oldSubmission.setSlotIndex(null);
+        battleModelSubmissionRepository.save(oldSubmission);
+        deleteUploadedModelFiles(oldSubmission);
+
+        if (!hasBattleRecord) {
+            return;
+        }
+
+        for (BattleParticipant participant : participants) {
+            if (Objects.equals(participant.getStudent1SubmissionId(), oldSubmission.getId())) {
+                participant.setStudent1AttachmentReleaseRequested(true);
+            }
+            if (Objects.equals(participant.getStudent2SubmissionId(), oldSubmission.getId())) {
+                participant.setStudent2AttachmentReleaseRequested(true);
+            }
+            if (Boolean.TRUE.equals(participant.getStudent1AttachmentReleaseRequested())
+                    && Boolean.TRUE.equals(participant.getStudent2AttachmentReleaseRequested())
+                    && !Boolean.TRUE.equals(participant.getAttachmentsCleaned())) {
+                cleanupBattleAttachments(participant.getEvaluationId());
+                participant.setAttachmentsCleaned(true);
+            }
+        }
+        battleParticipantRepository.saveAll(participants);
+    }
+
+    private void deleteUploadedModelFiles(BattleModelSubmission submission) {
+        if (submission == null || submission.getStudentDirRel() == null || submission.getStudentDirRel().isBlank()) {
+            return;
+        }
+        try {
+            String baseDir = battleEnvironmentService.resolveWorkspace(submission.getEnvironment());
+            if (baseDir == null || baseDir.isBlank()) {
+                baseDir = (workspace != null && !workspace.isBlank())
+                        ? workspace
+                        : Paths.get(System.getProperty("user.dir")).toString();
+            }
+            Path dir = Paths.get(baseDir, submission.getStudentDirRel()).normalize();
+            Files.deleteIfExists(dir.resolve("model.pt"));
+            Files.deleteIfExists(dir.resolve("config.json"));
+        } catch (Exception e) {
+            log.warn("delete old battle model files failed submissionId={}", submission.getId(), e);
+        }
+    }
+
+    private void cleanupBattleAttachments(Long evaluationId) {
+        if (evaluationId == null) {
+            return;
+        }
+        List<EvaluationResult> results = evaluationResultRepository.findByEvaluationId(evaluationId);
+        if (results == null || results.isEmpty()) {
+            return;
+        }
+        for (EvaluationResult result : results) {
+            String resultDir = result.getResultDir();
+            if (resultDir == null || resultDir.isBlank()) {
+                continue;
+            }
+            try {
+                String baseDir = (workspace != null && !workspace.isBlank())
+                        ? workspace
+                        : Paths.get(System.getProperty("user.dir")).toString();
+                Path base = Paths.get(baseDir);
+                Files.deleteIfExists(base.resolve(resultDir + ".mp4").normalize());
+                Files.deleteIfExists(base.resolve(resultDir + ".log").normalize());
+                Files.deleteIfExists(base.resolve(resultDir + "_result.json").normalize());
+            } catch (Exception e) {
+                log.warn("cleanup battle attachments failed evaluationId={}", evaluationId, e);
+            }
+        }
     }
 
     private String buildTeamDisplayName(TeamGroup team) {

@@ -2,7 +2,6 @@ package org.example.rlplatform.controller;
 
 
 import io.micrometer.common.util.StringUtils;
-import jakarta.validation.constraints.Pattern;
 import org.example.rlplatform.entity.Result;
 import org.example.rlplatform.entity.StudentClass;
 import org.example.rlplatform.entity.User;
@@ -11,6 +10,7 @@ import org.example.rlplatform.service.UserService;
 import org.example.rlplatform.service.impl.LocalFileStorageService;
 import org.example.rlplatform.utils.JwtUtil;
 import org.example.rlplatform.utils.Md5Util;
+import org.example.rlplatform.utils.PasswordValidator;
 import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.hibernate.validator.constraints.URL;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 @Validated
 public class UserController {
 
-    private static final String DEFAULT_STUDENT_PASSWORD = "123456";
+    private static final String DEFAULT_STUDENT_PASSWORD = "Abcd1234";
 
     @Autowired
     private UserService userService;
@@ -45,9 +45,13 @@ public class UserController {
     @PostMapping("/register")
     public Result register(
             @RequestParam(name = "name") String username,
-            @RequestParam @Pattern(regexp = "^\\S{5,16}$") String password,
+            @RequestParam String password,
             @RequestParam String email,
             @RequestParam(defaultValue = "STUDENT") String role) {
+        if (!PasswordValidator.isValid(password)) {
+            return Result.error(PasswordValidator.MESSAGE);
+        }
+
         User u = userService.findByUserNameAndIsDeletedFalse(username);
         User ue = userService.findByEmail(email);
         if (u != null) {
@@ -138,6 +142,10 @@ public class UserController {
 
         if (!rePwd.equals(newPwd)) {
             return Result.error("两次填写的密码不一致");
+        }
+
+        if (!PasswordValidator.isValid(newPwd)) {
+            return Result.error(PasswordValidator.MESSAGE);
         }
 
         userService.updatePwd(newPwd);

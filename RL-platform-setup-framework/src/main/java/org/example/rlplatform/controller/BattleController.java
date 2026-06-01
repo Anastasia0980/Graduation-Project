@@ -43,6 +43,24 @@ public class BattleController {
         return Result.success(battleService.listMyBattleModels(assignmentId));
     }
 
+    @PostMapping("/models/{assignmentId}/{submissionId}/slot")
+    public Result<?> bindBattleModelSlot(
+            @PathVariable Integer assignmentId,
+            @PathVariable Long submissionId,
+            @RequestParam("slotIndex") Integer slotIndex,
+            @RequestParam(value = "replace", required = false, defaultValue = "false") Boolean replace
+    ) {
+        return battleService.bindBattleModelSlot(assignmentId, submissionId, slotIndex, replace);
+    }
+
+    @PostMapping("/models/{assignmentId}/{submissionId}/main")
+    public Result<?> setMainBattleModel(
+            @PathVariable Integer assignmentId,
+            @PathVariable Long submissionId
+    ) {
+        return battleService.setMainBattleModel(assignmentId, submissionId);
+    }
+
     @GetMapping("/models/{assignmentId}/opponents")
     public Result<List<BattleModelOptionVO>> listOpponentBattleModels(
             @PathVariable Integer assignmentId,

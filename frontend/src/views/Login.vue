@@ -25,6 +25,11 @@
           >
         </div>
 
+        <label class="remember-row">
+          <input v-model="rememberPassword" type="checkbox">
+          <span>记住密码</span>
+        </label>
+
         <div class="action-row">
           <button class="primary-btn" :disabled="loading" @click="handleLogin">
             {{ loading ? '登录中...' : '登录' }}
@@ -45,17 +50,23 @@ import { getApiBaseUrl } from '../utils/http'
 import { ElMessage } from 'element-plus'
 
 const API_BASE = getApiBaseUrl()
+const REMEMBER_ACCOUNT_KEY = 'remember_login_account'
+const REMEMBER_PASSWORD_KEY = 'remember_login_password'
 
 export default {
   name: 'LoginView',
   data () {
     return {
       loading: false,
+      rememberPassword: false,
       loginForm: {
         account: '',
         password: ''
       }
     }
+  },
+  created () {
+    this.loadRememberedLogin()
   },
   methods: {
     async handleLogin () {
@@ -111,6 +122,7 @@ export default {
         localStorage.setItem('auth_name', userInfo.username || '')
         localStorage.setItem('auth_email', userInfo.email || '')
         localStorage.setItem('auth_role', userInfo.role || '')
+        this.saveRememberedLogin()
 
         if (userInfo.role === 'ADMIN') {
           this.$router.push('/admin/home')
@@ -124,6 +136,25 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    loadRememberedLogin () {
+      const account = localStorage.getItem(REMEMBER_ACCOUNT_KEY)
+      const password = localStorage.getItem(REMEMBER_PASSWORD_KEY)
+      if (account && password) {
+        this.loginForm.account = account
+        this.loginForm.password = password
+        this.rememberPassword = true
+      }
+    },
+    saveRememberedLogin () {
+      if (this.rememberPassword) {
+        localStorage.setItem(REMEMBER_ACCOUNT_KEY, this.loginForm.account)
+        localStorage.setItem(REMEMBER_PASSWORD_KEY, this.loginForm.password)
+        return
+      }
+
+      localStorage.removeItem(REMEMBER_ACCOUNT_KEY)
+      localStorage.removeItem(REMEMBER_PASSWORD_KEY)
     },
     goRegister () {
       this.$router.push('/register')
@@ -203,6 +234,22 @@ export default {
 
 .form-item input:focus {
   border-color: #1f4e8c;
+}
+
+.remember-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -6px 0 14px;
+  font-size: 14px;
+  color: #606266;
+  cursor: pointer;
+}
+
+.remember-row input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
 }
 
 .action-row {

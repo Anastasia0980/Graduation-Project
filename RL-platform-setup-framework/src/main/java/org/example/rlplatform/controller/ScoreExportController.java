@@ -90,6 +90,7 @@ public class ScoreExportController {
                 ScoreExportRowVO row = new ScoreExportRowVO();
                 row.setRank(item.getRank());
                 row.setName(item.getTeamName());
+                row.setModelName(item.getModelName());
                 row.setCaptainName(item.getCaptainName());
                 row.setMember1Name(item.getMember1Name());
                 row.setMember2Name(item.getMember2Name());
@@ -108,6 +109,7 @@ public class ScoreExportController {
                 ScoreExportRowVO row = new ScoreExportRowVO();
                 row.setRank(item.getRank());
                 row.setName(item.getNickname());
+                row.setModelName(item.getModelName());
                 row.setLadderScore(item.getLadderScore());
                 row.setMatchCount(item.getMatchCount());
                 row.setWinCount(item.getWinCount());

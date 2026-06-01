@@ -284,6 +284,7 @@ export default {
           <tr>
             <th>排名</th>
             <th>队伍名</th>
+            <th>模型名</th>
             <th>队长姓名</th>
             <th>队员1姓名</th>
             <th>队员2姓名</th>
@@ -298,6 +299,7 @@ export default {
           <tr>
             <td>${item.rank ?? ''}</td>
             <td>${item.name ?? ''}</td>
+            <td>${item.modelName ?? '未命名模型'}</td>
             <td>${item.captainName ?? ''}</td>
             <td>${item.member1Name ?? ''}</td>
             <td>${item.member2Name ?? ''}</td>
@@ -313,6 +315,7 @@ export default {
           <tr>
             <th>排名</th>
             <th>姓名</th>
+            <th>模型名</th>
             <th>天梯分</th>
             <th>总对战场次</th>
             <th>获胜场次</th>
@@ -324,6 +327,7 @@ export default {
           <tr>
             <td>${item.rank ?? ''}</td>
             <td>${item.name ?? ''}</td>
+            <td>${item.modelName ?? '未命名模型'}</td>
             <td>${item.ladderScore ?? ''}</td>
             <td>${item.matchCount ?? ''}</td>
             <td>${item.winCount ?? ''}</td>

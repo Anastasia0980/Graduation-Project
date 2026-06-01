@@ -12,6 +12,8 @@ public class LeaderBoard {
     private Integer rank;
     private Integer studentId;
     private String nickname;
+    private Long submissionId;
+    private String modelName;
     /**
      * 单人模式：已通过关卡数（T1~T10）
      */

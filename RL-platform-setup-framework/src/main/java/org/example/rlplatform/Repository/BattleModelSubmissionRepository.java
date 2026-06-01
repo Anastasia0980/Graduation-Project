@@ -10,7 +10,17 @@ public interface BattleModelSubmissionRepository extends JpaRepository<BattleMod
 
     List<BattleModelSubmission> findByAssignmentIdAndStudentIdAndActiveTrueOrderByIdDesc(Integer assignmentId, Long studentId);
 
+    List<BattleModelSubmission> findByAssignmentIdAndStudentIdAndActiveTrueOrderByCreateTimeAscIdAsc(Integer assignmentId, Long studentId);
+
+    List<BattleModelSubmission> findByAssignmentIdAndStudentIdAndActiveTrueAndSlotIndexIsNotNullOrderBySlotIndexAscIdDesc(Integer assignmentId, Long studentId);
+
+    List<BattleModelSubmission> findByAssignmentIdAndStudentIdAndActiveTrueAndMainModelTrueOrderByIdDesc(Integer assignmentId, Long studentId);
+
     List<BattleModelSubmission> findByAssignmentIdAndStudentIdNotAndActiveTrueOrderByIdDesc(Integer assignmentId, Long studentId);
+
+    List<BattleModelSubmission> findByAssignmentIdAndStudentIdNotAndActiveTrueAndMainModelTrueOrderByIdDesc(Integer assignmentId, Long studentId);
+
+    Optional<BattleModelSubmission> findByAssignmentIdAndStudentIdAndSlotIndexAndActiveTrue(Integer assignmentId, Long studentId, Integer slotIndex);
 
     Optional<BattleModelSubmission> findByIdAndActiveTrue(Long id);
 }

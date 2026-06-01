@@ -7,6 +7,7 @@ public class ScoreExportRowVO {
 
     private Integer rank;
     private String name;
+    private String modelName;
 
     // 分组对战模式扩展
     private String captainName;

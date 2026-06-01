@@ -36,4 +36,6 @@ public class SubmissionHistoryVO {
     private Boolean hasVideo;
 
     private Boolean hasLog;
+
+    private Boolean attachmentsCleaned;
 }

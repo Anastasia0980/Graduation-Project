@@ -83,6 +83,9 @@ public class EvaluationResultServiceImpl implements EvaluationResultService {
     @Override
     public Resource getVideo(Long id) {
         EvaluationResult er = getById(id);
+        if (isAttachmentsCleaned(er.getEvaluationId())) {
+            throw new IllegalArgumentException("文件已被清理，仅保留对战结果摘要");
+        }
         if (er.getResultDir() == null || er.getResultDir().isBlank()) {
             throw new IllegalArgumentException("no result_dir for evaluation result id: " + id);
         }
@@ -98,6 +101,9 @@ public class EvaluationResultServiceImpl implements EvaluationResultService {
     @Override
     public Resource getLog(Long id) {
         EvaluationResult er = getById(id);
+        if (isAttachmentsCleaned(er.getEvaluationId())) {
+            throw new IllegalArgumentException("文件已被清理，仅保留对战结果摘要");
+        }
         Evaluation evaluation = evaluationRepository.findById(er.getEvaluationId()).orElseThrow(RuntimeException::new);
         Optional<BattleParticipant> participantOpt = battleParticipantRepository.findByEvaluationId(evaluation.getId());
         ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
@@ -280,6 +286,15 @@ public class EvaluationResultServiceImpl implements EvaluationResultService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private boolean isAttachmentsCleaned(Long evaluationId) {
+        if (evaluationId == null) {
+            return false;
+        }
+        return battleParticipantRepository.findByEvaluationId(evaluationId)
+                .map(BattleParticipant::getAttachmentsCleaned)
+                .orElse(false);
     }
 
     private JsonNode parseJson(String text) {

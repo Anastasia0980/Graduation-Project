@@ -32,6 +32,12 @@ public class BattleModelSubmission {
     @Column(name = "model_name", length = 255)
     private String modelName;
 
+    @Column(name = "slot_index")
+    private Integer slotIndex;
+
+    @Column(name = "main_model", nullable = false)
+    private Boolean mainModel = false;
+
     @Column(name = "active", nullable = false)
     private Boolean active = true;
 
