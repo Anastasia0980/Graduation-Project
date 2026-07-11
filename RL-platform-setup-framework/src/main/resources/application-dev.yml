@@ -47,6 +47,20 @@ battle:
   python: "E:/Anaconda/envs/rl/python.exe"
   script: "scripts/battle_evaluator.py"
 
+sandbox:
+  enabled: true
+  docker-command: "docker"
+  docker-image: "rl-battle-runner:1.0"
+  workspace: "E:/RL_Result"
+  input-dir: "E:/RL_Result/sandbox/input"
+  result-dir: "E:/RL_Result/sandbox/results"
+  timeout-seconds: 1800
+  cpu-limit: "2"
+  memory-limit: "2g"
+  pids-limit: "256"
+  seed: 42
+  fps: 10
+
 system:
   bot-root: "E:/system_model"
 

@@ -165,11 +165,15 @@
               当前任务为分组对战模式。学生需先完成组队，再由队长统一上传模型；后续队伍可像多人对战一样自主选择其他队伍发起异步挑战。
             </div>
 
+            <div v-if='useSavedGroup' class='team-auto-tip'>
+              当前任务使用教师导入分组，队伍不可手动修改。
+            </div>
+
             <div class='tournament-btn-group'>
-              <button class='primary-btn' :disabled='hasTeam' @click='showCreateTeamDialog = true'>创建队伍</button>
-              <button class='secondary-btn side-secondary' :disabled='hasTeam' @click='showJoinTeamDialog = true'>加入队伍</button>
-              <button class='danger-btn' :disabled='!hasTeam || !teamInfo.isCaptain' @click='showDissolveTeamDialog = true'>解散队伍</button>
-              <button class='danger-btn side-secondary' :disabled='!hasTeam || teamInfo.isCaptain' @click='showLeaveTeamDialog = true'>退出队伍</button>
+              <button class='primary-btn' :disabled='hasTeam || useSavedGroup' @click='showCreateTeamDialog = true'>创建队伍</button>
+              <button class='secondary-btn side-secondary' :disabled='hasTeam || useSavedGroup' @click='showJoinTeamDialog = true'>加入队伍</button>
+              <button class='danger-btn' :disabled='!hasTeam || !teamInfo.isCaptain || useSavedGroup' @click='showDissolveTeamDialog = true'>解散队伍</button>
+              <button class='danger-btn side-secondary' :disabled='!hasTeam || teamInfo.isCaptain || useSavedGroup' @click='showLeaveTeamDialog = true'>退出队伍</button>
               <button class='primary-btn' :disabled='!hasTeam' @click='handleTeamBattleEntryClick'>上传模型</button>
               <button class='secondary-btn side-secondary' :disabled='!hasTeam' @click='openMyBattleModelsDialog'>查看已提交模型</button>
             </div>
@@ -773,6 +777,7 @@ export default {
       newTeamName: '',
       joinTeamCode: '',
       hasTeam: false,
+      useSavedGroup: false,
       teamInfo: {
         teamId: null,
         name: '',
@@ -1040,6 +1045,7 @@ export default {
     fillTaskDetail (task) {
       const config = this.parseTaskConfig(task)
       const taskMode = this.mapTaskMode(task.evaluationMode)
+      this.useSavedGroup = !!task.useSavedGroup
 
       this.taskTitle = titleSafe(task.title, this.taskTitle)
       this.taskMode = taskMode
@@ -1284,7 +1290,10 @@ export default {
           {
             confirmButtonText: '确认',
             cancelButtonText: '取消',
-            type: 'warning'
+            type: 'warning',
+            appendTo: 'body',
+            modalClass: 'battle-replace-confirm-modal',
+            customClass: 'battle-replace-confirm-box'
           }
         )
         await this.bindPendingModelToSlot(slot.slotIndex, true)
@@ -2162,6 +2171,18 @@ function titleSafe (value, fallback) {
 .team-member-row:first-child {
   border-top: 1px dashed #ebeef5;
 }
+
+.team-auto-tip {
+  margin: 12px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+  background: #f0f7ff;
+  color: #1f4e8c;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .team-info-box {
   margin-top: 16px;
   padding-top: 14px;
@@ -2845,6 +2866,14 @@ function titleSafe (value, fallback) {
 
 .slot-action-btn {
   width: 100%;
+}
+
+:global(.battle-replace-confirm-modal) {
+  z-index: 5000 !important;
+}
+
+:global(.battle-replace-confirm-box) {
+  z-index: 5001 !important;
 }
 
 @media (max-width: 900px) {

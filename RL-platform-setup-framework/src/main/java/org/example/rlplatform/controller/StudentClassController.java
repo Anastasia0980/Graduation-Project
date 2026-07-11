@@ -10,7 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -93,6 +95,21 @@ public class StudentClassController {
             @RequestParam(required = false, defaultValue = "false") Boolean isDeleted
     ){
         return Result.success(userService.listByCondition(pageNum, pageSize, null, null, id, isDeleted));
+    }
+
+    @PostMapping("{id}/import-students")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<Map<String, Object>> importStudents(
+            @PathVariable Integer id,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return Result.success(studentClassService.importStudents(id, file));
+    }
+
+    @GetMapping("{id}/group-plans")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    public Result<List<Map<String, Object>>> listGroupPlans(@PathVariable Integer id) {
+        return Result.success(studentClassService.listGroupPlans(id));
     }
 
     @GetMapping("me/users")

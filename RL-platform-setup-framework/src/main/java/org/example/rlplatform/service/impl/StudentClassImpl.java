@@ -1,17 +1,31 @@
 package org.example.rlplatform.service.impl;
 
+import jakarta.transaction.Transactional;
+import org.apache.poi.ss.usermodel.*;
+import org.example.rlplatform.Repository.ClassGroupPlanMemberRepository;
+import org.example.rlplatform.Repository.ClassGroupPlanRepository;
 import org.example.rlplatform.Repository.StudentClassRepository;
-import org.example.rlplatform.entity.StudentClass;
+import org.example.rlplatform.Repository.UserRepository;
+import org.example.rlplatform.entity.*;
 import org.example.rlplatform.service.StudentClassService;
+import org.example.rlplatform.utils.Md5Util;
+import org.example.rlplatform.utils.ThreadLocalUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import jakarta.persistence.criteria.Predicate;
 
 import static java.time.LocalDateTime.now;
@@ -21,6 +35,15 @@ public class StudentClassImpl implements StudentClassService {
 
     @Autowired
     private StudentClassRepository studentClassRepository;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private ClassGroupPlanRepository classGroupPlanRepository;
+    @Autowired
+    private ClassGroupPlanMemberRepository classGroupPlanMemberRepository;
+
+    private static final String DEFAULT_STUDENT_PASSWORD = "Abcd1234";
+    private static final DateTimeFormatter PLAN_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     @Override
     public StudentClass findByName(String name) {
@@ -35,6 +58,166 @@ public class StudentClassImpl implements StudentClassService {
     @Override
     public StudentClass findByCodeAndIsDeletedFalse(String code) {
         return studentClassRepository.findByCodeAndIsDeletedFalse(code);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> importStudents(Integer classId, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new RuntimeException("请上传 Excel 文件");
+        }
+        String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        if (!filename.toLowerCase().endsWith(".xlsx") && !filename.toLowerCase().endsWith(".xls")) {
+            throw new RuntimeException("仅支持 .xlsx / .xls 文件");
+        }
+
+        StudentClass studentClass = getByIdAndNotDeleted(classId);
+        Integer teacherId = currentUserId();
+
+        int createdCount = 0;
+        int existingCount = 0;
+        int joinedCount = 0;
+        List<Map<String, Object>> failedRows = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<ClassGroupPlanMember> pendingMembers = new ArrayList<>();
+        Map<String, Integer> groupOrderMap = new HashMap<>();
+        boolean hasGroupNoColumn;
+
+        try (InputStream in = file.getInputStream(); Workbook workbook = WorkbookFactory.create(in)) {
+            Sheet sheet = workbook.getNumberOfSheets() == 0 ? null : workbook.getSheetAt(0);
+            if (sheet == null || sheet.getLastRowNum() < 1) {
+                throw new RuntimeException("Excel 为空或缺少数据行");
+            }
+            DataFormatter formatter = new DataFormatter();
+            Row header = sheet.getRow(0);
+            Map<String, Integer> headerIndex = resolveHeaderIndex(header, formatter);
+            Integer nameCol = firstHeader(headerIndex, "name", "姓名");
+            Integer studentNoCol = firstHeader(headerIndex, "studentno", "student_no", "学号");
+            Integer groupNoCol = firstHeader(headerIndex, "groupno", "group_no", "组号");
+            hasGroupNoColumn = groupNoCol != null;
+            if (nameCol == null) {
+                throw new RuntimeException("Excel 缺少姓名列");
+            }
+            if (studentNoCol == null) {
+                throw new RuntimeException("Excel 缺少学号列");
+            }
+
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) {
+                    continue;
+                }
+                String name = readCell(row, nameCol, formatter);
+                String studentNo = readCell(row, studentNoCol, formatter);
+                String groupNo = groupNoCol == null ? "" : readCell(row, groupNoCol, formatter);
+                if (name.isBlank() && studentNo.isBlank() && groupNo.isBlank()) {
+                    continue;
+                }
+                if (name.isBlank() || studentNo.isBlank()) {
+                    failedRows.add(rowFailure(i + 1, "姓名或学号为空"));
+                    continue;
+                }
+
+                String email = studentNo + "@bjtu.edu.cn";
+                User user = userRepository.findByEmail(email);
+                boolean created = false;
+                if (user == null) {
+                    user = new User();
+                    user.setUsername(name);
+                    user.setNickname(name);
+                    user.setEmail(email);
+                    user.setStudentNo(studentNo);
+                    user.setRole(UserRole.STUDENT);
+                    user.setPassword(Md5Util.getMD5String(DEFAULT_STUDENT_PASSWORD));
+                    user.setStudentClass(studentClass);
+                    user.setCreateTime(LocalDateTime.now());
+                    user.setUpdateTime(LocalDateTime.now());
+                    user.setIsDeleted(false);
+                    user = userRepository.save(user);
+                    createdCount++;
+                    joinedCount++;
+                    created = true;
+                } else {
+                    existingCount++;
+                    if (Boolean.TRUE.equals(user.getIsDeleted())) {
+                        failedRows.add(rowFailure(i + 1, "账号已被删除，邮箱：" + email));
+                        continue;
+                    }
+                    if (user.getUsername() != null && !user.getUsername().isBlank() && !user.getUsername().equals(name)) {
+                        warnings.add("第 " + (i + 1) + " 行邮箱已存在，但姓名不同：" + email);
+                    }
+                    if (user.getStudentNo() == null || user.getStudentNo().isBlank()) {
+                        user.setStudentNo(studentNo);
+                    }
+                    if (user.getStudentClass() == null) {
+                        user.setStudentClass(studentClass);
+                        user.setUpdateTime(LocalDateTime.now());
+                        userRepository.save(user);
+                        joinedCount++;
+                    } else if (!user.getStudentClass().getId().equals(classId)) {
+                        failedRows.add(rowFailure(i + 1, "账号已属于其他班级，未强制移动：" + email));
+                        continue;
+                    }
+                }
+
+                if (hasGroupNoColumn && !groupNo.isBlank()) {
+                    int order = groupOrderMap.merge(groupNo, 1, Integer::sum);
+                    ClassGroupPlanMember member = new ClassGroupPlanMember();
+                    member.setGroupNo(groupNo);
+                    member.setStudentId(user.getId());
+                    member.setStudentNameSnapshot(created ? name : (user.getUsername() == null ? name : user.getUsername()));
+                    member.setStudentNoSnapshot(studentNo);
+                    member.setMemberOrder(order);
+                    pendingMembers.add(member);
+                }
+            }
+
+            ClassGroupPlan plan = null;
+            if (hasGroupNoColumn && !pendingMembers.isEmpty()) {
+                plan = new ClassGroupPlan();
+                plan.setClassId(classId);
+                plan.setPlanName("分组导入 " + LocalDateTime.now().format(PLAN_TIME_FORMATTER));
+                plan.setSourceFileName(filename);
+                plan.setCreatedBy(teacherId);
+                plan.setCreatedAt(LocalDateTime.now());
+                plan.setActive(true);
+                plan = classGroupPlanRepository.save(plan);
+                for (ClassGroupPlanMember member : pendingMembers) {
+                    member.setPlanId(plan.getId());
+                }
+                classGroupPlanMemberRepository.saveAll(pendingMembers);
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("createdCount", createdCount);
+            result.put("existingCount", existingCount);
+            result.put("joinedCount", joinedCount);
+            result.put("savedGroupPlan", plan != null);
+            result.put("groupPlanId", plan == null ? null : plan.getId());
+            result.put("groupPlanName", plan == null ? null : plan.getPlanName());
+            result.put("failedRows", failedRows);
+            result.put("warnings", warnings);
+            return result;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Excel 导入失败：" + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> listGroupPlans(Integer classId) {
+        getByIdAndNotDeleted(classId);
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (ClassGroupPlan plan : classGroupPlanRepository.findByClassIdAndActiveTrueOrderByCreatedAtDesc(classId)) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", plan.getId());
+            row.put("planName", plan.getPlanName());
+            row.put("sourceFileName", plan.getSourceFileName());
+            row.put("createdAt", plan.getCreatedAt() == null ? "" : plan.getCreatedAt().format(PLAN_TIME_FORMATTER));
+            list.add(row);
+        }
+        return list;
     }
 
     @Override
@@ -100,6 +283,64 @@ public class StudentClassImpl implements StudentClassService {
         }
         String seq = String.format("%02d", nextSeq);
         return prefix + seq;
+    }
+
+    private Map<String, Integer> resolveHeaderIndex(Row header, DataFormatter formatter) {
+        Map<String, Integer> result = new HashMap<>();
+        if (header == null) {
+            return result;
+        }
+        for (int i = 0; i < header.getLastCellNum(); i++) {
+            String value = readCell(header, i, formatter);
+            if (!value.isBlank()) {
+                result.put(normalizeHeader(value), i);
+            }
+        }
+        return result;
+    }
+
+    private Integer firstHeader(Map<String, Integer> headerIndex, String... names) {
+        for (String name : names) {
+            Integer idx = headerIndex.get(normalizeHeader(name));
+            if (idx != null) {
+                return idx;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeHeader(String value) {
+        return value == null ? "" : value.trim().replace(" ", "").replace("-", "_").toLowerCase();
+    }
+
+    private String readCell(Row row, Integer index, DataFormatter formatter) {
+        if (row == null || index == null) {
+            return "";
+        }
+        Cell cell = row.getCell(index);
+        return formatter.formatCellValue(cell).trim();
+    }
+
+    private Map<String, Object> rowFailure(int rowNumber, String reason) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("row", rowNumber);
+        row.put("reason", reason);
+        return row;
+    }
+
+    private Integer currentUserId() {
+        Map<String, Object> claims = ThreadLocalUtil.get();
+        Object id = claims == null ? null : claims.get("id");
+        if (id instanceof Integer integerId) {
+            return integerId;
+        }
+        if (id instanceof Long longId) {
+            return longId.intValue();
+        }
+        if (id instanceof String stringId) {
+            return Integer.valueOf(stringId);
+        }
+        throw new RuntimeException("当前用户信息无效");
     }
 
 }

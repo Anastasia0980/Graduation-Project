@@ -49,6 +49,12 @@ public class ExperimentAssignment {
     @Column(name = "team_group_deadline")
     private LocalDateTime teamGroupDeadline;
 
+    @Column(name = "use_saved_group", nullable = false)
+    private Boolean useSavedGroup = false;
+
+    @Column(name = "group_plan_id")
+    private Integer groupPlanId;
+
     @Column(name="create_time")
     private LocalDateTime createTime;
 

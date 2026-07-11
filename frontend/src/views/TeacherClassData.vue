@@ -58,9 +58,32 @@
                 </div>
               </div>
 
+              <button class="secondary-btn small-btn" :disabled="importingStudents" @click="triggerImportExcel">
+                导入 Excel
+              </button>
+              <input
+                ref="excelInput"
+                class="hidden-file-input"
+                type="file"
+                accept=".xlsx,.xls"
+                @change="handleExcelFileChange"
+              >
               <button class="danger-btn small-btn" @click="showDismissDialog = true">
                 解散班级
               </button>
+            </div>
+
+            <div class="import-tip">
+              支持 Excel 表头：姓名、学号，或姓名、学号、组号；导入账号邮箱为 学号@bjtu.edu.cn，初始密码 Abcd1234。
+            </div>
+
+            <div v-if="importResult" class="import-result-box">
+              <div>创建账号：{{ importResult.createdCount || 0 }} 个；已存在账号：{{ importResult.existingCount || 0 }} 个；加入班级：{{ importResult.joinedCount || 0 }} 个</div>
+              <div>保存分组方案：{{ importResult.savedGroupPlan ? (importResult.groupPlanName || '已保存') : '否' }}</div>
+              <div v-if="importResult.warnings && importResult.warnings.length">警告：{{ importResult.warnings.join('；') }}</div>
+              <div v-if="importResult.failedRows && importResult.failedRows.length">
+                失败行：{{ formatFailedRows(importResult.failedRows) }}
+              </div>
             </div>
 
             <table class="common-table">
@@ -76,7 +99,7 @@
                   <td colspan="3" class="empty-cell">当前班级暂无学生数据</td>
                 </tr>
                 <tr v-for="stu in displayedStudents" :key="stu.id || stu.studentId">
-                  <td>{{ stu.studentId || stu.id || "—" }}</td>
+                  <td>{{ stu.studentNo || stu.studentId || stu.id || "—" }}</td>
                   <td>
                     <span class="student-name-link" @click="goStudentDetail(stu)">
                       {{ stu.username || stu.name || "未命名用户" }}
@@ -166,6 +189,8 @@ export default {
       showDismissDialog: false,
       showCreateDialog: false,
       creatingClass: false,
+      importingStudents: false,
+      importResult: null,
       classList: [],
       selectedClass: null,
       displayUserName: localStorage.getItem('auth_name') || '教师',
@@ -267,6 +292,7 @@ export default {
     },
     async selectClass (item) {
       this.expandAll = false
+      this.importResult = null
       const target = {
         ...item,
         students: []
@@ -300,6 +326,42 @@ export default {
           this.selectedClass.studentCount = 0
         }
       }
+    },
+    triggerImportExcel () {
+      if (this.$refs.excelInput) {
+        this.$refs.excelInput.click()
+      }
+    },
+    async handleExcelFileChange (event) {
+      const file = event.target.files && event.target.files[0]
+      if (!file || !this.selectedClass) return
+      const form = new FormData()
+      form.append('file', file)
+      this.importingStudents = true
+      try {
+        const result = await this.requestApi(`${API_BASE}/class/${this.selectedClass.id}/import-students`, {
+          method: 'POST',
+          body: form
+        })
+        if (!result) return
+        if (result.code !== 0) {
+          ElMessage.error(result.message || 'Excel 导入失败')
+          return
+        }
+        this.importResult = result.data || {}
+        await this.loadClassStudents(this.selectedClass.id)
+        ElMessage.success('Excel 导入完成')
+      } catch (error) {
+        ElMessage.error(error.message || 'Excel 导入失败')
+      } finally {
+        this.importingStudents = false
+        if (this.$refs.excelInput) {
+          this.$refs.excelInput.value = ''
+        }
+      }
+    },
+    formatFailedRows (rows) {
+      return rows.map(item => `第${item.row}行：${item.reason}`).join('；')
     },
     toggleExpand () {
       this.expandAll = !this.expandAll
@@ -425,6 +487,28 @@ export default {
   margin-top: 8px;
   font-size: 13px;
   color: #909399;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.import-tip {
+  margin: -6px 0 14px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.7;
+}
+
+.import-result-box {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+  background: #f0f7ff;
+  color: #1f4e8c;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .class-list {

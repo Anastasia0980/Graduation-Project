@@ -41,11 +41,16 @@ def resolve_student_dir(base: str, path_str: str):
 
 def load_agent_from_student_dir(student_dir_abs: str):
     config_path = os.path.join(student_dir_abs, "config.json")
-    model_path = os.path.join(student_dir_abs, "model.pt")
+    model_path = None
+    for model_name in ("model.pt", "model.pth"):
+        candidate = os.path.join(student_dir_abs, model_name)
+        if os.path.isfile(candidate):
+            model_path = candidate
+            break
     if not os.path.isfile(config_path):
         raise FileNotFoundError(f"config.json not found in {student_dir_abs}")
-    if not os.path.isfile(model_path):
-        raise FileNotFoundError(f"model.pt not found in {student_dir_abs}")
+    if model_path is None:
+        raise FileNotFoundError(f"model.pt/model.pth not found in {student_dir_abs}")
     agent = AgentFactory.create_from_config(config_path)
     agent.load(model_path)
     return agent

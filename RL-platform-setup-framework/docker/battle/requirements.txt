@@ -1,0 +1,7 @@
+numpy==1.24.3
+torch==2.4.1
+gymnasium==0.29.1
+pettingzoo[classic]==1.24.3
+pygame==2.3.0
+imageio==2.34.2
+imageio-ffmpeg==0.5.1

@@ -56,6 +56,7 @@ public class TeamGroupController {
                                           @RequestBody Map<String, Object> body) {
         Integer userId = currentUserId();
         ExperimentAssignment assignment = getValidTeamAssignment(assignmentId);
+        ensureFreeGroupingAssignment(assignment);
         ensureWithinGroupDeadline(assignment);
 
         if (findMyTeam(assignmentId, userId) != null) {
@@ -96,6 +97,7 @@ public class TeamGroupController {
                                         @RequestBody Map<String, Object> body) {
         Integer userId = currentUserId();
         ExperimentAssignment assignment = getValidTeamAssignment(assignmentId);
+        ensureFreeGroupingAssignment(assignment);
         ensureWithinGroupDeadline(assignment);
 
         if (findMyTeam(assignmentId, userId) != null) {
@@ -146,6 +148,7 @@ public class TeamGroupController {
     public Result<Void> leaveTeam(@PathVariable Integer assignmentId) {
         Integer userId = currentUserId();
         ExperimentAssignment assignment = getValidTeamAssignment(assignmentId);
+        ensureFreeGroupingAssignment(assignment);
         TeamGroup team = findMyTeam(assignmentId, userId);
         if (team == null) {
             return Result.error("当前未加入队伍");
@@ -178,6 +181,7 @@ public class TeamGroupController {
     public Result<Void> dissolveTeam(@PathVariable Integer assignmentId) {
         Integer userId = currentUserId();
         ExperimentAssignment assignment = getValidTeamAssignment(assignmentId);
+        ensureFreeGroupingAssignment(assignment);
         TeamGroup team = findMyTeam(assignmentId, userId);
         if (team == null) {
             return Result.error("当前未加入队伍");
@@ -208,6 +212,7 @@ public class TeamGroupController {
     public Result<TeamGroupVO> confirmTeam(@PathVariable Integer assignmentId) {
         Integer userId = currentUserId();
         ExperimentAssignment assignment = getValidTeamAssignment(assignmentId);
+        ensureFreeGroupingAssignment(assignment);
         TeamGroup team = findMyTeam(assignmentId, userId);
         if (team == null) {
             return Result.error("当前未加入队伍");
@@ -299,6 +304,12 @@ public class TeamGroupController {
         LocalDateTime deadline = assignment.getTeamGroupDeadline();
         if (deadline != null && !LocalDateTime.now().isBefore(deadline)) {
             throw new RuntimeException("自由组队时间已截止");
+        }
+    }
+
+    private void ensureFreeGroupingAssignment(ExperimentAssignment assignment) {
+        if (assignment != null && Boolean.TRUE.equals(assignment.getUseSavedGroup())) {
+            throw new RuntimeException("当前任务使用教师导入分组，不能手动修改队伍");
         }
     }
 

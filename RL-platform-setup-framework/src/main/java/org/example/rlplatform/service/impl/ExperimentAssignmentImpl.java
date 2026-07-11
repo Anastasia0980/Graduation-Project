@@ -5,14 +5,23 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.transaction.Transactional;
+import org.example.rlplatform.Repository.ClassGroupPlanMemberRepository;
+import org.example.rlplatform.Repository.ClassGroupPlanRepository;
 import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
+import org.example.rlplatform.Repository.TeamGroupRepository;
+import org.example.rlplatform.Repository.TeamMemberRepository;
 import org.example.rlplatform.entity.CurriculumStageConfig;
 import org.example.rlplatform.entity.ExperimentAssignment;
 import org.example.rlplatform.entity.ExperimentConfig;
 import org.example.rlplatform.entity.BaselineOption;
+import org.example.rlplatform.entity.ClassGroupPlan;
+import org.example.rlplatform.entity.ClassGroupPlanMember;
 import org.example.rlplatform.entity.EvaluationMode;
 import org.example.rlplatform.entity.PublicationStatus;
 import org.example.rlplatform.entity.StudentClass;
+import org.example.rlplatform.entity.TeamGroup;
+import org.example.rlplatform.entity.TeamMember;
 import org.example.rlplatform.entity.User;
 import org.example.rlplatform.service.ExperimentAssignmentService;
 import org.example.rlplatform.service.StudentClassService;
@@ -29,11 +38,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
@@ -51,6 +64,14 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
 
     @Autowired
     private ExperimentAssignmentRepository experimentAssignmentRepository;
+    @Autowired
+    private ClassGroupPlanRepository classGroupPlanRepository;
+    @Autowired
+    private ClassGroupPlanMemberRepository classGroupPlanMemberRepository;
+    @Autowired
+    private TeamGroupRepository teamGroupRepository;
+    @Autowired
+    private TeamMemberRepository teamMemberRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -59,15 +80,26 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
     private String baselineRoot;
 
     @Override
+    @Transactional
     public Integer create(Integer classId, ExperimentAssignment experimentAssignment) {
         Map<String, Object> claims = ThreadLocalUtil.get();
         Integer userId = (Integer) claims.get("id");
+        StudentClass studentClass = studentClassService.findByIdAndIsDeletedFalse(classId);
         experimentAssignment.setTeacherId(userId);
-        experimentAssignment.setStudentClass(studentClassService.findByIdAndIsDeletedFalse(classId));
+        experimentAssignment.setStudentClass(studentClass);
         experimentAssignment.setCreateTime(LocalDateTime.now());
         experimentAssignment.setUpdateTime(LocalDateTime.now());
         experimentAssignment.setIsDeleted(false);
         experimentAssignment.setPublicationStatus(PublicationStatus.DRAFT);
+        boolean useSavedGroup = experimentAssignment.getEvaluationMode() == EvaluationMode.TEAM
+                && Boolean.TRUE.equals(experimentAssignment.getUseSavedGroup());
+        experimentAssignment.setUseSavedGroup(useSavedGroup);
+        if (!useSavedGroup) {
+            experimentAssignment.setGroupPlanId(null);
+        } else {
+            validateSavedGroupPlan(studentClass.getId(), experimentAssignment.getGroupPlanId());
+            experimentAssignment.setTeamGroupDeadline(null);
+        }
 
         ExperimentConfig config = experimentAssignment.getConfig();
         if (config != null) {
@@ -80,6 +112,9 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         }
 
         experimentAssignmentRepository.save(experimentAssignment);
+        if (useSavedGroup) {
+            createTeamsFromSavedGroupPlan(experimentAssignment);
+        }
         return experimentAssignment.getId();
     }
 
@@ -106,11 +141,14 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
     }
 
     @Override
+    @Transactional
     public ExperimentAssignment update(Integer assignmentId, ExperimentAssignment experimentAssignment) {
         ExperimentAssignment dbassignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(assignmentId);
         if (dbassignment == null) {
             throw new RuntimeException("实验不存在");
         }
+        boolean previousUseSavedGroup = Boolean.TRUE.equals(dbassignment.getUseSavedGroup());
+        Integer previousGroupPlanId = dbassignment.getGroupPlanId();
 
         ExperimentConfig incomingConfig = experimentAssignment.getConfig();
         if (incomingConfig != null && dbassignment.getEffectivePublicationStatus() == PublicationStatus.PUBLISHED && dbassignment.getEvaluationMode() == EvaluationMode.SINGLE) {
@@ -141,6 +179,17 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
         dbassignment.setTaskIcon(experimentAssignment.getTaskIcon());
         dbassignment.setDeadline(experimentAssignment.getDeadline());
         dbassignment.setTeamGroupDeadline(experimentAssignment.getTeamGroupDeadline());
+        boolean useSavedGroup = dbassignment.getEvaluationMode() == EvaluationMode.TEAM
+                && Boolean.TRUE.equals(experimentAssignment.getUseSavedGroup());
+        dbassignment.setUseSavedGroup(useSavedGroup);
+        dbassignment.setGroupPlanId(useSavedGroup ? experimentAssignment.getGroupPlanId() : null);
+        if (useSavedGroup) {
+            validateSavedGroupPlan(
+                    dbassignment.getStudentClass() == null ? null : dbassignment.getStudentClass().getId(),
+                    dbassignment.getGroupPlanId()
+            );
+            dbassignment.setTeamGroupDeadline(null);
+        }
         dbassignment.setUpdateTime(LocalDateTime.now());
         dbassignment.setIsDeleted(false);
 
@@ -157,7 +206,15 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
             }
         }
 
-        return experimentAssignmentRepository.save(dbassignment);
+        ExperimentAssignment saved = experimentAssignmentRepository.save(dbassignment);
+        boolean groupPlanChanged = !Objects.equals(previousGroupPlanId, saved.getGroupPlanId());
+        if (previousUseSavedGroup && !useSavedGroup) {
+            clearTeamsForAssignment(saved.getId());
+        } else if (useSavedGroup && (!previousUseSavedGroup || groupPlanChanged)) {
+            clearTeamsForAssignment(saved.getId());
+            createTeamsFromSavedGroupPlan(saved);
+        }
+        return saved;
     }
 
     @Override
@@ -372,5 +429,105 @@ public class ExperimentAssignmentImpl implements ExperimentAssignmentService {
             candidate = Paths.get(root, normalized.replaceAll("^/+", ""));
         }
         return Files.exists(candidate);
+    }
+
+    private ClassGroupPlan validateSavedGroupPlan(Integer classId, Integer groupPlanId) {
+        if (groupPlanId == null) {
+            throw new IllegalArgumentException("请选择分组方案");
+        }
+        ClassGroupPlan plan = classGroupPlanRepository.findByIdAndActiveTrue(groupPlanId);
+        if (plan == null) {
+            throw new IllegalArgumentException("分组方案不存在或已失效");
+        }
+        if (!Objects.equals(plan.getClassId(), classId)) {
+            throw new IllegalArgumentException("分组方案不属于当前班级");
+        }
+        List<ClassGroupPlanMember> members = classGroupPlanMemberRepository.findByPlanIdOrderByGroupNoAscMemberOrderAsc(groupPlanId);
+        if (members == null || members.isEmpty()) {
+            throw new IllegalArgumentException("分组方案没有成员明细");
+        }
+        return plan;
+    }
+
+    private void clearTeamsForAssignment(Integer assignmentId) {
+        List<TeamGroup> teams = teamGroupRepository.findByAssignmentIdAndIsDeletedFalseOrderByIdAsc(assignmentId);
+        for (TeamGroup team : teams) {
+            List<TeamMember> members = teamMemberRepository.findByTeamIdAndIsDeletedFalseOrderByIdAsc(team.getId());
+            for (TeamMember member : members) {
+                member.setIsDeleted(true);
+            }
+            teamMemberRepository.saveAll(members);
+            team.setIsDeleted(true);
+            team.setUpdateTime(LocalDateTime.now());
+        }
+        teamGroupRepository.saveAll(teams);
+    }
+
+    private void createTeamsFromSavedGroupPlan(ExperimentAssignment assignment) {
+        Integer classId = assignment.getStudentClass() == null ? null : assignment.getStudentClass().getId();
+        ClassGroupPlan plan = validateSavedGroupPlan(classId, assignment.getGroupPlanId());
+        List<ClassGroupPlanMember> members = classGroupPlanMemberRepository.findByPlanIdOrderByGroupNoAscMemberOrderAsc(plan.getId());
+        Map<String, List<ClassGroupPlanMember>> grouped = members.stream()
+                .collect(Collectors.groupingBy(
+                        ClassGroupPlanMember::getGroupNo,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        for (Map.Entry<String, List<ClassGroupPlanMember>> entry : grouped.entrySet()) {
+            List<ClassGroupPlanMember> groupMembers = entry.getValue();
+            if (groupMembers == null || groupMembers.isEmpty()) {
+                continue;
+            }
+            groupMembers = groupMembers.stream()
+                    .sorted((a, b) -> Integer.compare(
+                            a.getMemberOrder() == null ? 0 : a.getMemberOrder(),
+                            b.getMemberOrder() == null ? 0 : b.getMemberOrder()
+                    ))
+                    .toList();
+
+            ClassGroupPlanMember captain = groupMembers.get(0);
+            User captainUser = userService.findByIdAndIsDeletedFalse(captain.getStudentId());
+            if (captainUser.getStudentClass() == null || !Objects.equals(captainUser.getStudentClass().getId(), classId)) {
+                throw new IllegalArgumentException("分组方案中存在不属于当前班级的学生：" + captain.getStudentNoSnapshot());
+            }
+
+            TeamGroup team = new TeamGroup();
+            team.setAssignmentId(assignment.getId());
+            team.setTeamName(entry.getKey());
+            team.setTeamCode(generateTeamCode());
+            team.setCaptainStudentId(captain.getStudentId());
+            team.setMaxMembers(3);
+            team.setCreateTime(LocalDateTime.now());
+            team.setUpdateTime(LocalDateTime.now());
+            team.setLocked(true);
+            team.setLockTime(LocalDateTime.now());
+            team.setIsDeleted(false);
+            team = teamGroupRepository.save(team);
+
+            int limit = Math.min(3, groupMembers.size());
+            for (int i = 0; i < limit; i++) {
+                ClassGroupPlanMember planMember = groupMembers.get(i);
+                User memberUser = userService.findByIdAndIsDeletedFalse(planMember.getStudentId());
+                if (memberUser.getStudentClass() == null || !Objects.equals(memberUser.getStudentClass().getId(), classId)) {
+                    throw new IllegalArgumentException("分组方案中存在不属于当前班级的学生：" + planMember.getStudentNoSnapshot());
+                }
+                TeamMember member = new TeamMember();
+                member.setTeamId(team.getId());
+                member.setStudentId(planMember.getStudentId());
+                member.setJoinTime(LocalDateTime.now());
+                member.setIsDeleted(false);
+                teamMemberRepository.save(member);
+            }
+        }
+    }
+
+    private String generateTeamCode() {
+        while (true) {
+            String code = "TEAM" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase(Locale.ROOT);
+            if (!teamGroupRepository.existsByTeamCodeAndIsDeletedFalse(code)) {
+                return code;
+            }
+        }
     }
 }

@@ -27,4 +27,6 @@ public interface UserRepository extends JpaRepository<User, Integer>, JpaSpecifi
     void updateAvatar(@Param("avatar") String avatar, @Param("id") Integer id);
 
     User findByEmail(String email);
+
+    User findByEmailAndIsDeletedFalse(String email);
 }

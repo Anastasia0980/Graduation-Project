@@ -41,6 +41,9 @@ public class User {
     @Column(name = "email", unique = true, nullable = false)
     private String email;
 
+    @Column(name = "student_no", length = 50)
+    private String studentNo;
+
     @Column(name = "user_pic")
     private String userPic;
 

@@ -2,12 +2,16 @@ package org.example.rlplatform.battle;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.example.rlplatform.Repository.ExperimentAssignmentRepository;
 import org.example.rlplatform.Repository.EvaluationResultRepository;
 import org.example.rlplatform.entity.BattleEnvironment;
 import org.example.rlplatform.entity.BattleParticipant;
 import org.example.rlplatform.entity.Evaluation;
+import org.example.rlplatform.entity.EvaluationMode;
 import org.example.rlplatform.entity.EvaluationResult;
 import org.example.rlplatform.entity.EvaluationStatus;
+import org.example.rlplatform.entity.ExperimentAssignment;
 import org.example.rlplatform.service.BattleEnvironmentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,6 +47,12 @@ public class BattleExecuter {
     @Autowired
     private BattleEnvironmentService battleEnvironmentService;
 
+    @Autowired
+    private DockerBattleRunner dockerBattleRunner;
+
+    @Autowired
+    private ExperimentAssignmentRepository experimentAssignmentRepository;
+
     public void executeBattle(Evaluation evaluation, BattleParticipant participant) {
         final Long evalId = evaluation.getId();
         BattleEnvironment battleEnvironment = battleEnvironmentService.getReadyByCode(evaluation.getEnvironment());
@@ -50,8 +60,13 @@ public class BattleExecuter {
                 evalId, evaluation.getEnvironment(), evaluation.getEpisodes(),
                 participant.getStudent1DirRel(), participant.getStudent2DirRel());
 
-        String finalPythonCmd = resolvePythonCmd(battleEnvironment);
         String base = resolveWorkspace(battleEnvironment);
+        if (shouldUseDockerSandbox(evaluation, participant)) {
+            executeBattleInDocker(evaluation, participant, base);
+            return;
+        }
+
+        String finalPythonCmd = resolvePythonCmd(battleEnvironment);
         Path script = resolveScriptPath(battleEnvironment);
 
         if (!script.toFile().exists()) {
@@ -176,6 +191,126 @@ public class BattleExecuter {
         }
     }
 
+    private void executeBattleInDocker(Evaluation evaluation, BattleParticipant participant, String workspaceBase) {
+        long processStartMs = System.currentTimeMillis();
+        try {
+            DockerBattleRunner.DockerBattleResult dockerResult =
+                    dockerBattleRunner.run(evaluation, participant, workspaceBase);
+            long elapsedMs = System.currentTimeMillis() - processStartMs;
+
+            JsonNode root = readDockerResultRoot(dockerResult);
+            String jsonLine = root == null ? null : root.toString();
+
+            if (dockerResult.isTimedOut()) {
+                String errMsg = "Battle docker execution timeout after " + dockerResult.getElapsedMs() + "ms";
+                log.warn("Battle evaluation id={} docker timeout error={}", evaluation.getId(), errMsg);
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage(errMsg);
+                root = buildDockerFailureRoot(errMsg, dockerResult);
+                saveEvaluationResult(evaluation, root, root.toString(), dockerResult.getOutputDir().toString());
+                return;
+            }
+
+            if (root == null) {
+                String errMsg = "Docker battle result.json not found or invalid: " + dockerResult.getResultJson();
+                log.warn("Battle evaluation id={} failed: {} stderr={}",
+                        evaluation.getId(), errMsg, preview(dockerResult.getStderr(), 500));
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage(errMsg);
+                root = buildDockerFailureRoot(errMsg, dockerResult);
+                saveEvaluationResult(evaluation, root, root.toString(), dockerResult.getOutputDir().toString());
+                return;
+            }
+
+            normalizeDockerResultDir(root, dockerResult);
+            jsonLine = root.toString();
+
+            if (dockerResult.getExitCode() != 0) {
+                String errMsg = root.has("error") && !root.path("error").asText().isBlank()
+                        ? root.path("error").asText()
+                        : "Battle docker execution failed, exitCode=" + dockerResult.getExitCode();
+                log.warn("Battle evaluation id={} docker exitCode={} after {}ms error={}",
+                        evaluation.getId(), dockerResult.getExitCode(), elapsedMs, errMsg);
+                evaluation.setStatus(EvaluationStatus.FAILED);
+                evaluation.setErrorMessage(errMsg);
+                saveEvaluationResult(evaluation, root, jsonLine, dockerResult.getOutputDir().toString());
+                return;
+            }
+
+            String status = root.has("status") ? root.path("status").asText() : EvaluationStatus.FINISHED.name();
+            try {
+                evaluation.setStatus(EvaluationStatus.valueOf(status.toUpperCase()));
+            } catch (Exception e) {
+                evaluation.setStatus(EvaluationStatus.FINISHED);
+            }
+
+            if (root.has("error") && !root.path("error").isNull() && !root.path("error").asText().isBlank()) {
+                evaluation.setErrorMessage(root.path("error").asText());
+            }
+
+            saveEvaluationResult(evaluation, root, jsonLine, dockerResult.getOutputDir().toString());
+            log.info("Battle evaluation id={} docker finished status={} in {}ms",
+                    evaluation.getId(), evaluation.getStatus(), elapsedMs);
+        } catch (Exception e) {
+            log.error("Battle evaluation id={} docker unexpected error", evaluation.getId(), e);
+            evaluation.setStatus(EvaluationStatus.FAILED);
+            evaluation.setErrorMessage(e.getMessage());
+            saveEvaluationResult(evaluation, null, null, workspaceBase);
+        }
+    }
+
+    private boolean shouldUseDockerSandbox(Evaluation evaluation, BattleParticipant participant) {
+        if (!dockerBattleRunner.isEnabled()) {
+            return false;
+        }
+        if (evaluation == null || participant == null) {
+            return false;
+        }
+        if (!"BATTLE".equalsIgnoreCase(evaluation.getAgentName())) {
+            return false;
+        }
+        if (!"HUMAN".equalsIgnoreCase(participant.getOpponentType())) {
+            return false;
+        }
+        if (evaluation.getAssignmentId() == null) {
+            return false;
+        }
+        ExperimentAssignment assignment = experimentAssignmentRepository.findByIdAndIsDeletedFalse(evaluation.getAssignmentId());
+        return assignment != null && assignment.getEvaluationMode() == EvaluationMode.VERSUS;
+    }
+
+    private JsonNode readDockerResultRoot(DockerBattleRunner.DockerBattleResult dockerResult) {
+        try {
+            if (Files.exists(dockerResult.getResultJson()) && Files.isRegularFile(dockerResult.getResultJson())) {
+                String content = Files.readString(dockerResult.getResultJson(), StandardCharsets.UTF_8);
+                return objectMapper.readTree(content);
+            }
+            String jsonLine = extractJsonLine(dockerResult.getStdout());
+            if (jsonLine != null) {
+                return objectMapper.readTree(jsonLine);
+            }
+        } catch (Exception e) {
+            log.warn("Read docker battle result failed resultJson={}", dockerResult.getResultJson(), e);
+        }
+        return null;
+    }
+
+    private ObjectNode buildDockerFailureRoot(String errorMessage, DockerBattleRunner.DockerBattleResult dockerResult) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("status", EvaluationStatus.FAILED.name());
+        root.put("winner", 0);
+        root.put("error", errorMessage);
+        root.put("result_dir", dockerResult.getHostResultBase().toString().replace("\\", "/"));
+        root.put("video", (String) null);
+        return root;
+    }
+
+    private void normalizeDockerResultDir(JsonNode root, DockerBattleRunner.DockerBattleResult dockerResult) {
+        if (root instanceof ObjectNode objectNode) {
+            objectNode.put("result_dir", dockerResult.getHostResultBase().toString().replace("\\", "/"));
+        }
+    }
+
     private String resolvePythonCmd(BattleEnvironment battleEnvironment) {
         if (battleEnvironment != null
                 && battleEnvironment.getPythonPath() != null
@@ -259,6 +394,13 @@ public class BattleExecuter {
         }
 
         return jsonLine;
+    }
+
+    private String preview(String value, int maxLen) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.length() > maxLen ? value.substring(0, maxLen) + "..." : value;
     }
 
     private String extractJsonLine(String fullOutput) {

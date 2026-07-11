@@ -220,7 +220,31 @@
 
             <div class='form-item'>
               <label>自由组队截止时间</label>
-              <input v-model='taskForm.teamGroupDeadline' type='datetime-local' />
+              <input v-model='taskForm.teamGroupDeadline' type='datetime-local' :disabled='useSavedGroup' />
+            </div>
+
+            <div class='form-item full-width'>
+              <label>是否根据已保存分组创建队伍</label>
+              <select v-model='useSavedGroup' :disabled='classGroupPlans.length === 0'>
+                <option :value='false'>否</option>
+                <option :value='true'>是</option>
+              </select>
+              <div v-if='classGroupPlans.length === 0' class='field-tip'>
+                当前班级暂无已保存分组，请先在班级管理中导入包含组号的 Excel。
+              </div>
+            </div>
+
+            <div v-if='useSavedGroup' class='form-item full-width'>
+              <label>选择分组方案</label>
+              <select v-model='selectedGroupPlanId'>
+                <option
+                  v-for='plan in classGroupPlans'
+                  :key='plan.id'
+                  :value='plan.id'
+                >
+                  {{ plan.planName }} {{ plan.createdAt ? `· ${plan.createdAt}` : '' }} {{ plan.sourceFileName ? `· ${plan.sourceFileName}` : '' }}
+                </option>
+              </select>
             </div>
           </div>
         </div>
@@ -512,6 +536,10 @@ export default {
       hardBotConfigFileName: '当前未选择文件',
       hardBotModelFileName: '当前未选择文件',
       classOptions: [],
+      classGroupPlans: [],
+      classGroupPlansLoading: false,
+      useSavedGroup: false,
+      selectedGroupPlanId: '',
       algorithmOptions: ['DDPG', 'DQN', 'QLearning'],
       selectedAlgorithms: [],
       envOptions: [],
@@ -579,6 +607,16 @@ export default {
   watch: {
     taskMode () {
       this.ensureEnvironmentSelectedByMode()
+      if (this.taskMode !== 'tournament') {
+        this.useSavedGroup = false
+        this.selectedGroupPlanId = ''
+      }
+    },
+    'taskForm.classId': {
+      immediate: true,
+      handler () {
+        this.loadClassGroupPlans()
+      }
     },
     'taskForm.environmentCode': {
       immediate: true,
@@ -657,6 +695,29 @@ export default {
         }
       } catch (error) {
         this.classOptions = []
+      }
+    },
+    async loadClassGroupPlans () {
+      this.classGroupPlans = []
+      this.selectedGroupPlanId = ''
+      this.useSavedGroup = false
+      if (!this.taskForm.classId) return
+      this.classGroupPlansLoading = true
+      try {
+        const result = await this.requestApi(`${API_BASE}/class/${this.taskForm.classId}/group-plans`, {
+          method: 'GET'
+        })
+        if (!result || result.code !== 0) {
+          return
+        }
+        this.classGroupPlans = Array.isArray(result.data) ? result.data : []
+        if (this.classGroupPlans.length > 0) {
+          this.selectedGroupPlanId = this.classGroupPlans[0].id
+        }
+      } catch (error) {
+        this.classGroupPlans = []
+      } finally {
+        this.classGroupPlansLoading = false
       }
     },
     async loadBattleEnvironmentOptions () {
@@ -1044,26 +1105,33 @@ export default {
         return false
       }
       if (this.taskMode === 'tournament') {
-        if (!this.taskForm.teamGroupDeadline) {
+        if (this.useSavedGroup) {
+          if (!this.selectedGroupPlanId) {
+            ElMessage.warning('请选择分组方案')
+            return false
+          }
+        } else if (!this.taskForm.teamGroupDeadline) {
           ElMessage.warning('请选择自由组队截止时间')
           return false
         }
 
-        const now = new Date()
-        const teamGroupDeadline = new Date(this.taskForm.teamGroupDeadline)
-        const taskDeadline = new Date(this.taskForm.deadline)
+        if (!this.useSavedGroup) {
+          const now = new Date()
+          const teamGroupDeadline = new Date(this.taskForm.teamGroupDeadline)
+          const taskDeadline = new Date(this.taskForm.deadline)
 
-        if (Number.isNaN(teamGroupDeadline.getTime()) || Number.isNaN(taskDeadline.getTime())) {
-          ElMessage.warning('组队截止时间或任务截止时间格式不正确')
-          return false
-        }
-        if (teamGroupDeadline <= now) {
-          ElMessage.warning('自由组队截止时间必须晚于当前时间')
-          return false
-        }
-        if (teamGroupDeadline >= taskDeadline) {
-          ElMessage.warning('自由组队截止时间必须早于任务截止时间')
-          return false
+          if (Number.isNaN(teamGroupDeadline.getTime()) || Number.isNaN(taskDeadline.getTime())) {
+            ElMessage.warning('组队截止时间或任务截止时间格式不正确')
+            return false
+          }
+          if (teamGroupDeadline <= now) {
+            ElMessage.warning('自由组队截止时间必须晚于当前时间')
+            return false
+          }
+          if (teamGroupDeadline >= taskDeadline) {
+            ElMessage.warning('自由组队截止时间必须早于任务截止时间')
+            return false
+          }
         }
       }
       if (this.selectedAlgorithms.length === 0) {
@@ -1115,7 +1183,9 @@ export default {
           environment: this.taskForm.environmentCode,
           taskIcon,
           deadline: this.taskForm.deadline,
-          teamGroupDeadline: this.taskMode === 'tournament' ? this.taskForm.teamGroupDeadline : null,
+          teamGroupDeadline: this.taskMode === 'tournament' && !this.useSavedGroup ? this.taskForm.teamGroupDeadline : null,
+          useSavedGroup: this.taskMode === 'tournament' ? this.useSavedGroup : false,
+          groupPlanId: this.taskMode === 'tournament' && this.useSavedGroup ? this.selectedGroupPlanId : null,
           config: configPayload
         }
 
