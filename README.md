@@ -28,7 +28,7 @@
 
 ## 系统架构
 
-技术架构图
+<img width="480" height="399" alt="技术架构图" src="https://github.com/user-attachments/assets/4d4ff59b-fc1d-4ee0-909b-3271bb3f2abc" />
 
 ## 业务流程
 
@@ -43,7 +43,7 @@
 
 ## 功能模块
 
-功能模块图
+<img width="635" height="398" alt="功能模块图" src="https://github.com/user-attachments/assets/27e3294f-fad5-4153-ade2-2184a04596d5" />
 
 ## 用户角色
 
